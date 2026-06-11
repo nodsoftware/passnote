@@ -1,0 +1,29 @@
+# Dart/Flutter
+.dart_tool/
+.packages
+build/
+.pub-cache/
+pubspec.lock
+*.js.map
+
+# Flutter
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Agent working directories (never committed)
+.analysis/
+.planning/
+
+# Melos
+.melos_tool/
