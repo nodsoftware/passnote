@@ -1,0 +1,23 @@
+name: shopping_list_bloc
+version: 0.1.0
+description: Shopping list example app using Conclave with BLoC state management.
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.6.0
+  flutter: ^3.27.0
+
+dependencies:
+  bloc: ^9.0.0
+  conclave: ^0.1.0
+  conclave_flutter: ^0.1.0
+  conclave_lan: ^0.1.0
+  flutter:
+    sdk: flutter
+  flutter_bloc: ^9.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  lints: ^4.0.0
