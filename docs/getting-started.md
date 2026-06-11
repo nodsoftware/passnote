@@ -47,9 +47,9 @@ class Item {
 }
 
 final itemCodec = JsonCodec<Item>(
-  toJson: (i) => i.toJson(),
-  fromJson: Item.fromJson,
-  id: (i) => i.id,
+  toMap: (i) => i.toJson(),
+  fromMap: Item.fromJson,
+  idOf: (i) => i.id,
 );
 ```
 
@@ -104,6 +104,20 @@ await items.delete(someId);
 // Query in memory:
 final remaining = items.where((i) => !i.done);
 ```
+
+By default a document merges whole-document last-write-wins. To let concurrent
+edits to *different fields* of the same document both survive, pass a field-level
+merge strategy:
+
+```dart
+final items = db.collection<Item>(
+  'items',
+  itemCodec,
+  merge: const ShallowMergeStrategy(),
+);
+```
+
+See [Collections](concepts/collections.md#merge-strategies) for the trade-offs.
 
 ## 6. React to changes
 

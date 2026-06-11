@@ -9,11 +9,17 @@ wire protocol.
 Each collection is backed by a **CRDT** (Conflict-free Replicated Data Type). A
 CRDT is a data structure whose replicas can be updated independently and merged
 in any order, always arriving at the same result. Conclave models each
-collection as a map from document id to value, where every record carries a
+collection as a map from **record key** to value, where every record carries a
 timestamp.
 
-- Edits to **different** ids are independent and both survive a merge.
-- Edits to the **same** id are resolved **last-write-wins**.
+- Edits to **different** record keys are independent and both survive a merge.
+- Edits to the **same** record key are resolved **last-write-wins**.
+
+A document is split into one or more such records by the collection's
+[merge strategy](collections.md#merge-strategies). With the default
+`ObjectMergeStrategy` a document is a single record (whole-document LWW); with
+`ShallowMergeStrategy` or `DeepMergeStrategy` each field becomes its own record,
+so concurrent edits to different fields of one document both survive.
 
 ## Hybrid Logical Clocks
 

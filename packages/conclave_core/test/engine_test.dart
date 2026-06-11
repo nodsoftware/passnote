@@ -65,9 +65,31 @@ class _Note {
   final String text;
 
   static final codec = JsonCodec<_Note>(
-    toJson: (n) => {'id': n.id, 'text': n.text},
-    fromJson: (m) => _Note(id: m['id'] as String, text: m['text'] as String),
-    id: (n) => n.id,
+    toMap: (n) => {'id': n.id, 'text': n.text},
+    fromMap: (m) => _Note(id: m['id'] as String, text: m['text'] as String),
+    idOf: (n) => n.id,
+  );
+}
+
+/// Multi-field model used to exercise field-granular merge strategies.
+class _Card {
+  _Card({required this.id, required this.title, required this.body});
+
+  final String id;
+  final String title;
+  final String body;
+
+  _Card copyWith({String? title, String? body}) =>
+      _Card(id: id, title: title ?? this.title, body: body ?? this.body);
+
+  static final codec = JsonCodec<_Card>(
+    toMap: (c) => {'id': c.id, 'title': c.title, 'body': c.body},
+    fromMap: (m) => _Card(
+      id: m['id'] as String,
+      title: m['title'] as String,
+      body: m['body'] as String,
+    ),
+    idOf: (c) => c.id,
   );
 }
 
@@ -165,6 +187,133 @@ void main() {
           .timeout(const Duration(seconds: 5));
 
       expect(notesB.get('n1'), isNull);
+    });
+  });
+
+  group('Field-level merge', () {
+    late InMemoryBus bus;
+    late Conclave nodeA;
+    late Conclave nodeB;
+
+    setUp(() async {
+      bus = InMemoryBus();
+      nodeA = await _openConclave(bus);
+      nodeB = await _openConclave(bus);
+    });
+
+    tearDown(() async {
+      await nodeA.close();
+      await nodeB.close();
+    });
+
+    test('object mode loses one of two concurrent field edits', () async {
+      const passphrase = 'word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11';
+      final dbA = await nodeA.openDatabase('cards', passphrase: passphrase);
+      final dbB = await nodeB.openDatabase('cards', passphrase: passphrase);
+
+      final cardsA = dbA.collection<_Card>('cards', _Card.codec);
+      final cardsB = dbB.collection<_Card>('cards', _Card.codec);
+
+      // Seed a shared card and let both nodes observe it.
+      await cardsA.put(_Card(id: 'c1', title: 'Title', body: 'Body'));
+      await cardsB.watch().where((l) => l.isNotEmpty).first
+          .timeout(const Duration(seconds: 5));
+
+      // Concurrent edits to DIFFERENT fields of the same document.
+      await cardsA.put(cardsA.get('c1')!.copyWith(title: 'Edited by A'));
+      await cardsB.put(cardsB.get('c1')!.copyWith(body: 'Edited by B'));
+
+      // Let the two writes propagate and converge.
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      final a = cardsA.get('c1')!;
+      final b = cardsB.get('c1')!;
+      // Both nodes converge to the SAME whole-document winner...
+      expect(a.title, equals(b.title));
+      expect(a.body, equals(b.body));
+      // ...but at least one of the two edits is lost (whole-document LWW).
+      final lostAnEdit = a.title != 'Edited by A' || a.body != 'Edited by B';
+      expect(lostAnEdit, isTrue);
+    });
+
+    test('shallow mode keeps concurrent edits to different fields', () async {
+      const passphrase = 'word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11';
+      final dbA = await nodeA.openDatabase('cards', passphrase: passphrase);
+      final dbB = await nodeB.openDatabase('cards', passphrase: passphrase);
+
+      const merge = ShallowMergeStrategy();
+      final cardsA = dbA.collection<_Card>('cards', _Card.codec, merge: merge);
+      final cardsB = dbB.collection<_Card>('cards', _Card.codec, merge: merge);
+
+      await cardsA.put(_Card(id: 'c1', title: 'Title', body: 'Body'));
+      await cardsB.watch().where((l) => l.isNotEmpty).first
+          .timeout(const Duration(seconds: 5));
+
+      await cardsA.put(cardsA.get('c1')!.copyWith(title: 'Edited by A'));
+      await cardsB.put(cardsB.get('c1')!.copyWith(body: 'Edited by B'));
+
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      // Both field edits survive on both nodes.
+      for (final cards in [cardsA, cardsB]) {
+        final c = cards.get('c1')!;
+        expect(c.title, equals('Edited by A'));
+        expect(c.body, equals('Edited by B'));
+      }
+    });
+
+    test('shallow mode keeps a deleted document fully gone, not partial', () async {
+      const passphrase = 'word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11';
+      final dbA = await nodeA.openDatabase('cards', passphrase: passphrase);
+      final dbB = await nodeB.openDatabase('cards', passphrase: passphrase);
+
+      const merge = ShallowMergeStrategy();
+      final cardsA = dbA.collection<_Card>('cards', _Card.codec, merge: merge);
+      final cardsB = dbB.collection<_Card>('cards', _Card.codec, merge: merge);
+
+      await cardsA.put(_Card(id: 'c1', title: 'Title', body: 'Body'));
+      await cardsB.watch().where((l) => l.isNotEmpty).first
+          .timeout(const Duration(seconds: 5));
+
+      // Delete on A wins the existence register over B's later non-edit.
+      await cardsA.delete('c1');
+      await cardsB.watch().where((l) => l.isEmpty).first
+          .timeout(const Duration(seconds: 5));
+
+      // The document is fully absent on both nodes — never a partial record.
+      expect(cardsA.get('c1'), isNull);
+      expect(cardsB.get('c1'), isNull);
+      expect(cardsA.all, isEmpty);
+      expect(cardsB.all, isEmpty);
+    });
+
+    test('shallow mode: a later edit revives a concurrently deleted document with all fields', () async {
+      const passphrase = 'word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11';
+      final dbA = await nodeA.openDatabase('cards', passphrase: passphrase);
+      final dbB = await nodeB.openDatabase('cards', passphrase: passphrase);
+
+      const merge = ShallowMergeStrategy();
+      final cardsA = dbA.collection<_Card>('cards', _Card.codec, merge: merge);
+      final cardsB = dbB.collection<_Card>('cards', _Card.codec, merge: merge);
+
+      await cardsA.put(_Card(id: 'c1', title: 'Title', body: 'Body'));
+      await cardsB.watch().where((l) => l.isNotEmpty).first
+          .timeout(const Duration(seconds: 5));
+
+      // A deletes; B then edits a single field. B's edit refreshes the
+      // existence register with a higher HLC, so the document stays alive.
+      await cardsA.delete('c1');
+      await cardsB.put(cardsB.get('c1')!.copyWith(title: 'Revived'));
+
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      // Both converge to a complete document — never one missing `body`.
+      for (final cards in [cardsA, cardsB]) {
+        final c = cards.get('c1');
+        expect(c, isNotNull);
+        expect(c!.title, equals('Revived'));
+        expect(c.body, equals('Body'));
+      }
     });
   });
 

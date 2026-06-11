@@ -1,7 +1,9 @@
 import 'codec.dart';
 import 'collection.dart';
+import 'merge_strategies.dart';
 import 'ports/blob_store.dart';
 import 'ports/cipher.dart';
+import 'ports/merge_strategy.dart';
 import 'ports/transport.dart';
 import 'protocol/messages.dart';
 
@@ -51,10 +53,19 @@ class Database {
   /// Returns (or creates) the typed collection named [name].
   ///
   /// Calling this method twice with the same [name] and compatible [T] returns
-  /// the same [Collection] instance. The initial storage load starts
-  /// asynchronously; [Collection.put] and [Collection.delete] await it
+  /// the same [Collection] instance; the [merge] argument is honoured only on
+  /// the first call that creates the collection. The initial storage load
+  /// starts asynchronously; [Collection.put] and [Collection.delete] await it
   /// internally.
-  Collection<T> collection<T>(String name, Codec<T> codec) {
+  ///
+  /// [merge] selects how concurrent edits to the same document are reconciled
+  /// (whole-document, per-field, or deep); it defaults to whole-document
+  /// last-write-wins.
+  Collection<T> collection<T>(
+    String name,
+    Codec<T> codec, {
+    MergeStrategy merge = const ObjectMergeStrategy(),
+  }) {
     if (_collections.containsKey(name)) {
       return _collections[name] as Collection<T>;
     }
@@ -64,6 +75,7 @@ class Database {
       name,
       codec,
       _store,
+      merge: merge,
       onLocalChange: () => _broadcastCollection(col),
     );
     _collections[name] = col;

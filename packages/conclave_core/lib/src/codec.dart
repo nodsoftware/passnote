@@ -1,52 +1,48 @@
-import 'dart:convert';
-
-/// Converts values of type [T] to and from a string representation, and
-/// extracts a stable document identifier from each value.
+/// Converts values of type [T] to and from a JSON-style map, and extracts a
+/// stable document identifier from each value.
 ///
-/// The codec sits between the typed [Collection] and the raw string stored in
-/// the CRDT. It never sees encrypted bytes.
+/// The codec sits between the typed [Collection] and the field decomposition
+/// performed by the merge strategy. It never sees encrypted bytes, and the map
+/// it produces must be JSON-serialisable.
 abstract interface class Codec<T> {
-  /// Encodes [value] to its string representation.
-  String encode(T value);
+  /// Converts [value] to a JSON-serialisable map.
+  Map<String, dynamic> toMap(T value);
 
-  /// Decodes [raw] back to a [T].
-  T decode(String raw);
+  /// Reconstructs a [T] from [map].
+  T fromMap(Map<String, dynamic> map);
 
   /// Extracts the stable document identifier from [value].
   String idOf(T value);
 }
 
-/// A [Codec] backed by JSON [toJson]/[fromJson] functions.
+/// A [Codec] backed by plain functions.
 ///
 /// ```dart
 /// final codec = JsonCodec<Note>(
-///   toJson: (n) => n.toJson(),
-///   fromJson: Note.fromJson,
-///   id: (n) => n.id,
+///   toMap: (n) => n.toJson(),
+///   fromMap: Note.fromJson,
+///   idOf: (n) => n.id,
 /// );
 /// ```
 class JsonCodec<T> implements Codec<T> {
   const JsonCodec({
-    required this.toJson,
-    required this.fromJson,
-    required this.id,
-  });
+    required Map<String, dynamic> Function(T) toMap,
+    required T Function(Map<String, dynamic>) fromMap,
+    required String Function(T) idOf,
+  })  : _toMap = toMap,
+        _fromMap = fromMap,
+        _idOf = idOf;
 
-  /// Converts [T] to a JSON-encodable map.
-  final Map<String, dynamic> Function(T) toJson;
-
-  /// Constructs [T] from a JSON map.
-  final T Function(Map<String, dynamic>) fromJson;
-
-  /// Extracts the document id from [T].
-  final String Function(T) id;
+  final Map<String, dynamic> Function(T) _toMap;
+  final T Function(Map<String, dynamic>) _fromMap;
+  final String Function(T) _idOf;
 
   @override
-  String encode(T value) => jsonEncode(toJson(value));
+  Map<String, dynamic> toMap(T value) => _toMap(value);
 
   @override
-  T decode(String raw) => fromJson(jsonDecode(raw) as Map<String, dynamic>);
+  T fromMap(Map<String, dynamic> map) => _fromMap(map);
 
   @override
-  String idOf(T value) => id(value);
+  String idOf(T value) => _idOf(value);
 }

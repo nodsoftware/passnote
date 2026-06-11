@@ -138,9 +138,9 @@ class _Item {
   final String name;
 
   static final codec = JsonCodec<_Item>(
-    toJson: (i) => {'id': i.id, 'name': i.name},
-    fromJson: (j) => _Item(j['id'] as String, j['name'] as String),
-    id: (i) => i.id,
+    toMap: (i) => {'id': i.id, 'name': i.name},
+    fromMap: (j) => _Item(j['id'] as String, j['name'] as String),
+    idOf: (i) => i.id,
   );
 }
 

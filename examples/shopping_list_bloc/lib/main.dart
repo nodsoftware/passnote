@@ -8,9 +8,9 @@ import 'item.dart';
 import 'shopping_cubit.dart';
 
 final _codec = JsonCodec<Item>(
-  toJson: (i) => i.toJson(),
-  fromJson: Item.fromJson,
-  id: (i) => i.id,
+  toMap: (i) => i.toJson(),
+  fromMap: Item.fromJson,
+  idOf: (i) => i.id,
 );
 
 String _newId() {
