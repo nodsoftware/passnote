@@ -1,0 +1,25 @@
+name: conclave
+version: 0.1.0
+description: End-to-end encrypted, local-first CRDT sync engine for Dart and Flutter.
+homepage: https://github.com/wouterd/conclave
+repository: https://github.com/wouterd/conclave
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.6.0
+  flutter: ^3.27.0
+
+dependencies:
+  conclave_core: ^0.1.0
+  conclave_crypto: ^0.1.0
+  conclave_flutter: ^0.1.0
+  conclave_lan: ^0.1.0
+  conclave_sembast: ^0.1.0
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  lints: ^4.0.0
