@@ -1,0 +1,20 @@
+name: conclave_crypto
+version: 0.1.0
+description: AES-GCM encryption, BIP39 mnemonic generation, and PBKDF2 key derivation for Conclave.
+homepage: https://github.com/wouterd/conclave
+repository: https://github.com/wouterd/conclave
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  bip39: ^1.0.6
+  conclave_core: ^0.1.0
+  crypto: ^3.0.6
+  cryptography: ^2.7.0
+
+dev_dependencies:
+  lints: ^4.0.0
+  test: ^1.25.0
