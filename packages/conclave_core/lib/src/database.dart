@@ -1,0 +1,218 @@
+import 'codec.dart';
+import 'collection.dart';
+import 'ports/blob_store.dart';
+import 'ports/cipher.dart';
+import 'ports/transport.dart';
+import 'protocol/messages.dart';
+
+/// A shared, encrypted, peer-synced database.
+///
+/// Open a [Database] by calling [Conclave.openDatabase]. Create typed
+/// [Collection]s with [collection]. Call [leave] to stop syncing and drop the
+/// encryption key from the local key store.
+class Database {
+  Database._({
+    required String id,
+    required String room,
+    required BlobStore store,
+    required Cipher cipher,
+    required NodeId nodeId,
+    required Transport transport,
+  })  : _id = id,
+        _room = room,
+        _store = store,
+        _cipher = cipher,
+        _nodeId = nodeId,
+        _transport = transport;
+
+  final String _id;
+  final String _room;
+  final BlobStore _store;
+  final Cipher _cipher;
+  final NodeId _nodeId;
+  final Transport _transport;
+
+  // Type-erased collection registry. Values are always Collection<T> for the
+  // T supplied by the caller; cast back at retrieval time.
+  final Map<String, dynamic> _collections = {};
+
+  // Peers currently in this room.
+  final Set<PeerId> _peers = {};
+
+  // ---------------------------------------------------------------------------
+  // Public API
+
+  /// The local identifier for this database (used as a storage namespace).
+  String get id => _id;
+
+  /// The public discovery tag derived from the database key.
+  String get room => _room;
+
+  /// Returns (or creates) the typed collection named [name].
+  ///
+  /// Calling this method twice with the same [name] and compatible [T] returns
+  /// the same [Collection] instance. The initial storage load starts
+  /// asynchronously; [Collection.put] and [Collection.delete] await it
+  /// internally.
+  Collection<T> collection<T>(String name, Codec<T> codec) {
+    if (_collections.containsKey(name)) {
+      return _collections[name] as Collection<T>;
+    }
+    // late final allows the closure to capture `col` before it is assigned.
+    late final Collection<T> col;
+    col = Collection.create<T>(
+      name,
+      codec,
+      _store,
+      onLocalChange: () => _broadcastCollection(col),
+    );
+    _collections[name] = col;
+    return col;
+  }
+
+  /// Stops syncing and drops the local encryption key.
+  Future<void> leave() async {
+    await _store.close();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Engine-internal: called by Conclave
+
+  /// Called when a peer has just connected (or when [Conclave.openDatabase]
+  /// discovers already-connected peers).
+  Future<void> onPeerConnected(PeerId peer) async {
+    _peers.add(peer);
+    await _sendHello(peer);
+  }
+
+  /// Called when a peer has disconnected.
+  void onPeerLost(PeerId peer) => _peers.remove(peer);
+
+  /// Called by [Conclave] when an inbound frame matches this database's room.
+  ///
+  /// [plaintext] has already been decrypted by [Conclave] before dispatch.
+  Future<void> handlePlaintext(PeerId from, List<int> plaintext) async {
+    final msg = decodeMessage(plaintext);
+    if (msg == null) return;
+    switch (msg) {
+      case HelloMessage():
+        await _handleHello(from);
+      case StateMessage(:final cols):
+        await _handleState(from, cols);
+      case DeltaMessage(:final col, :final records):
+        await _handleDelta(col, records);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Protocol handlers
+
+  Future<void> _handleHello(PeerId from) async {
+    final cols = <String, String>{};
+    for (final entry in _collections.entries) {
+      final col = entry.value as Collection<dynamic>;
+      cols[col.name] = col.maxHlc;
+    }
+    await _sendEncrypted(from, StateMessage(cols: cols));
+  }
+
+  Future<void> _handleState(
+    PeerId from,
+    Map<String, String> peerCols,
+  ) async {
+    for (final entry in peerCols.entries) {
+      final colName = entry.key;
+      final peerHlc = entry.value;
+      final col = _collections[colName] as Collection<dynamic>?;
+      if (col == null) continue;
+
+      final changeset = col.getChangeset(sinceHlc: peerHlc);
+      if (changeset.isEmpty) continue;
+
+      for (final tableEntry in changeset.entries) {
+        // Cast List<CrdtRecord> → List<Map<String,dynamic>>; Hlc values are
+        // left as Hlc objects — encodeMessage converts them to strings.
+        final records = tableEntry.value
+            .map((r) => Map<String, dynamic>.from(r))
+            .toList();
+        await _sendEncrypted(
+          from,
+          DeltaMessage(col: colName, records: records),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleDelta(
+    String colName,
+    List<Map<String, dynamic>> rawRecords,
+  ) async {
+    final col = _collections[colName] as Collection<dynamic>?;
+    if (col == null) return;
+    final changeset = parseDeltaChangeset(colName, rawRecords);
+    await col.mergeChangeset(changeset);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Wire helpers
+
+  Future<void> _sendHello(PeerId peer) =>
+      _sendEncrypted(peer, HelloMessage(node: _nodeId));
+
+  Future<void> _sendEncrypted(PeerId peer, ProtocolMessage msg) async {
+    final encrypted = await _cipher.encrypt(encodeMessage(msg));
+    await _transport.send(peer, Frame(_room, encrypted));
+  }
+
+  /// Broadcasts [col]'s full changeset to all currently-connected peers.
+  ///
+  /// Called after every local [Collection.put] / [Collection.delete] so that
+  /// changes are pushed immediately rather than waiting for the next hello.
+  void _broadcastCollection(Collection<dynamic> col) {
+    if (_peers.isEmpty) return;
+    final changeset = col.getChangeset();
+    if (changeset.isEmpty) return;
+    for (final tableEntry in changeset.entries) {
+      // Cast List<CrdtRecord> → List<Map<String,dynamic>>; Hlc values are
+      // left as Hlc objects — encodeMessage converts them to strings.
+      final records =
+          tableEntry.value.map((r) => Map<String, dynamic>.from(r)).toList();
+      for (final peer in _peers) {
+        // fire-and-forget; errors surface in transport layer
+        _sendEncrypted(peer, DeltaMessage(col: col.name, records: records));
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Engine-internal: cipher access for Conclave frame routing
+
+  /// Decrypts a raw frame payload using this database's cipher.
+  ///
+  /// Called by [Conclave] before dispatching an inbound frame. Throws
+  /// [CipherAuthError] if the frame was not encrypted with this key.
+  Future<List<int>> decryptFrame(List<int> ciphertext) =>
+      _cipher.decrypt(ciphertext);
+
+  // ---------------------------------------------------------------------------
+  // Factory
+
+  static Future<Database> open({
+    required String id,
+    required String room,
+    required BlobStore store,
+    required Cipher cipher,
+    required NodeId nodeId,
+    required Transport transport,
+  }) async {
+    await store.open();
+    return Database._(
+      id: id,
+      room: room,
+      store: store,
+      cipher: cipher,
+      nodeId: nodeId,
+      transport: transport,
+    );
+  }
+}

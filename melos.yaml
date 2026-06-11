@@ -1,5 +1,13 @@
 name: conclave
 
+packages:
+  - packages/**
+  - examples/**
+
+command:
+  bootstrap:
+    usePubWorkspace: true
+
 scripts:
   analyze:
     run: dart analyze --fatal-infos

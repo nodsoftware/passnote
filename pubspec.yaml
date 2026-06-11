@@ -3,7 +3,7 @@ publish_to: none
 environment:
   sdk: ^3.6.0
 dev_dependencies:
-  melos: ^6.0.0
+  melos: ^7.0.0
 workspace:
   - packages/conclave_core
   - packages/conclave_crypto
