@@ -1,0 +1,6 @@
+# Socket-bound LAN integration tests are excluded from the default unit run.
+# Run them explicitly with:
+#   dart test --run-skipped -t integration
+tags:
+  integration:
+    skip: "Socket-bound; run with: dart test --run-skipped -t integration"
