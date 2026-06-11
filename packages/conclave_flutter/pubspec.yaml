@@ -1,0 +1,22 @@
+name: conclave_flutter
+version: 0.1.0
+description: "Flutter-specific adapters for Conclave: keychain key store and collection notifier."
+homepage: https://github.com/wouterd/conclave
+repository: https://github.com/wouterd/conclave
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.6.0
+  flutter: ^3.27.0
+
+dependencies:
+  conclave_core: ^0.1.0
+  flutter:
+    sdk: flutter
+  flutter_secure_storage: ^9.2.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  lints: ^4.0.0
