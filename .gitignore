@@ -27,3 +27,7 @@ Thumbs.db
 
 # Melos
 .melos_tool/
+
+# Zensical docs site
+/site/
+.venv/

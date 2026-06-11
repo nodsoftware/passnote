@@ -1,0 +1,39 @@
+[project]
+site_name = "Conclave"
+site_url = "https://wouterd.github.io/conclave/"
+site_description = """
+End-to-end encrypted, server-less, local-first CRDT sync engine for Dart and \
+Flutter."""
+site_author = "Conclave contributors"
+copyright = "&copy; 2026 Conclave contributors"
+docs_dir = "docs"
+site_dir = "site"
+repo_url = "https://github.com/wouterd/conclave"
+repo_name = "wouterd/conclave"
+
+nav = [
+  { "Home" = "index.md" },
+  { "Getting started" = "getting-started.md" },
+  { "Concepts" = [
+    "concepts/databases-keys.md",
+    "concepts/collections.md",
+    "concepts/sync-and-crdt.md",
+  ] },
+  { "Adapters" = [
+    "adapters/storage.md",
+    "adapters/transport.md",
+  ] },
+  { "Security" = "security.md" },
+]
+
+[project.theme]
+variant = "modern"
+features = [
+  "navigation.tabs",
+  "navigation.sections",
+  "navigation.top",
+  "navigation.instant",
+  "navigation.instant.progress",
+  "toc.follow",
+  "content.code.copy",
+]
