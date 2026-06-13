@@ -74,10 +74,16 @@ class Database {
   /// [merge] selects how concurrent edits to the same document are reconciled
   /// (whole-document, per-field, or deep); it defaults to whole-document
   /// last-write-wins.
+  ///
+  /// [onRemoteConflict] is called during sync for every document that existed
+  /// locally before the remote merge and whose key appears in the incoming
+  /// changeset. Ignored on repeated calls (the first creation wins, just like
+  /// [merge]).
   Collection<T> collection<T>(
     String name,
     Codec<T> codec, {
     MergeStrategy merge = const ObjectMergeStrategy(),
+    void Function(String documentId)? onRemoteConflict,
   }) {
     if (_collections.containsKey(name)) {
       final existing = _collections[name] as Collection<T>;
@@ -97,6 +103,7 @@ class Database {
       _store,
       merge: merge,
       onLocalChange: () => _broadcastCollection(col),
+      onRemoteConflict: onRemoteConflict,
     );
     _collections[name] = col;
     return col;

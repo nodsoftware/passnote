@@ -39,8 +39,10 @@ class Collection<T> {
     this._store, {
     required MergeStrategy merge,
     void Function()? onLocalChange,
+    void Function(String documentId)? onRemoteConflict,
   })  : _merge = merge,
         _onLocalChange = onLocalChange,
+        _onRemoteConflict = onRemoteConflict,
         _crdt = MapCrdt([_name]) {
     _ready = _serialize(_restore);
   }
@@ -55,6 +57,7 @@ class Collection<T> {
   final MergeStrategy _merge;
   final MapCrdt _crdt;
   final void Function()? _onLocalChange;
+  final void Function(String documentId)? _onRemoteConflict;
 
   late final Future<void> _ready;
 
@@ -251,8 +254,27 @@ class Collection<T> {
   Future<void> mergeChangeset(CrdtChangeset changeset) async {
     await _ready;
     await _serialize(() async {
+      final conflicted = <String>{};
+      if (_onRemoteConflict != null) {
+        final map = _crdt.getMap(_name);
+        for (final records in changeset.values) {
+          for (final record in records) {
+            final key = record['key'] as String;
+            final sep = key.indexOf(_sep);
+            final docId = sep < 0 ? key : key.substring(0, sep);
+            if (map.containsKey(docId)) {
+              conflicted.add(docId);
+            }
+          }
+        }
+      }
       await _crdt.merge(changeset);
       await _persist();
+      if (_onRemoteConflict != null) {
+        for (final docId in conflicted) {
+          _onRemoteConflict(docId);
+        }
+      }
     });
   }
 
@@ -322,12 +344,18 @@ class Collection<T> {
   /// [onLocalChange] is called after every [put] or [delete] so that [Database]
   /// can push deltas to connected peers. It is intentionally NOT called by
   /// [mergeChangeset] to prevent re-broadcasting received data.
+  ///
+  /// [onRemoteConflict] is called during [mergeChangeset] for every document
+  /// that existed locally before the merge and whose key appears in the
+  /// incoming changeset. Use this to detect when a document was edited on
+  /// another device.
   static Collection<T> create<T>(
     String name,
     Codec<T> codec,
     BlobStore store, {
     MergeStrategy merge = const ObjectMergeStrategy(),
     void Function()? onLocalChange,
+    void Function(String documentId)? onRemoteConflict,
   }) =>
       Collection._(
         name,
@@ -335,5 +363,6 @@ class Collection<T> {
         store,
         merge: merge,
         onLocalChange: onLocalChange,
+        onRemoteConflict: onRemoteConflict,
       );
 }

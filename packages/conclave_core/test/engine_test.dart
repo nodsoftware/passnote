@@ -836,4 +836,79 @@ void main() {
       await nodeB.close();
     });
   });
+
+  group('Conflict observer', () {
+    late InMemoryBus bus;
+    late Conclave nodeA;
+    late Conclave nodeB;
+
+    setUp(() async {
+      bus = InMemoryBus();
+      nodeA = await _openConclave(bus);
+      nodeB = await _openConclave(bus);
+    });
+
+    tearDown(() async {
+      await nodeA.close();
+      await nodeB.close();
+    });
+
+    test('fires when remote edit overwrites an existing document', () async {
+      const pp = 'one two three four five six seven eight nine ten eleven twelve';
+      final dbA = await nodeA.openDatabase('notes', passphrase: pp);
+      final dbB = await nodeB.openDatabase('notes', passphrase: pp);
+
+      final notesA = dbA.collection<_Note>('notes', _Note.codec);
+      dbB.collection<_Note>('notes', _Note.codec);
+
+      // Use a dedicated collection on a third node for observer testing.
+      final bus = InMemoryBus();
+      final nodeC = await _openConclave(bus);
+      final dbC = await nodeC.openDatabase('notes', passphrase: pp);
+      final conflicts = <String>[];
+      final notesC = dbC.collection<_Note>('notes', _Note.codec,
+        onRemoteConflict: (id) => conflicts.add(id),
+      );
+      await notesC.ready;
+
+      // Seed A with a document, then copy the entire changeset to C.
+      await notesA.put(_Note(id: 'n1', text: 'Hello'));
+      final seed = notesA.getChangeset();
+      await notesC.mergeChangeset(seed);
+      expect(conflicts, isEmpty);
+
+      // Update the same document on A, then copy the full changeset to C.
+      // HLC timestamps on the second write are newer, so the merge will
+      // overwrite C's version — and since n1 already exists locally, the
+      // conflict observer fires.
+      await notesA.put(_Note(id: 'n1', text: 'World'));
+      final update = notesA.getChangeset();
+      await notesC.mergeChangeset(update);
+
+      expect(conflicts, contains('n1'));
+
+      await nodeC.close();
+    });
+
+    test('does not fire when the document did not exist locally', () async {
+      const pp = 'one two three four five six seven eight nine ten eleven twelve';
+      final dbA = await nodeA.openDatabase('notes', passphrase: pp);
+      final dbB = await nodeB.openDatabase('notes', passphrase: pp);
+
+      final conflicts = <String>[];
+      final notesA = dbA.collection<_Note>('notes', _Note.codec);
+      final notesB = dbB.collection<_Note>('notes', _Note.codec,
+        onRemoteConflict: (id) => conflicts.add(id),
+      );
+
+      // A writes two documents; B has never seen either.
+      await notesA.put(_Note(id: 'n1', text: 'a'));
+      await notesA.put(_Note(id: 'n2', text: 'b'));
+      await notesB.watch().where((l) => l.length == 2).first
+          .timeout(const Duration(seconds: 5));
+
+      // Neither existed locally on B before the merge, so no conflicts.
+      expect(conflicts, isEmpty);
+    });
+  });
 }
