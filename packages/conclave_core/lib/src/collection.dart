@@ -76,6 +76,12 @@ class Collection<T> {
   // ---------------------------------------------------------------------------
   // Public API
 
+  /// A future that completes when the initial storage load finishes.
+  ///
+  /// [get], [all], and [where] return empty results if called before this
+  /// future completes. Use [ready] or [watch] to await readiness.
+  Future<void> get ready => _ready;
+
   /// Returns the document identified by [documentId], or `null` if absent or
   /// deleted.
   ///
