@@ -238,9 +238,14 @@ class Conclave {
   // Transport wiring
 
   void _wireTransport() {
-    _transport.events.listen(_onPeerEvent);
-    _transport.inbound.listen(_onInbound);
+    _transport.events.listen(_onPeerEvent, onError: _onStreamError);
+    _transport.inbound.listen(_onInbound, onError: _onStreamError);
   }
+
+  // A misbehaving peer or adapter must never escalate to an unhandled zone
+  // error. Swallow stream errors here; individual frames are already dropped on
+  // decode/decrypt failure.
+  void _onStreamError(Object error, StackTrace stack) {}
 
   void _onPeerEvent(PeerEvent event) {
     if (event is PeerConnected) {

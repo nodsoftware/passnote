@@ -71,25 +71,31 @@ List<int> encodeMessage(ProtocolMessage msg) {
 
 /// Decodes a JSON byte payload into a [ProtocolMessage], or returns `null` for
 /// unknown or malformed payloads (forward-compatibility).
+///
+/// Returns `null` — never throws — for any structurally invalid frame, so a
+/// peer that holds the key but sends a malformed message cannot crash the
+/// receiving node.
 ProtocolMessage? decodeMessage(List<int> bytes) {
-  final Map<String, dynamic> json;
   try {
-    json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+    final json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+    return switch (json['type'] as String?) {
+      'hello' => HelloMessage(node: json['node'] as String),
+      'state' => StateMessage(
+          cols: (json['cols'] as Map<String, dynamic>).cast<String, String>(),
+        ),
+      'delta' => DeltaMessage(
+          col: json['col'] as String,
+          // Materialise eagerly so a wrong element type fails here (and is
+          // caught) rather than lazily during a later iteration.
+          records: (json['records'] as List)
+              .map((e) => (e as Map).cast<String, dynamic>())
+              .toList(),
+        ),
+      _ => null,
+    };
   } catch (_) {
     return null;
   }
-
-  return switch (json['type'] as String?) {
-    'hello' => HelloMessage(node: json['node'] as String),
-    'state' => StateMessage(
-        cols: (json['cols'] as Map<String, dynamic>).cast<String, String>(),
-      ),
-    'delta' => DeltaMessage(
-        col: json['col'] as String,
-        records: (json['records'] as List).cast<Map<String, dynamic>>(),
-      ),
-    _ => null,
-  };
 }
 
 /// Converts [Hlc] objects to strings for wire transport.
