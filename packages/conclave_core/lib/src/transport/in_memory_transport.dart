@@ -37,7 +37,7 @@ class InMemoryTransport implements Transport {
 
   @override
   Future<void> send(PeerId to, Frame frame) async {
-    _bus.route(_nodeId!, frame);
+    _bus.route(_nodeId!, to, frame);
   }
 
   @override

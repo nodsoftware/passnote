@@ -28,12 +28,11 @@ class InMemoryBus {
     }
   }
 
-  /// Delivers [frame] from [from] to every other registered node.
-  void route(NodeId from, Frame frame) {
-    for (final entry in _nodes.entries) {
-      if (entry.key != from) {
-        entry.value.injectFrame(from, frame);
-      }
-    }
+  /// Delivers [frame] from [from] to the single addressed node [to].
+  ///
+  /// Mirrors the unicast semantics of the real LAN transport: a frame is
+  /// delivered only to its target. Unknown targets are silently dropped.
+  void route(NodeId from, NodeId to, Frame frame) {
+    _nodes[to]?.injectFrame(from, frame);
   }
 }
