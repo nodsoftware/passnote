@@ -219,6 +219,23 @@ void main() {
 
       expect(notesB.get('n1'), isNull);
     });
+
+    test('successive local writes both propagate (delta watermark)', () async {
+      const passphrase =
+          'word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11';
+      final dbA = await nodeA.openDatabase('notes', passphrase: passphrase);
+      final dbB = await nodeB.openDatabase('notes', passphrase: passphrase);
+
+      final notesA = dbA.collection<_Note>('notes', _Note.codec);
+      final notesB = dbB.collection<_Note>('notes', _Note.codec);
+
+      await notesA.put(_Note(id: 'n1', text: 'first'));
+      await notesA.put(_Note(id: 'n2', text: 'second'));
+
+      await notesB.watch().where((l) => l.length == 2).first
+          .timeout(const Duration(seconds: 5));
+      expect(notesB.all.map((n) => n.id), containsAll(['n1', 'n2']));
+    });
   });
 
   group('Field-level merge', () {

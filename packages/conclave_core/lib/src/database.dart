@@ -49,6 +49,11 @@ class Database {
   // Peers currently in this room.
   final Set<PeerId> _peers = {};
 
+  // Per-collection HLC watermark already pushed via local-write broadcasts.
+  // Lets _broadcastCollection send only newer records instead of the whole
+  // collection on every put/delete.
+  final Map<String, String> _broadcastHwm = {};
+
   // ---------------------------------------------------------------------------
   // Public API
 
@@ -194,14 +199,19 @@ class Database {
     await _transport.send(peer, Frame(_room, encrypted));
   }
 
-  /// Broadcasts [col]'s full changeset to all currently-connected peers.
+  /// Broadcasts [col]'s newly-changed records to all currently-connected peers.
   ///
   /// Called after every local [Collection.put] / [Collection.delete] so that
   /// changes are pushed immediately rather than waiting for the next hello.
+  /// Only records newer than the last broadcast watermark are sent, so the cost
+  /// is proportional to the change, not the whole collection.
   void _broadcastCollection(Collection<dynamic> col) {
     if (_peers.isEmpty) return;
-    final changeset = col.getChangeset();
+    final changeset = col.getChangeset(sinceHlc: _broadcastHwm[col.name]);
     if (changeset.isEmpty) return;
+    // Advance the watermark to the collection's current max so the next
+    // broadcast starts after everything sent now.
+    _broadcastHwm[col.name] = col.maxHlc;
     for (final tableEntry in changeset.entries) {
       // Cast List<CrdtRecord> → List<Map<String,dynamic>>; Hlc values are
       // left as Hlc objects — encodeMessage converts them to strings.
