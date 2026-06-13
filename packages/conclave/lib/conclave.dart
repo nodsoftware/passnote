@@ -31,14 +31,14 @@ import 'package:conclave_sembast/conclave_sembast.dart';
 Future<Conclave> openDefault({
   required String appId,
   required String salt,
-  PassphrasePolicy passphrase = const PassphrasePolicy(),
+  PassphrasePolicy passphrasePolicy = const PassphrasePolicy(),
 }) {
   return Conclave.open(
-    config: ConclaveConfig(appId: appId, salt: salt, passphrase: passphrase),
+    config:
+        ConclaveConfig(appId: appId, salt: salt, passphrasePolicy: passphrasePolicy),
     store: (databaseId) => SembastStore(namespace: '$appId/$databaseId'),
     keyStore: KeychainKeyStore(namespace: appId),
     transport: LanTransport(),
-    clock: SystemHlcClock.new,
     deriveKey: deriveKey,
     roomTag: roomTag,
     cipher: AesGcmCipher.new,

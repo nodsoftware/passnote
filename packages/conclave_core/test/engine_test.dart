@@ -108,7 +108,6 @@ Future<Conclave> _openConclave(InMemoryBus bus, {String appId = 'test'}) =>
       store: (_) => _MemStore(),
       keyStore: _MemKeyStore(),
       transport: InMemoryTransport(bus),
-      clock: SystemHlcClock.new,
       deriveKey: (passphrase, salt) async =>
           List<int>.generate(32, (i) => passphrase.codeUnitAt(i % passphrase.length) ^ i),
       roomTag: (key) => key.take(8).map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
@@ -130,7 +129,6 @@ Future<Conclave> _openPersistentConclave(
       store: (id) => stores.putIfAbsent(id, _MemStore.new),
       keyStore: keyStore,
       transport: InMemoryTransport(bus),
-      clock: SystemHlcClock.new,
       deriveKey: (passphrase, salt) async => List<int>.generate(
           32, (i) => passphrase.codeUnitAt(i % passphrase.length) ^ i),
       roomTag: (key) =>
@@ -411,12 +409,11 @@ void main() {
         config: ConclaveConfig(
           appId: 'test',
           salt: 'test:v1',
-          passphrase: const PassphrasePolicy(words: 12),
+          passphrasePolicy: const PassphrasePolicy(words: 12),
         ),
         store: (_) => _MemStore(),
         keyStore: _MemKeyStore(),
         transport: InMemoryTransport(bus),
-        clock: SystemHlcClock.new,
         deriveKey: (p, s) async => List.filled(32, 0),
         roomTag: (_) => 'room',
         cipher: _XorCipher.new,

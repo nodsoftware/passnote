@@ -12,7 +12,7 @@ import 'ports/merge_strategy.dart';
 /// A typed, queryable set of documents backed by a per-collection [MapCrdt].
 ///
 /// Documents are identified by the string returned from [Codec.idOf]. Each
-/// document is split into one or more independently clocked CRDT records by a
+/// document is split into one or more independently timestamped CRDT records by a
 /// [MergeStrategy]; how concurrent edits to the same document merge depends on
 /// that strategy (whole-document, per-field, or deep). Edits to different
 /// documents always both survive.
@@ -199,6 +199,10 @@ class Collection<T> {
 
   /// The collection's table name inside the CRDT.
   String get name => _name;
+
+  /// The runtime type of this collection's [MergeStrategy]. Used by [Database]
+  /// to detect a mismatched `merge:` argument on a repeated `collection()` call.
+  Type get mergeType => _merge.runtimeType;
 
   /// The highest modified-HLC seen in this collection as a string, or the
   /// empty string when the collection is empty.

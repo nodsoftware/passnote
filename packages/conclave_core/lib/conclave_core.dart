@@ -10,7 +10,6 @@ export 'src/encrypted_store.dart';
 export 'src/merge_strategies.dart';
 export 'src/ports/blob_store.dart';
 export 'src/ports/cipher.dart';
-export 'src/ports/hlc_clock.dart';
 export 'src/ports/key_store.dart';
 export 'src/ports/merge_strategy.dart';
 export 'src/ports/transport.dart';

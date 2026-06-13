@@ -4,7 +4,6 @@ import 'database.dart';
 import 'encrypted_store.dart';
 import 'ports/blob_store.dart';
 import 'ports/cipher.dart';
-import 'ports/hlc_clock.dart';
 import 'ports/key_store.dart';
 import 'ports/transport.dart';
 
@@ -39,7 +38,7 @@ class ConclaveConfig {
   const ConclaveConfig({
     required this.appId,
     required this.salt,
-    this.passphrase = const PassphrasePolicy(),
+    this.passphrasePolicy = const PassphrasePolicy(),
   });
 
   /// Scopes mDNS discovery and storage namespacing for this app.
@@ -50,7 +49,7 @@ class ConclaveConfig {
   final String salt;
 
   /// Passphrase generation policy.
-  final PassphrasePolicy passphrase;
+  final PassphrasePolicy passphrasePolicy;
 }
 
 /// The app-level handle for Conclave.
@@ -62,12 +61,12 @@ class ConclaveConfig {
 /// final conclave = await Conclave.open(
 ///   config:    ConclaveConfig(appId: 'notes', salt: 'notes:v1'),
 ///   store:     (id) => SembastStore(namespace: 'notes/$id'),
-///   keyStore:  KeychainKeyStore(appId: 'notes'),
+///   keyStore:  KeychainKeyStore(namespace: 'notes'),
 ///   transport: LanTransport(),
-///   clock:     SystemHlcClock.new,
 ///   deriveKey: deriveKey,
 ///   roomTag:   roomTag,
 ///   cipher:    AesGcmCipher.new,
+///   mnemonicGenerator: (words) => generateMnemonic(words: words),
 /// );
 /// ```
 class Conclave {
@@ -76,7 +75,6 @@ class Conclave {
     required BlobStore Function(String) storeFactory,
     required KeyStore keyStore,
     required Transport transport,
-    required HlcClock clock,
     required NodeId nodeId,
     required Future<List<int>> Function(String, String) deriveKey,
     required String Function(List<int>) roomTag,
@@ -86,7 +84,6 @@ class Conclave {
         _storeFactory = storeFactory,
         _keyStore = keyStore,
         _transport = transport,
-        _clock = clock,
         _nodeId = nodeId,
         _deriveKey = deriveKey,
         _roomTag = roomTag,
@@ -97,8 +94,6 @@ class Conclave {
   final BlobStore Function(String) _storeFactory;
   final KeyStore _keyStore;
   final Transport _transport;
-  // ignore: unused_field
-  final HlcClock _clock;
   final NodeId _nodeId;
   final Future<List<int>> Function(String, String) _deriveKey;
   final String Function(List<int>) _roomTag;
@@ -217,11 +212,11 @@ class Conclave {
   }
 
   /// Generates a BIP39 mnemonic of the length configured in
-  /// [ConclaveConfig.passphrase].
+  /// [ConclaveConfig.passphrasePolicy].
   ///
   /// Delegates to the [mnemonicGenerator] injected via [Conclave.open].
   List<String> generatePassphrase() =>
-      _mnemonicGenerator(_config.passphrase.words);
+      _mnemonicGenerator(_config.passphrasePolicy.words);
 
   /// Closes all open databases (keeping their keys) and stops the transport.
   ///
@@ -300,7 +295,6 @@ class Conclave {
     required BlobStore Function(String databaseId) store,
     required KeyStore keyStore,
     required Transport transport,
-    required HlcClock Function(NodeId) clock,
     required Future<List<int>> Function(String passphrase, String salt)
         deriveKey,
     required String Function(List<int> key) roomTag,
@@ -308,14 +302,12 @@ class Conclave {
     required List<String> Function(int words) mnemonicGenerator,
   }) async {
     final nodeId = generateNodeId();
-    final hlcClock = clock(nodeId);
 
     final instance = Conclave._(
       config: config,
       storeFactory: store,
       keyStore: keyStore,
       transport: transport,
-      clock: hlcClock,
       nodeId: nodeId,
       deriveKey: deriveKey,
       roomTag: roomTag,

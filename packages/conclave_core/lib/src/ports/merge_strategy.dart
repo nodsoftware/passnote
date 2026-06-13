@@ -1,5 +1,5 @@
 /// Controls the granularity at which a document is split into independently
-/// clocked CRDT records, and therefore how concurrent edits to the same
+/// timestamped CRDT records, and therefore how concurrent edits to the same
 /// document merge.
 ///
 /// A `Collection<T>` converts each document to a JSON map (via its [Codec]) and

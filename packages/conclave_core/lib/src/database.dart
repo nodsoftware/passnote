@@ -80,7 +80,14 @@ class Database {
     MergeStrategy merge = const ObjectMergeStrategy(),
   }) {
     if (_collections.containsKey(name)) {
-      return _collections[name] as Collection<T>;
+      final existing = _collections[name] as Collection<T>;
+      assert(
+        existing.mergeType == merge.runtimeType,
+        'Collection "$name" was first created with ${existing.mergeType}; '
+        'the merge: ${merge.runtimeType} passed now is ignored. Use a '
+        'consistent merge strategy for the same collection.',
+      );
+      return existing;
     }
     // late final allows the closure to capture `col` before it is assigned.
     late final Collection<T> col;
