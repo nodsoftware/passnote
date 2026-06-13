@@ -5,7 +5,11 @@ import 'package:crypto/crypto.dart' as crypto;
 import 'package:cryptography/cryptography.dart';
 
 /// Number of PBKDF2 iterations applied on top of the BIP39 seed.
-const int _pbkdf2Iterations = 100000;
+///
+/// 600,000 follows the OWASP 2023 recommendation for PBKDF2-HMAC-SHA256. The
+/// passphrase is entered rarely (device pairing), so the extra cost is
+/// unnoticeable in practice.
+const int _pbkdf2Iterations = 600000;
 
 /// Domain-separation suffix mixed into the room-tag hash.
 const String _roomTagDomain = 'conclave-room';
@@ -17,7 +21,7 @@ const int _roomTagLength = 16;
 /// an app-wide [salt].
 ///
 /// The pipeline is: BIP39 mnemonic → 512-bit BIP39 seed →
-/// PBKDF2-HMAC-SHA256 (100 000 iterations, salted) → 256-bit key. The [salt]
+/// PBKDF2-HMAC-SHA256 (600 000 iterations, salted) → 256-bit key. The [salt]
 /// ensures the same passphrase produces a different key per app.
 Future<List<int>> deriveKey(String passphrase, String salt) async {
   final seed = bip39.mnemonicToSeed(passphrase);
