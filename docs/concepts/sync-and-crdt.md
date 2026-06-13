@@ -44,20 +44,23 @@ encrypted end-to-end before they touch the network:
 sequenceDiagram
   participant A as Device A
   participant B as Device B
-  A->>B: hello (room, maxHlc)
-  B->>A: hello (room, maxHlc)
-  B->>A: state (changeset since A's maxHlc)
-  A->>B: state (changeset since B's maxHlc)
+  A->>B: hello (node id)
+  B->>A: hello (node id)
+  B->>A: state (per-collection HLC watermarks)
+  A->>B: state (per-collection HLC watermarks)
+  B->>A: delta (records newer than A's watermarks)
+  A->>B: delta (records newer than B's watermarks)
   Note over A,B: steady state
   A->>B: delta (records changed locally)
 ```
 
-1. **hello** — on connect, each side announces its room and the highest HLC it
-   has seen. This lets the peer send only what's missing.
-2. **state** — each side replies with a changeset of every record modified after
-   the other's reported HLC: a fast catch-up that needs no full transfer.
-3. **delta** — thereafter, each local `put`/`delete` broadcasts just the changed
-   records to connected peers.
+1. **hello** — on connect, each side sends its node id. (The room is a transport
+   frame field, not part of the payload, so it never appears here.)
+2. **state** — each side replies with its per-collection HLC *watermarks* (the
+   highest HLC it holds per collection), telling the peer how far behind it is.
+3. **delta** — each side then sends the records newer than the other's
+   watermarks: a fast catch-up with no full transfer. Thereafter every local
+   `put`/`delete` broadcasts just the changed records to connected peers.
 
 Received changesets are merged into the local CRDT and persisted. Crucially,
 merging a remote changeset does **not** re-broadcast it, so deltas don't echo

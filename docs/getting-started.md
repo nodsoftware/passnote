@@ -121,8 +121,8 @@ See [Collections](concepts/collections.md#merge-strategies) for the trade-offs.
 
 ## 6. React to changes
 
-`watch()` emits the current list immediately and again on every local or synced
-change:
+`watch()` emits the current list once the initial load completes, then again on
+every local or synced change:
 
 ```dart
 items.watch().listen((all) {

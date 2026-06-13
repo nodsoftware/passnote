@@ -105,9 +105,9 @@ is ready.
 
 ## Watching for changes
 
-`watch()` returns a stream that emits the current document list immediately and
-again on every change — whether the change originated locally or arrived from a
-peer:
+`watch()` returns a stream that emits the current document list once the initial
+load completes, then again on every change — whether the change originated
+locally or arrived from a peer:
 
 ```dart
 final sub = items.watch().listen((all) {

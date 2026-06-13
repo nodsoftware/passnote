@@ -173,8 +173,8 @@ class Collection<T> {
     _onLocalChange?.call();
   }
 
-  /// Returns a stream that emits the current document list immediately and on
-  /// every subsequent change.
+  /// Returns a stream that emits the current document list once the initial
+  /// storage load completes, then on every subsequent change.
   Stream<List<T>> watch() {
     // `_crdt.watch` is a broadcast stream that drops events while it has no
     // listener. Subscribe to it *before* emitting the initial snapshot so a
