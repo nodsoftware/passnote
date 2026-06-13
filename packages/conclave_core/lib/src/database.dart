@@ -3,6 +3,7 @@ import 'collection.dart';
 import 'merge_strategies.dart';
 import 'ports/blob_store.dart';
 import 'ports/cipher.dart';
+import 'ports/key_store.dart';
 import 'ports/merge_strategy.dart';
 import 'ports/transport.dart';
 import 'protocol/messages.dart';
@@ -10,8 +11,9 @@ import 'protocol/messages.dart';
 /// A shared, encrypted, peer-synced database.
 ///
 /// Open a [Database] by calling [Conclave.openDatabase]. Create typed
-/// [Collection]s with [collection]. Call [leave] to stop syncing and drop the
-/// encryption key from the local key store.
+/// [Collection]s with [collection]. Call [close] to stop syncing while keeping
+/// the key, or [leave] to additionally drop the encryption key from the local
+/// key store (a permanent "forget this database" action).
 class Database {
   Database._({
     required String id,
@@ -20,12 +22,16 @@ class Database {
     required Cipher cipher,
     required NodeId nodeId,
     required Transport transport,
+    required KeyStore keyStore,
+    required String entryKey,
   })  : _id = id,
         _room = room,
         _store = store,
         _cipher = cipher,
         _nodeId = nodeId,
-        _transport = transport;
+        _transport = transport,
+        _keyStore = keyStore,
+        _entryKey = entryKey;
 
   final String _id;
   final String _room;
@@ -33,6 +39,8 @@ class Database {
   final Cipher _cipher;
   final NodeId _nodeId;
   final Transport _transport;
+  final KeyStore _keyStore;
+  final String _entryKey;
 
   // Type-erased collection registry. Values are always Collection<T> for the
   // T supplied by the caller; cast back at retrieval time.
@@ -82,8 +90,18 @@ class Database {
     return col;
   }
 
-  /// Stops syncing and drops the local encryption key.
+  /// Stops syncing and releases local resources, **keeping** the encryption key
+  /// in the [KeyStore] so the database can later be reopened without the
+  /// passphrase via [Conclave.reopenDatabase]. Used on normal shutdown.
+  Future<void> close() async {
+    await _store.close();
+  }
+
+  /// Permanently forgets this database: removes its encryption key from the
+  /// [KeyStore] and then closes the store. After [leave] the data can only be
+  /// reopened by re-supplying the original passphrase.
   Future<void> leave() async {
+    await _keyStore.clear(_entryKey);
     await _store.close();
   }
 
@@ -209,6 +227,9 @@ class Database {
   // ---------------------------------------------------------------------------
   // Factory
 
+  /// Builds a database around an **already-opened** [store]. The caller
+  /// ([Conclave]) opens the store first so it can validate the key against
+  /// existing data before this point.
   static Future<Database> open({
     required String id,
     required String room,
@@ -216,8 +237,9 @@ class Database {
     required Cipher cipher,
     required NodeId nodeId,
     required Transport transport,
+    required KeyStore keyStore,
+    required String entryKey,
   }) async {
-    await store.open();
     return Database._(
       id: id,
       room: room,
@@ -225,6 +247,8 @@ class Database {
       cipher: cipher,
       nodeId: nodeId,
       transport: transport,
+      keyStore: keyStore,
+      entryKey: entryKey,
     );
   }
 }

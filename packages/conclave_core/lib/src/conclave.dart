@@ -8,6 +8,20 @@ import 'ports/hlc_clock.dart';
 import 'ports/key_store.dart';
 import 'ports/transport.dart';
 
+/// Thrown by [Conclave.openDatabase] when the supplied passphrase does not
+/// decrypt the database's existing local data.
+///
+/// The previously stored key is left untouched, so reopening with the correct
+/// passphrase still works. This guards against a typo silently replacing a
+/// valid key with a wrong one (which would orphan the data).
+class WrongPassphraseException implements Exception {
+  const WrongPassphraseException();
+
+  @override
+  String toString() =>
+      'WrongPassphraseException: passphrase does not match existing data';
+}
+
 /// Passphrase word-count policy.
 ///
 /// The word count maps directly to BIP39 entropy strength:
@@ -97,32 +111,98 @@ class Conclave {
   // ---------------------------------------------------------------------------
   // Public API
 
-  /// Opens (or re-opens) the database identified by [localId] using
-  /// [passphrase] to derive its encryption key and room tag.
+  /// Opens the database identified by [localId] using [passphrase] to derive
+  /// its encryption key and room tag.
   ///
-  /// If the database was previously opened with the same passphrase the stored
-  /// data is restored. Re-opening with a new passphrase re-encrypts in-place.
+  /// If the database already has local data, the derived key is validated
+  /// against it before anything is stored: a passphrase that does not decrypt
+  /// the existing data throws [WrongPassphraseException] and leaves the
+  /// previously stored key intact. On success the key is (re)written to the
+  /// [KeyStore] so the database can later be reopened via [reopenDatabase]
+  /// without the passphrase.
   Future<Database> openDatabase(
     String localId, {
     required String passphrase,
   }) async {
     if (_databases.containsKey(localId)) return _databases[localId]!;
 
+    final entryKey = '${_config.appId}/$localId';
     final key = await _deriveKey(passphrase, _config.salt);
-    await _keyStore.setKey('${_config.appId}/$localId', key);
-
     final cipher = _cipherFactory(key);
-    final room = _roomTag(key);
-    final rawStore = _storeFactory(localId);
-    final store = EncryptedStore(rawStore, cipher);
+    final store = EncryptedStore(_storeFactory(localId), cipher);
+    await store.open();
 
+    // Validate before overwriting the stored key (Bug #2): a wrong passphrase
+    // must never clobber a good key.
+    await _validateKey(store);
+    await _keyStore.setKey(entryKey, key);
+
+    return _finishOpen(localId, entryKey, key, cipher, store);
+  }
+
+  /// Reopens a database previously opened with [openDatabase], reusing the key
+  /// already held in the [KeyStore] — no passphrase required.
+  ///
+  /// Throws [StateError] if no key is stored for [localId] (i.e. the database
+  /// has never been opened on this device, or was [Database.leave]-d).
+  Future<Database> reopenDatabase(String localId) async {
+    if (_databases.containsKey(localId)) return _databases[localId]!;
+
+    final entryKey = '${_config.appId}/$localId';
+    final key = await _keyStore.getKey(entryKey);
+    if (key == null) {
+      throw StateError(
+        'No stored key for "$localId"; call openDatabase with a passphrase '
+        'first.',
+      );
+    }
+    final cipher = _cipherFactory(key);
+    final store = EncryptedStore(_storeFactory(localId), cipher);
+    await store.open();
+
+    return _finishOpen(localId, entryKey, key, cipher, store);
+  }
+
+  /// Permanently forgets [localId]: removes it from the open set and deletes its
+  /// encryption key from the [KeyStore]. The on-disk data becomes unreadable
+  /// until reopened with the original passphrase.
+  Future<void> forget(String localId) async {
+    final db = _databases.remove(localId);
+    if (db == null) return;
+    await db.leave();
+  }
+
+  /// Decrypts one existing blob to confirm [store]'s cipher key is correct.
+  /// No-ops on a fresh database (nothing stored yet).
+  Future<void> _validateKey(EncryptedStore store) async {
+    final keys = await store.keys();
+    if (keys.isEmpty) return;
+    try {
+      // EncryptedStore.read decrypts; a wrong key throws CipherAuthError.
+      await store.read(keys.first);
+    } on CipherAuthError {
+      throw const WrongPassphraseException();
+    }
+  }
+
+  /// Shared tail of [openDatabase] / [reopenDatabase]: builds the [Database],
+  /// registers it, and announces it to already-connected peers.
+  Future<Database> _finishOpen(
+    String localId,
+    String entryKey,
+    List<int> key,
+    Cipher cipher,
+    EncryptedStore store,
+  ) async {
     final db = await Database.open(
       id: localId,
-      room: room,
+      room: _roomTag(key),
       store: store,
       cipher: cipher,
       nodeId: _nodeId,
       transport: _transport,
+      keyStore: _keyStore,
+      entryKey: entryKey,
     );
 
     _databases[localId] = db;
@@ -143,10 +223,12 @@ class Conclave {
   List<String> generatePassphrase() =>
       _mnemonicGenerator(_config.passphrase.words);
 
-  /// Closes all open databases and stops the transport.
+  /// Closes all open databases (keeping their keys) and stops the transport.
+  ///
+  /// Use [forget] to additionally delete a database's key from the [KeyStore].
   Future<void> close() async {
     for (final db in _databases.values) {
-      await db.leave();
+      await db.close();
     }
     _databases.clear();
     await _transport.stop();

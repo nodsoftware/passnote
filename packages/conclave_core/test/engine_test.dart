@@ -51,10 +51,18 @@ class _XorCipher implements Cipher {
   final int _key;
 
   @override
-  Future<List<int>> encrypt(List<int> p) async => p.map((b) => b ^ _key).toList();
+  Future<List<int>> encrypt(List<int> p) async {
+    final xored = p.map((b) => b ^ _key).toList();
+    return [0xAC ^ _key, 0xED ^ _key, ...xored];
+  }
 
   @override
-  Future<List<int>> decrypt(List<int> c) async => c.map((b) => b ^ _key).toList();
+  Future<List<int>> decrypt(List<int> c) async {
+    if (c.length < 2 || (c[0] ^ _key) != 0xAC || (c[1] ^ _key) != 0xED) {
+      throw const CipherAuthError();
+    }
+    return c.skip(2).map((b) => b ^ _key).toList();
+  }
 }
 
 /// Model used in tests.
@@ -104,6 +112,29 @@ Future<Conclave> _openConclave(InMemoryBus bus, {String appId = 'test'}) =>
       deriveKey: (passphrase, salt) async =>
           List<int>.generate(32, (i) => passphrase.codeUnitAt(i % passphrase.length) ^ i),
       roomTag: (key) => key.take(8).map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
+      cipher: _XorCipher.new,
+      mnemonicGenerator: (words) => List.generate(words, (i) => 'word$i'),
+    );
+
+/// Builds a [Conclave] whose stores persist across reopen calls, keyed by
+/// database id, and whose key store and bus are caller-supplied so they too
+/// survive a `close()`/reopen cycle.
+Future<Conclave> _openPersistentConclave(
+  InMemoryBus bus,
+  Map<String, _MemStore> stores,
+  _MemKeyStore keyStore, {
+  String appId = 'test',
+}) =>
+    Conclave.open(
+      config: ConclaveConfig(appId: appId, salt: '$appId:v1'),
+      store: (id) => stores.putIfAbsent(id, _MemStore.new),
+      keyStore: keyStore,
+      transport: InMemoryTransport(bus),
+      clock: SystemHlcClock.new,
+      deriveKey: (passphrase, salt) async => List<int>.generate(
+          32, (i) => passphrase.codeUnitAt(i % passphrase.length) ^ i),
+      roomTag: (key) =>
+          key.take(8).map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
       cipher: _XorCipher.new,
       mnemonicGenerator: (words) => List.generate(words, (i) => 'word$i'),
     );
@@ -375,6 +406,88 @@ void main() {
         mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
       );
       expect(c.generatePassphrase(), hasLength(12));
+      await c.close();
+    });
+  });
+
+  group('Key lifecycle', () {
+    test('wrong passphrase does not clobber a valid key', () async {
+      final bus = InMemoryBus();
+      final stores = <String, _MemStore>{};
+      final keyStore = _MemKeyStore();
+
+      const good = 'one two three four five six seven eight nine ten a b';
+      const bad = 'zzz two three four five six seven eight nine ten a b';
+
+      // First open writes data with the good key.
+      var c = await _openPersistentConclave(bus, stores, keyStore);
+      var db = await c.openDatabase('notes', passphrase: good);
+      await db.collection<_Note>('notes', _Note.codec)
+          .put(_Note(id: 'n1', text: 'secret'));
+      await c.close(); // keeps the key
+
+      // Reopen with a WRONG passphrase: must throw and must not overwrite the key.
+      c = await _openPersistentConclave(bus, stores, keyStore);
+      await expectLater(
+        c.openDatabase('notes', passphrase: bad),
+        throwsA(isA<WrongPassphraseException>()),
+      );
+
+      // Reopen with the CORRECT passphrase still works and sees the data.
+      db = await c.openDatabase('notes', passphrase: good);
+      final notes = db.collection<_Note>('notes', _Note.codec);
+      await notes.watch().where((l) => l.isNotEmpty).first
+          .timeout(const Duration(seconds: 5));
+      expect(notes.get('n1')?.text, equals('secret'));
+      await c.close();
+    });
+
+    test('reopenDatabase restores data without a passphrase', () async {
+      final bus = InMemoryBus();
+      final stores = <String, _MemStore>{};
+      final keyStore = _MemKeyStore();
+      const pp = 'one two three four five six seven eight nine ten a b';
+
+      var c = await _openPersistentConclave(bus, stores, keyStore);
+      var db = await c.openDatabase('notes', passphrase: pp);
+      await db.collection<_Note>('notes', _Note.codec)
+          .put(_Note(id: 'n1', text: 'hello'));
+      await c.close();
+
+      c = await _openPersistentConclave(bus, stores, keyStore);
+      db = await c.reopenDatabase('notes'); // no passphrase
+      final notes = db.collection<_Note>('notes', _Note.codec);
+      await notes.watch().where((l) => l.isNotEmpty).first
+          .timeout(const Duration(seconds: 5));
+      expect(notes.get('n1')?.text, equals('hello'));
+      await c.close();
+    });
+
+    test('reopenDatabase throws when no key is stored', () async {
+      final bus = InMemoryBus();
+      final c = await _openPersistentConclave(
+          bus, <String, _MemStore>{}, _MemKeyStore());
+      await expectLater(
+        c.reopenDatabase('never-opened'),
+        throwsStateError,
+      );
+      await c.close();
+    });
+
+    test('forget deletes the key; subsequent reopen fails', () async {
+      final bus = InMemoryBus();
+      final stores = <String, _MemStore>{};
+      final keyStore = _MemKeyStore();
+      const pp = 'one two three four five six seven eight nine ten a b';
+
+      final c = await _openPersistentConclave(bus, stores, keyStore);
+      await c.openDatabase('notes', passphrase: pp);
+      expect(await keyStore.getKey('test/notes'), isNotNull);
+
+      await c.forget('notes');
+      expect(await keyStore.getKey('test/notes'), isNull);
+
+      await expectLater(c.reopenDatabase('notes'), throwsStateError);
       await c.close();
     });
   });
