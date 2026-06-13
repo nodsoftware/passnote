@@ -117,6 +117,21 @@ class Database {
     await _store.close();
   }
 
+  /// Triggers a full bidirectional re-sync with every connected peer.
+  ///
+  /// Sends a `Hello` to each peer (pushing this node's records *to* the peer)
+  /// followed by a `Poke` (prompting the peer to reply with `Hello`, which
+  /// pulls the peer's records *back*). After both exchanges, both sides
+  /// converge on the union of their changes. Use this to recover data that may
+  /// have been lost during a rate-limiting window or after a transient
+  /// disconnect.
+  Future<void> forceSync() async {
+    for (final peer in _peers.toList()) {
+      await _sendHello(peer);
+      await _sendPoke(peer);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Engine-internal: called by Conclave
 
@@ -143,6 +158,8 @@ class Database {
         await _handleState(from, cols);
       case DeltaMessage(:final col, :final records):
         await _handleDelta(col, records);
+      case PokeMessage():
+        await _sendHello(from);
     }
   }
 
@@ -200,6 +217,9 @@ class Database {
 
   Future<void> _sendHello(PeerId peer) =>
       _sendEncrypted(peer, HelloMessage(node: _nodeId));
+
+  Future<void> _sendPoke(PeerId peer) =>
+      _sendEncrypted(peer, const PokeMessage());
 
   Future<void> _sendEncrypted(PeerId peer, ProtocolMessage msg) async {
     final encrypted = await _cipher.encrypt(encodeMessage(msg));

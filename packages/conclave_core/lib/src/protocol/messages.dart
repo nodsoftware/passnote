@@ -43,6 +43,15 @@ final class DeltaMessage extends ProtocolMessage {
   final List<Map<String, dynamic>> records;
 }
 
+/// Requests that the peer initiate a full re-sync back to the sender.
+///
+/// The receiver replies with a [HelloMessage], which triggers a reciprocal
+/// [HelloMessage] → [StateMessage] → [DeltaMessage] exchange so that data
+/// the receiver has but the sender is missing flows back.
+final class PokeMessage extends ProtocolMessage {
+  const PokeMessage();
+}
+
 // ---------------------------------------------------------------------------
 // Serialisation helpers
 
@@ -64,6 +73,10 @@ List<int> encodeMessage(ProtocolMessage msg) {
         'type': 'delta',
         'col': col,
         'records': records.map(_encodeRecord).toList(),
+      },
+    PokeMessage() => {
+        'v': _wireVersion,
+        'type': 'poke',
       },
   };
   return utf8.encode(jsonEncode(json));
@@ -91,6 +104,7 @@ ProtocolMessage? decodeMessage(List<int> bytes) {
               .map((e) => (e as Map).cast<String, dynamic>())
               .toList(),
         ),
+      'poke' => const PokeMessage(),
       _ => null,
     };
   } catch (_) {

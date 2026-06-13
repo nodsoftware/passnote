@@ -39,6 +39,7 @@ class ConclaveConfig {
     required this.appId,
     required this.salt,
     this.passphrasePolicy = const PassphrasePolicy(),
+    this.maxInboundFramesPerSecond = 100,
   });
 
   /// Scopes mDNS discovery and storage namespacing for this app.
@@ -50,6 +51,15 @@ class ConclaveConfig {
 
   /// Passphrase generation policy.
   final PassphrasePolicy passphrasePolicy;
+
+  /// Max inbound frames per second per peer before rate limiting kicks in.
+  ///
+  /// Frames from a peer that exceed this rate are silently dropped. This is a
+  /// defence-in-depth measure against a misbehaving or flooded peer; under the
+  /// LAN-only threat model a trusted-key peer is already inside the trust
+  /// boundary, so this is not a security boundary — it prevents a single noisy
+  /// peer from starving the inbound event loop.
+  final int maxInboundFramesPerSecond;
 }
 
 /// The app-level handle for Conclave.
@@ -102,6 +112,10 @@ class Conclave {
 
   final Map<String, Database> _databases = {};
   final Set<PeerId> _connectedPeers = {};
+
+  // Per-peer sliding-window timestamps (ms since epoch) for inbound rate
+  // limiting. Cleaned up on peer disconnect.
+  final Map<PeerId, List<int>> _inboundTimestamps = {};
 
   // ---------------------------------------------------------------------------
   // Public API
@@ -218,6 +232,20 @@ class Conclave {
   List<String> generatePassphrase() =>
       _mnemonicGenerator(_config.passphrasePolicy.words);
 
+  /// Triggers a full bidirectional re-sync on every open database with all
+  /// connected peers.
+  ///
+  /// Each database sends a `Hello` (push its records *to* each peer) followed
+  /// by a `Poke` (pull the peer's records *back*). After both exchanges, both
+  /// sides converge on the union of their changes. Use this to recover data
+  /// that was dropped during a rate-limiting window or after a transient
+  /// disconnect.
+  Future<void> forceSync() async {
+    for (final db in _databases.values) {
+      await db.forceSync();
+    }
+  }
+
   /// Closes all open databases (keeping their keys) and stops the transport.
   ///
   /// Use [forget] to additionally delete a database's key from the [KeyStore].
@@ -250,13 +278,31 @@ class Conclave {
       }
     } else if (event is PeerLost) {
       _connectedPeers.remove(event.peer);
+      _inboundTimestamps.remove(event.peer);
       for (final db in _databases.values) {
         db.onPeerLost(event.peer);
       }
     }
   }
 
+  /// Returns `true` if [peer] has exceeded the inbound rate limit in the
+  /// current one-second sliding window.
+  bool _isRateLimited(PeerId peer) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final window = 1000;
+    final maxFrames = _config.maxInboundFramesPerSecond;
+
+    final timestamps = _inboundTimestamps.putIfAbsent(peer, () => []);
+    // Prune timestamps outside the current window.
+    timestamps.removeWhere((t) => now - t > window);
+
+    if (timestamps.length >= maxFrames) return true;
+    timestamps.add(now);
+    return false;
+  }
+
   Future<void> _onInbound(InboundFrame inbound) async {
+    if (_isRateLimited(inbound.from)) return;
     for (final db in _databases.values) {
       if (db.room != inbound.frame.room) continue;
       List<int> plaintext;

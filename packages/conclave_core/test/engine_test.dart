@@ -587,4 +587,253 @@ void main() {
       await c.close();
     });
   });
+
+  group('Inbound rate limiting', () {
+    test('normal frame rate is not throttled', () async {
+      final bus = InMemoryBus();
+      final nodeA = await _openConclave(bus);
+      final nodeB = await _openConclave(bus);
+      const pp = 'one two three four five six seven eight nine ten eleven twelve';
+
+      final dbA = await nodeA.openDatabase('notes', passphrase: pp);
+      final dbB = await nodeB.openDatabase('notes', passphrase: pp);
+      final colA = dbA.collection<_Note>('notes', _Note.codec);
+      final colB = dbB.collection<_Note>('notes', _Note.codec);
+
+      await colA.put(_Note(id: 'n1', text: 'a'));
+      await colA.put(_Note(id: 'n2', text: 'b'));
+
+      await colB.watch().where((l) => l.length == 2).first
+          .timeout(const Duration(seconds: 5));
+      expect(colB.all, hasLength(2));
+
+      await nodeA.close();
+      await nodeB.close();
+    });
+
+    test('excessive inbound frames from a peer are silently dropped', () async {
+      final bus = InMemoryBus();
+      final transportB = InMemoryTransport(bus);
+      final nodeB = await Conclave.open(
+        config: ConclaveConfig(
+          appId: 'test',
+          salt: 'test:v1',
+          maxInboundFramesPerSecond: 5,
+        ),
+        store: (_) => _MemStore(),
+        keyStore: _MemKeyStore(),
+        transport: transportB,
+        deriveKey: (p, s) async =>
+            List<int>.generate(32, (i) => p.codeUnitAt(i % p.length) ^ i),
+        roomTag: (k) =>
+            k.take(8).map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
+        cipher: _XorCipher.new,
+        mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
+      );
+      final nodeA = await _openConclave(bus);
+      const pp = 'one two three four five six seven eight nine ten eleven twelve';
+
+      final dbA = await nodeA.openDatabase('notes', passphrase: pp);
+      final dbB = await nodeB.openDatabase('notes', passphrase: pp);
+      final colA = dbA.collection<_Note>('notes', _Note.codec);
+      final colB = dbB.collection<_Note>('notes', _Note.codec);
+
+      // Watch B for the burst writes before they happen.
+      final burstDone = colB.watch().where((l) => l.length >= 20).first;
+
+      // Send many rapid writes — more than the 5 fps limit allows.
+      for (int i = 0; i < 20; i++) {
+        await colA.put(_Note(id: 'n$i', text: '$i'));
+      }
+
+      // B should NOT receive all 20 (many are rate-limited).  Use a short
+      // timeout so the test does not hang if they did all arrive.
+      await expectLater(
+        burstDone.timeout(const Duration(milliseconds: 300)),
+        throwsA(isA<TimeoutException>()),
+      );
+
+      // After the rate window expires a new write gets through.
+      await Future<void>.delayed(const Duration(seconds: 2));
+      await colA.put(_Note(id: 'last', text: 'last'));
+      await colB.watch().where((l) => l.any((n) => n.id == 'last')).first
+          .timeout(const Duration(seconds: 5));
+      expect(colB.get('last')?.text, equals('last'));
+
+      await nodeA.close();
+      await nodeB.close();
+    });
+
+    test('a noisy peer does not starve other peers', () async {
+      final bus = InMemoryBus();
+      final transportC = InMemoryTransport(bus);
+      final nodeC = await Conclave.open(
+        config: ConclaveConfig(
+          appId: 'test',
+          salt: 'test:v1',
+          maxInboundFramesPerSecond: 5,
+        ),
+        store: (_) => _MemStore(),
+        keyStore: _MemKeyStore(),
+        transport: transportC,
+        deriveKey: (p, s) async =>
+            List<int>.generate(32, (i) => p.codeUnitAt(i % p.length) ^ i),
+        roomTag: (k) =>
+            k.take(8).map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
+        cipher: _XorCipher.new,
+        mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
+      );
+      final nodeA = await _openConclave(bus);
+      final nodeB = await _openConclave(bus);
+      const pp = 'one two three four five six seven eight nine ten eleven twelve';
+
+      final dbA = await nodeA.openDatabase('notes', passphrase: pp);
+      final dbB = await nodeB.openDatabase('notes', passphrase: pp);
+      final dbC = await nodeC.openDatabase('notes', passphrase: pp);
+      final colA = dbA.collection<_Note>('notes', _Note.codec);
+      final colB = dbB.collection<_Note>('notes', _Note.codec);
+      final colC = dbC.collection<_Note>('notes', _Note.codec);
+
+      // Watch B and C before the burst.
+      final bDone = colB.watch().where((l) => l.length == 20).first;
+      final cBurst = colC.watch().where((l) => l.length >= 20).first;
+
+      // A floods the bus with rapid writes.
+      for (int i = 0; i < 20; i++) {
+        await colA.put(_Note(id: 'n$i', text: '$i'));
+      }
+
+      // B (normal, no limit) gets all 20.
+      await bDone.timeout(const Duration(seconds: 5));
+      expect(colB.all, hasLength(20));
+
+      // C (rate-limited) does NOT get all 20 within the rate window.
+      await expectLater(
+        cBurst.timeout(const Duration(milliseconds: 300)),
+        throwsA(isA<TimeoutException>()),
+      );
+
+      await nodeA.close();
+      await nodeB.close();
+      await nodeC.close();
+    });
+  });
+
+  group('forceSync recovery', () {
+    test('recovers data lost during rate limiting', () async {
+      final bus = InMemoryBus();
+      final transportB = InMemoryTransport(bus);
+      final nodeB = await Conclave.open(
+        config: ConclaveConfig(
+          appId: 'test',
+          salt: 'test:v1',
+          maxInboundFramesPerSecond: 5,
+        ),
+        store: (_) => _MemStore(),
+        keyStore: _MemKeyStore(),
+        transport: transportB,
+        deriveKey: (p, s) async =>
+            List<int>.generate(32, (i) => p.codeUnitAt(i % p.length) ^ i),
+        roomTag: (k) =>
+            k.take(8).map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
+        cipher: _XorCipher.new,
+        mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
+      );
+      final nodeA = await _openConclave(bus);
+      const pp = 'one two three four five six seven eight nine ten eleven twelve';
+
+      final dbA = await nodeA.openDatabase('notes', passphrase: pp);
+      final dbB = await nodeB.openDatabase('notes', passphrase: pp);
+      final colA = dbA.collection<_Note>('notes', _Note.codec);
+      final colB = dbB.collection<_Note>('notes', _Note.codec);
+
+      // Watch B for the burst.
+      final burstDone = colB.watch().where((l) => l.length >= 20).first;
+
+      // A floods — most deltas get rate-limited on B.
+      for (int i = 0; i < 20; i++) {
+        await colA.put(_Note(id: 'n$i', text: '$i'));
+      }
+
+      // Confirm B is missing data.
+      await expectLater(
+        burstDone.timeout(const Duration(milliseconds: 300)),
+        throwsA(isA<TimeoutException>()),
+      );
+      final countBefore = colB.all.length;
+      expect(countBefore, lessThan(10));
+
+      // Let the rate window expire, then force sync from A.
+      await Future<void>.delayed(const Duration(seconds: 2));
+      await nodeA.forceSync();
+
+      // B now receives all 20.
+      await colB.watch().where((l) => l.length == 20).first
+          .timeout(const Duration(seconds: 5));
+      expect(colB.all, hasLength(20));
+
+      await nodeA.close();
+      await nodeB.close();
+    });
+
+    test('forceSync pulls data the caller was missing', () async {
+      // Only nodeA is rate-limited. B writes while A's inbound is restricted;
+      // A then calls forceSync and receives the missing data via SyncRequest.
+      final bus = InMemoryBus();
+      final transportA = InMemoryTransport(bus);
+      final nodeA = await Conclave.open(
+        config: ConclaveConfig(
+          appId: 'test',
+          salt: 'test:v1',
+          maxInboundFramesPerSecond: 5,
+        ),
+        store: (_) => _MemStore(),
+        keyStore: _MemKeyStore(),
+        transport: transportA,
+        deriveKey: (p, s) async =>
+            List<int>.generate(32, (i) => p.codeUnitAt(i % p.length) ^ i),
+        roomTag: (k) =>
+            k.take(8).map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
+        cipher: _XorCipher.new,
+        mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
+      );
+      final nodeB = await _openConclave(bus);
+      const pp = 'one two three four five six seven eight nine ten eleven twelve';
+
+      final dbA = await nodeA.openDatabase('notes', passphrase: pp);
+      final dbB = await nodeB.openDatabase('notes', passphrase: pp);
+      final colA = dbA.collection<_Note>('notes', _Note.codec);
+      final colB = dbB.collection<_Note>('notes', _Note.codec);
+
+      // A writes 5 docs — B receives all 5 (normal sync, no rate limit on B).
+      for (int i = 0; i < 5; i++) {
+        await colA.put(_Note(id: 'n$i', text: 'a$i'));
+      }
+      await colB.watch().where((l) => l.length == 5).first
+          .timeout(const Duration(seconds: 5));
+
+      // B writes 15 more docs rapidly — A's 5 fps limit drops some.
+      for (int i = 5; i < 20; i++) {
+        await colB.put(_Note(id: 'n$i', text: 'b$i'));
+      }
+
+      // Confirm A does NOT have all 20.
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(colA.all.length, lessThan(20));
+
+      // Let the rate window expire, then force sync from A.
+      await Future<void>.delayed(const Duration(seconds: 2));
+      await nodeA.forceSync();
+
+      // A receives the missing docs via the Poke → Hello back exchange.
+      await colA.watch().where((l) => l.length == 20).first
+          .timeout(const Duration(seconds: 5));
+      expect(colA.all, hasLength(20));
+      // B has everything too.
+      expect(colB.all, hasLength(20));
+
+      await nodeA.close();
+      await nodeB.close();
+    });
+  });
 }

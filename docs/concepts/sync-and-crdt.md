@@ -62,6 +62,8 @@ sequenceDiagram
    watermarks: a fast catch-up with no full transfer. Thereafter every local
    `put`/`delete` broadcasts just the changed records to connected peers.
 
+A fourth message, **poke**, exists for manual re-syncs (see below).
+
 Received changesets are merged into the local CRDT and persisted. Crucially,
 merging a remote changeset does **not** re-broadcast it, so deltas don't echo
 around the network.
@@ -72,6 +74,24 @@ Because every device holds a full local copy, all reads and writes work offline.
 On reconnect the hello/state exchange replays exactly the edits each side missed,
 and HLC arbitration guarantees both sides converge to the same state —
 regardless of the order in which messages arrive.
+
+## Manual re-sync
+
+Call [`forceSync`][force-sync] on any node to reconcile with all connected peers:
+
+```dart
+await conclave.forceSync();
+```
+
+Under the hood it sends two messages to each peer:
+
+1. **hello** — pushes this node's records *to* the peer.
+2. **poke** — the peer replies with its own hello, pulling the peer's records
+   *back*.
+
+After both exchanges, both sides converge on the union of their changes. Use
+forceSync for pull-to-refresh, after recovering from a rate-limit window, or any
+time you want to guarantee convergence outside the normal sync cycle.
 
 ## Encryption boundary
 
