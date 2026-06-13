@@ -505,4 +505,86 @@ void main() {
       await c.close();
     });
   });
+
+  group('Collection.length', () {
+    test('zero on a fresh collection', () async {
+      final bus = InMemoryBus();
+      final c = await _openConclave(bus);
+      final db = await c.openDatabase(
+          'notes', passphrase: 'one two three four five six seven eight nine ten eleven twelve');
+      final notes = db.collection<_Note>('notes', _Note.codec);
+      await notes.ready;
+      expect(notes.length, equals(0));
+      await c.close();
+    });
+
+    test('increases after put', () async {
+      final bus = InMemoryBus();
+      final c = await _openConclave(bus);
+      final db = await c.openDatabase(
+          'notes', passphrase: 'one two three four five six seven eight nine ten eleven twelve');
+      final notes = db.collection<_Note>('notes', _Note.codec);
+      await notes.ready;
+      await notes.put(_Note(id: 'n1', text: 'a'));
+      expect(notes.length, equals(1));
+      await notes.put(_Note(id: 'n2', text: 'b'));
+      expect(notes.length, equals(2));
+      await c.close();
+    });
+
+    test('decreases after delete', () async {
+      final bus = InMemoryBus();
+      final c = await _openConclave(bus);
+      final db = await c.openDatabase(
+          'notes', passphrase: 'one two three four five six seven eight nine ten eleven twelve');
+      final notes = db.collection<_Note>('notes', _Note.codec);
+      await notes.ready;
+      await notes.put(_Note(id: 'n1', text: 'a'));
+      await notes.put(_Note(id: 'n2', text: 'b'));
+      expect(notes.length, equals(2));
+      await notes.delete('n1');
+      expect(notes.length, equals(1));
+      await c.close();
+    });
+
+    test('matches all.length', () async {
+      final bus = InMemoryBus();
+      final c = await _openConclave(bus);
+      final db = await c.openDatabase(
+          'notes', passphrase: 'one two three four five six seven eight nine ten eleven twelve');
+      final notes = db.collection<_Note>('notes', _Note.codec);
+      await notes.ready;
+      expect(notes.length, equals(notes.all.length));
+      await notes.put(_Note(id: 'n1', text: 'a'));
+      expect(notes.length, equals(notes.all.length));
+      await notes.put(_Note(id: 'n2', text: 'b'));
+      expect(notes.length, equals(notes.all.length));
+      await notes.delete('n1');
+      expect(notes.length, equals(notes.all.length));
+      await c.close();
+    });
+
+    test('survives restore', () async {
+      final bus = InMemoryBus();
+      final stores = <String, _MemStore>{};
+      final keyStore = _MemKeyStore();
+      const pp = 'one two three four five six seven eight nine ten a b';
+
+      var c = await _openPersistentConclave(bus, stores, keyStore);
+      var db = await c.openDatabase('notes', passphrase: pp);
+      var notes = db.collection<_Note>('notes', _Note.codec);
+      await notes.ready;
+      await notes.put(_Note(id: 'n1', text: 'a'));
+      await notes.put(_Note(id: 'n2', text: 'b'));
+      expect(notes.length, equals(2));
+      await c.close();
+
+      c = await _openPersistentConclave(bus, stores, keyStore);
+      db = await c.reopenDatabase('notes');
+      notes = db.collection<_Note>('notes', _Note.codec);
+      await notes.ready;
+      expect(notes.length, equals(2));
+      await c.close();
+    });
+  });
 }

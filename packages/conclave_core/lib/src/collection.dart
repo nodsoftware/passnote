@@ -82,6 +82,26 @@ class Collection<T> {
   /// future completes. Use [ready] or [watch] to await readiness.
   Future<void> get ready => _ready;
 
+  /// The number of live documents in this collection.
+  ///
+  /// Counts only documents that have both a live existence register and at
+  /// least one field record — the same set that [all] returns. Does not
+  /// decode documents and is therefore cheaper than `all.length`.
+  int get length {
+    final map = _crdt.getMap(_name);
+    final aliveIds = <String>{};
+    final idsWithFields = <String>{};
+    for (final entry in map.entries) {
+      final sep = entry.key.indexOf(_sep);
+      if (sep < 0) {
+        aliveIds.add(entry.key);
+      } else {
+        idsWithFields.add(entry.key.substring(0, sep));
+      }
+    }
+    return aliveIds.intersection(idsWithFields).length;
+  }
+
   /// Returns the document identified by [documentId], or `null` if absent or
   /// deleted.
   ///
