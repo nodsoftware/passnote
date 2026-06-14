@@ -23,8 +23,8 @@ abstract interface class MergeStrategy {
   /// an independently merged CRDT record.
   ///
   /// Field paths must be stable across versions of the same document and must
-  /// not contain a NUL (`\u0000`) character, which the engine reserves as the
-  /// document-id/field-path separator.
+  /// not contain the ASCII Unit Separator (`\x1F`, U+001F), which the engine
+  /// reserves as the document-id/field-path separator.
   Map<String, Object?> flatten(Map<String, dynamic> document);
 
   /// Rebuilds the document map from its [fields] (field-path → value), the

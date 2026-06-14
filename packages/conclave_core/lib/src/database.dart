@@ -24,6 +24,7 @@ class Database {
     required Transport transport,
     required KeyStore keyStore,
     required String entryKey,
+    required IdMasker idMasker,
   })  : _id = id,
         _room = room,
         _store = store,
@@ -31,7 +32,8 @@ class Database {
         _nodeId = nodeId,
         _transport = transport,
         _keyStore = keyStore,
-        _entryKey = entryKey;
+        _entryKey = entryKey,
+        _idMasker = idMasker;
 
   final String _id;
   final String _room;
@@ -41,6 +43,7 @@ class Database {
   final Transport _transport;
   final KeyStore _keyStore;
   final String _entryKey;
+  final IdMasker _idMasker;
 
   // Type-erased collection registry. Values are always Collection<T> for the
   // T supplied by the caller; cast back at retrieval time.
@@ -104,6 +107,7 @@ class Database {
       merge: merge,
       onLocalChange: () => _broadcastCollection(col),
       onRemoteConflict: onRemoteConflict,
+      idMasker: _idMasker,
     );
     _collections[name] = col;
     return col;
@@ -285,6 +289,7 @@ class Database {
     required Transport transport,
     required KeyStore keyStore,
     required String entryKey,
+    required IdMasker idMasker,
   }) async {
     return Database._(
       id: id,
@@ -295,6 +300,7 @@ class Database {
       transport: transport,
       keyStore: keyStore,
       entryKey: entryKey,
+      idMasker: idMasker,
     );
   }
 }

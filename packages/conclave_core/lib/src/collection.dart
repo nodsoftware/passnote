@@ -9,6 +9,13 @@ import 'merge_strategies.dart';
 import 'ports/blob_store.dart';
 import 'ports/merge_strategy.dart';
 
+/// A function that transforms a document id into an opaque storage-key token.
+///
+/// Used by [Collection] to hide document ids from plaintext blob-store keys.
+/// See [Conclave.open] and [createIdMasker] for wiring.
+typedef IdMasker = String Function(String id);
+
+
 /// A typed, queryable set of documents backed by a per-collection [MapCrdt].
 ///
 /// Documents are identified by the string returned from [Codec.idOf]. Each
@@ -26,21 +33,24 @@ import 'ports/merge_strategy.dart';
 /// left untouched, which guarantees that a revived document still carries its
 /// full field set; they are harmless until overwritten or compacted.
 ///
-/// Document ids and field paths must not contain the NUL character (`\u0000`),
+/// Document ids and field paths must not contain the ASCII Unit Separator (`\x1F`, U+001F),
 /// which is reserved as the id/field separator.
 ///
 /// Storage loading is asynchronous. [put] and [delete] await the initial load
 /// before writing; [get] and [all] return empty results if called before the
 /// load completes, but [watch] will emit the correct list once ready.
+
 class Collection<T> {
   Collection._(
     this._name,
     this._codec,
     this._store, {
     required MergeStrategy merge,
+    IdMasker? idMasker,
     void Function()? onLocalChange,
     void Function(String documentId)? onRemoteConflict,
   })  : _merge = merge,
+        _idMasker = idMasker,
         _onLocalChange = onLocalChange,
         _onRemoteConflict = onRemoteConflict,
         _crdt = MapCrdt([_name]) {
@@ -49,7 +59,7 @@ class Collection<T> {
 
   /// Reserved separator between a document id and a field path in CRDT keys.
   /// NUL never appears in JSON object keys or in well-formed document ids.
-  static const String _sep = '\u0000';
+  static const String _sep = '\x1F';
 
   final String _name;
   final Codec<T> _codec;
@@ -58,6 +68,13 @@ class Collection<T> {
   final MapCrdt _crdt;
   final void Function()? _onLocalChange;
   final void Function(String documentId)? _onRemoteConflict;
+
+  /// Optional function that masks a document id before it appears in a
+  /// storage key. When set, on-disk blob keys under `"<name>/d/"` carry the
+  /// masked id rather than the raw id, so document ids are never visible as
+  /// plaintext storage keys. When null, raw ids are used (fine for in-memory
+  /// test stores or unencrypted adapters).
+  final IdMasker? _idMasker;
 
   late final Future<void> _ready;
 
@@ -181,7 +198,7 @@ class Collection<T> {
           await _crdt.put(_name, '$prefix$path', null, true);
         }
       }
-      await _persist();
+      await _persistDocuments({id});
     });
     _onLocalChange?.call();
   }
@@ -197,7 +214,7 @@ class Collection<T> {
     await _ready;
     await _serialize(() async {
       await _crdt.put(_name, documentId, null, true);
-      await _persist();
+      await _persistDocuments({documentId});
     });
     _onLocalChange?.call();
   }
@@ -254,26 +271,24 @@ class Collection<T> {
   Future<void> mergeChangeset(CrdtChangeset changeset) async {
     await _ready;
     await _serialize(() async {
+      final map = _crdt.getMap(_name);
+      final touched = <String>{};
       final conflicted = <String>{};
-      if (_onRemoteConflict != null) {
-        final map = _crdt.getMap(_name);
-        for (final records in changeset.values) {
-          for (final record in records) {
-            final key = record['key'] as String;
-            final sep = key.indexOf(_sep);
-            final docId = sep < 0 ? key : key.substring(0, sep);
-            if (map.containsKey(docId)) {
-              conflicted.add(docId);
-            }
+      for (final records in changeset.values) {
+        for (final record in records) {
+          final key = record['key'] as String;
+          final sep = key.indexOf(_sep);
+          final docId = sep < 0 ? key : key.substring(0, sep);
+          touched.add(docId);
+          if (_onRemoteConflict != null && map.containsKey(docId)) {
+            conflicted.add(docId);
           }
         }
       }
       await _crdt.merge(changeset);
-      await _persist();
-      if (_onRemoteConflict != null) {
-        for (final docId in conflicted) {
-          _onRemoteConflict(docId);
-        }
+      await _persistDocuments(touched);
+      for (final docId in conflicted) {
+        _onRemoteConflict!(docId);
       }
     });
   }
@@ -297,38 +312,81 @@ class Collection<T> {
   // ---------------------------------------------------------------------------
   // Persistence helpers
 
-  Future<void> _persist() async {
+  /// Returns the blob key for [id]'s per-document blob.
+  ///
+  /// When [_idMasker] is set the raw id is transformed before embedding in the key
+  /// so that document ids are not visible as plaintext storage keys.
+  String _docBlobKey(String id) => '$_name/d/${_idMasker?.call(id) ?? id}';
+
+  /// Persists exactly the documents whose ids are in [docIds].
+  ///
+  /// A document with no records is removed from storage. Persisting multiple
+  /// blobs in one call is not atomic — a crash between writes leaves some docs
+  /// persisted and others not — but a CRDT converges this safely on the next
+  /// sync without data loss.
+  Future<void> _persistDocuments(Set<String> docIds) async {
     final cs = _crdt.getChangeset(onlyTables: [_name]);
-    final rows = cs[_name] ?? [];
-    final payload = <String, Map<String, dynamic>>{
-      for (final r in rows)
-        (r['key'] as String): {
-          'v': r['value'],
-          'd': r['is_deleted'] as bool,
-          'h': (r['hlc'] as Hlc).toString(),
-        },
-    };
-    await _store.write(_name, utf8.encode(jsonEncode(payload)));
+    final rows = cs[_name] ?? const [];
+
+    // Group all rows by their document id.
+    final byDoc = <String, List<Map<String, Object?>>>{};
+    for (final r in rows) {
+      final key = r['key'] as String;
+      final sep = key.indexOf(_sep);
+      final id = sep < 0 ? key : key.substring(0, sep);
+      if (docIds.contains(id)) {
+        (byDoc[id] ??= []).add(r);
+      }
+    }
+
+    for (final id in docIds) {
+      final docRows = byDoc[id];
+      final blobKey = _docBlobKey(id);
+      if (docRows == null || docRows.isEmpty) {
+        await _store.delete(blobKey);
+      } else {
+        final payload = <String, Map<String, dynamic>>{
+          for (final r in docRows)
+            (r['key'] as String): {
+              'v': r['value'],
+              'd': r['is_deleted'] as bool,
+              'h': (r['hlc'] as Hlc).toString(),
+            },
+        };
+        await _store.write(blobKey, utf8.encode(jsonEncode(payload)));
+      }
+    }
   }
 
+  /// Restores all documents from per-document blobs under `"<name>/d/"`.
   Future<void> _restore() async {
-    final bytes = await _store.read(_name);
-    if (bytes == null) return;
-    final raw = jsonDecode(utf8.decode(bytes));
-    if (raw is! Map || raw.isEmpty) return;
-
-    final changeset = <String, List<Map<String, Object?>>>{
-      _name: (raw as Map<String, dynamic>).entries.map((e) {
+    final keys = await _store.keys(prefix: '$_name/d/');
+    final rows = <Map<String, Object?>>[];
+    for (final k in keys) {
+      List<int>? bytes;
+      try {
+        bytes = await _store.read(k);
+      } catch (_) {
+        // Corrupt or tampered blob (e.g. CipherAuthError after a partial
+        // re-encryption). Skip it — the CRDT will re-converge on next sync.
+        continue;
+      }
+      if (bytes == null) continue;
+      final raw = jsonDecode(utf8.decode(bytes));
+      if (raw is! Map) continue;
+      for (final e in (raw as Map<String, dynamic>).entries) {
         final data = e.value as Map<String, dynamic>;
-        return <String, Object?>{
+        rows.add({
           'key': e.key,
           'value': data['v'],
           'is_deleted': data['d'] as bool,
           'hlc': Hlc.parse(data['h'] as String),
-        };
-      }).toList(),
-    };
-    await _crdt.merge(changeset);
+        });
+      }
+    }
+    if (rows.isNotEmpty) {
+      await _crdt.merge({_name: rows});
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -340,6 +398,10 @@ class Collection<T> {
   /// [merge] controls how documents are decomposed into CRDT records and
   /// therefore how concurrent edits merge; it defaults to whole-document
   /// last-write-wins via [ObjectMergeStrategy].
+  ///
+  /// [masker] is an optional function that hides document ids from plaintext
+  /// storage keys. When provided it is applied to every document id before
+  /// constructing the blob key; the raw id stays inside the encrypted payload.
   ///
   /// [onLocalChange] is called after every [put] or [delete] so that [Database]
   /// can push deltas to connected peers. It is intentionally NOT called by
@@ -354,6 +416,7 @@ class Collection<T> {
     Codec<T> codec,
     BlobStore store, {
     MergeStrategy merge = const ObjectMergeStrategy(),
+    IdMasker? idMasker,
     void Function()? onLocalChange,
     void Function(String documentId)? onRemoteConflict,
   }) =>
@@ -362,6 +425,7 @@ class Collection<T> {
         codec,
         store,
         merge: merge,
+        idMasker: idMasker,
         onLocalChange: onLocalChange,
         onRemoteConflict: onRemoteConflict,
       );

@@ -113,6 +113,7 @@ Future<Conclave> _openConclave(InMemoryBus bus, {String appId = 'test'}) =>
       roomTag: (key) => key.take(8).map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
       cipher: _XorCipher.new,
       mnemonicGenerator: (words) => List.generate(words, (i) => 'word$i'),
+      idMaskerFactory: (key) => (id) => id,
     );
 
 /// Builds a [Conclave] whose stores persist across reopen calls, keyed by
@@ -135,6 +136,7 @@ Future<Conclave> _openPersistentConclave(
           key.take(8).map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
       cipher: _XorCipher.new,
       mnemonicGenerator: (words) => List.generate(words, (i) => 'word$i'),
+      idMaskerFactory: (key) => (id) => id,
     );
 
 /// Derives a 32-byte test key from [passphrase] (mirrors the `deriveKey`
@@ -423,6 +425,7 @@ void main() {
         roomTag: (_) => 'room',
         cipher: _XorCipher.new,
         mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
+        idMaskerFactory: (key) => (id) => id,
       );
       expect(c.generatePassphrase(), hasLength(12));
       await c.close();
@@ -1155,6 +1158,7 @@ void main() {
             k.take(8).map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
         cipher: _XorCipher.new,
         mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
+        idMaskerFactory: (key) => (id) => id,
       );
       final nodeA = await _openConclave(bus);
       const pp = 'one two three four five six seven eight nine ten eleven twelve';
@@ -1208,6 +1212,7 @@ void main() {
             k.take(8).map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
         cipher: _XorCipher.new,
         mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
+        idMaskerFactory: (key) => (id) => id,
       );
       final nodeA = await _openConclave(bus);
       final nodeB = await _openConclave(bus);
@@ -1264,6 +1269,7 @@ void main() {
             k.take(8).map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
         cipher: _XorCipher.new,
         mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
+        idMaskerFactory: (key) => (id) => id,
       );
       final nodeA = await _openConclave(bus);
       const pp = 'one two three four five six seven eight nine ten eleven twelve';
@@ -1322,6 +1328,7 @@ void main() {
             k.take(8).map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
         cipher: _XorCipher.new,
         mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
+        idMaskerFactory: (key) => (id) => id,
       );
       final nodeB = await _openConclave(bus);
       const pp = 'one two three four five six seven eight nine ten eleven twelve';

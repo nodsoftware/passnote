@@ -43,5 +43,6 @@ Future<Conclave> openDefault({
     roomTag: roomTag,
     cipher: AesGcmCipher.new,
     mnemonicGenerator: (words) => generateMnemonic(words: words),
+    idMaskerFactory: createIdMasker,
   );
 }

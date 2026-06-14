@@ -1,5 +1,6 @@
 import 'package:crdt/crdt.dart';
 
+import 'collection.dart';
 import 'database.dart';
 import 'encrypted_store.dart';
 import 'ports/blob_store.dart';
@@ -90,6 +91,7 @@ class Conclave {
     required String Function(List<int>) roomTag,
     required Cipher Function(List<int>) cipherFactory,
     required List<String> Function(int words) mnemonicGenerator,
+    required IdMasker Function(List<int>) idMaskerFactory,
   })  : _config = config,
         _storeFactory = storeFactory,
         _keyStore = keyStore,
@@ -98,7 +100,8 @@ class Conclave {
         _deriveKey = deriveKey,
         _roomTag = roomTag,
         _cipherFactory = cipherFactory,
-        _mnemonicGenerator = mnemonicGenerator;
+        _mnemonicGenerator = mnemonicGenerator,
+        _idMaskerFactory = idMaskerFactory;
 
   final ConclaveConfig _config;
   final BlobStore Function(String) _storeFactory;
@@ -109,6 +112,7 @@ class Conclave {
   final String Function(List<int>) _roomTag;
   final Cipher Function(List<int>) _cipherFactory;
   final List<String> Function(int words) _mnemonicGenerator;
+  final IdMasker Function(List<int>) _idMaskerFactory;
 
   final Map<String, Database> _databases = {};
   final Set<PeerId> _connectedPeers = {};
@@ -442,6 +446,7 @@ class Conclave {
       transport: _transport,
       keyStore: _keyStore,
       entryKey: entryKey,
+      idMasker: _idMaskerFactory(key),
     );
 
     _databases[localId] = db;
@@ -576,6 +581,7 @@ class Conclave {
     required String Function(List<int> key) roomTag,
     required Cipher Function(List<int> key) cipher,
     required List<String> Function(int words) mnemonicGenerator,
+    required IdMasker Function(List<int>) idMaskerFactory,
   }) async {
     final nodeId = generateNodeId();
 
@@ -589,6 +595,7 @@ class Conclave {
       roomTag: roomTag,
       cipherFactory: cipher,
       mnemonicGenerator: mnemonicGenerator,
+      idMaskerFactory: idMaskerFactory,
     );
     // Wire listeners BEFORE start so PeerConnected events emitted during
     // registration are not missed.
