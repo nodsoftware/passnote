@@ -137,6 +137,11 @@ Future<Conclave> _openPersistentConclave(
       mnemonicGenerator: (words) => List.generate(words, (i) => 'word$i'),
     );
 
+/// Derives a 32-byte test key from [passphrase] (mirrors the `deriveKey`
+/// injected into `_openPersistentConclave`).
+List<int> _xorDerive(String passphrase) => List<int>.generate(
+      32, (i) => passphrase.codeUnitAt(i % passphrase.length) ^ i);
+
 // ---------------------------------------------------------------------------
 
 void main() {
@@ -506,11 +511,532 @@ void main() {
     });
   });
 
+  group('rotatePassphrase', () {
+    test('re-encrypts data and allows reopen with new passphrase', () async {
+      final bus = InMemoryBus();
+      final stores = <String, _MemStore>{};
+      final keyStore = _MemKeyStore();
+      const pp1 =
+          'one two three four five six seven eight nine ten eleven twelve';
+      const pp2 =
+          'two three four five six seven eight nine ten eleven twelve thirteen';
+
+      final c = await _openPersistentConclave(bus, stores, keyStore);
+      try {
+        // Open with pp1 and write some data.
+        var db = await c.openDatabase('notes', passphrase: pp1);
+        final col = db.collection('items', _Note.codec);
+        await col.put(_Note(id: 'k1', text: 'v1'));
+        await col.put(_Note(id: 'k2', text: 'v2'));
+        await db.close();
+
+        // Rotate to pp2.
+        await c.rotatePassphrase(
+          'notes',
+          oldPassphrase: pp1,
+          newPassphrase: pp2,
+        );
+
+        // Reopen with pp2 — must see the data.
+        db = await c.openDatabase('notes', passphrase: pp2);
+        final col2 = db.collection('items', _Note.codec);
+        await col2.ready;
+        expect(col2.get('k1')?.text, 'v1');
+        expect(col2.get('k2')?.text, 'v2');
+        await db.close();
+      } finally {
+        await c.close();
+      }
+    });
+
+    test('reopenDatabase works after rotation', () async {
+      final bus = InMemoryBus();
+      final stores = <String, _MemStore>{};
+      final keyStore = _MemKeyStore();
+      const pp1 =
+          'one two three four five six seven eight nine ten eleven twelve';
+      const pp2 =
+          'two three four five six seven eight nine ten eleven twelve thirteen';
+
+      final c = await _openPersistentConclave(bus, stores, keyStore);
+      try {
+        var db = await c.openDatabase('notes', passphrase: pp1);
+        final col = db.collection('items', _Note.codec);
+        await col.put(_Note(id: 'k1', text: 'v1'));
+        await db.close();
+
+        await c.rotatePassphrase(
+          'notes',
+          oldPassphrase: pp1,
+          newPassphrase: pp2,
+        );
+
+        // reopenDatabase must pick up the new key from the key store.
+        db = await c.reopenDatabase('notes');
+        final col2 = db.collection('items', _Note.codec);
+        await col2.ready;
+        expect(col2.get('k1')?.text, 'v1');
+        await db.close();
+      } finally {
+        await c.close();
+      }
+    });
+
+    test('throws WrongPassphraseException on wrong old passphrase', () async {
+      final bus = InMemoryBus();
+      final stores = <String, _MemStore>{};
+      final keyStore = _MemKeyStore();
+      const pp =
+          'one two three four five six seven eight nine ten eleven twelve';
+
+      final c = await _openPersistentConclave(bus, stores, keyStore);
+      try {
+        var db = await c.openDatabase('notes', passphrase: pp);
+        final col = db.collection('items', _Note.codec);
+        await col.put(_Note(id: 'k1', text: 'v1'));
+        await db.close();
+
+        await expectLater(
+          c.rotatePassphrase(
+            'notes',
+            oldPassphrase:
+                'wrong wrong wrong wrong wrong wrong wrong wrong wrong wrong wrong wrong',
+            newPassphrase:
+                'new new new new new new new new new new new new',
+          ),
+          throwsA(isA<WrongPassphraseException>()),
+        );
+      } finally {
+        await c.close();
+      }
+    });
+
+    test('works on a fresh database with no data', () async {
+      final bus = InMemoryBus();
+      final stores = <String, _MemStore>{};
+      final keyStore = _MemKeyStore();
+      const pp1 =
+          'one two three four five six seven eight nine ten eleven twelve';
+      const pp2 =
+          'two three four five six seven eight nine ten eleven twelve thirteen';
+
+      final c = await _openPersistentConclave(bus, stores, keyStore);
+      try {
+        // No data written — just open and close.
+        var db = await c.openDatabase('notes', passphrase: pp1);
+        await db.close();
+
+        // Rotation on an empty store should be a no-op.
+        await c.rotatePassphrase(
+          'notes',
+          oldPassphrase: pp1,
+          newPassphrase: pp2,
+        );
+
+        // Should open with the new passphrase.
+        db = await c.openDatabase('notes', passphrase: pp2);
+        await db.close();
+      } finally {
+        await c.close();
+      }
+    });
+
+    test('works when database is still open', () async {
+      final bus = InMemoryBus();
+      final stores = <String, _MemStore>{};
+      final keyStore = _MemKeyStore();
+      const pp1 =
+          'one two three four five six seven eight nine ten eleven twelve';
+      const pp2 =
+          'two three four five six seven eight nine ten eleven twelve thirteen';
+
+      final c = await _openPersistentConclave(bus, stores, keyStore);
+      try {
+        // Open with pp1 and write data, but KEEP it open.
+        var db = await c.openDatabase('notes', passphrase: pp1);
+        final col = db.collection('items', _Note.codec);
+        await col.put(_Note(id: 'k1', text: 'v1'));
+        // db is still open here.
+
+        await c.rotatePassphrase(
+          'notes',
+          oldPassphrase: pp1,
+          newPassphrase: pp2,
+        );
+
+        // Database was closed during rotation. Reopen with new passphrase.
+        db = await c.openDatabase('notes', passphrase: pp2);
+        final col2 = db.collection('items', _Note.codec);
+        await col2.ready;
+        expect(col2.get('k1')?.text, 'v1');
+        await db.close();
+      } finally {
+        await c.close();
+      }
+    });
+
+    test('old passphrase fails after rotation', () async {
+      final bus = InMemoryBus();
+      final stores = <String, _MemStore>{};
+      final keyStore = _MemKeyStore();
+      const pp1 =
+          'one two three four five six seven eight nine ten eleven twelve';
+      const pp2 =
+          'two three four five six seven eight nine ten eleven twelve thirteen';
+
+      final c = await _openPersistentConclave(bus, stores, keyStore);
+      try {
+        var db = await c.openDatabase('notes', passphrase: pp1);
+        final col = db.collection('items', _Note.codec);
+        await col.put(_Note(id: 'k1', text: 'v1'));
+        await db.close();
+
+        await c.rotatePassphrase(
+          'notes',
+          oldPassphrase: pp1,
+          newPassphrase: pp2,
+        );
+
+        // Old passphrase must no longer decrypt the re-encrypted data.
+        await expectLater(
+          () => c.openDatabase('notes', passphrase: pp1),
+          throwsA(isA<WrongPassphraseException>()),
+        );
+      } finally {
+        await c.close();
+      }
+    });
+
+    test('interrupted rotation is resumable with new passphrase', () async {
+      final bus = InMemoryBus();
+      final stores = <String, _MemStore>{};
+      final keyStore = _MemKeyStore();
+      const pp1 =
+          'one two three four five six seven eight nine ten eleven twelve';
+      const pp2 =
+          'two three four five six seven eight nine ten eleven twelve thirteen';
+
+      final c = await _openPersistentConclave(bus, stores, keyStore);
+      try {
+        // Write two documents so there are at least two blobs.
+        var db = await c.openDatabase('notes', passphrase: pp1);
+        final col = db.collection('items', _Note.codec);
+        await col.put(_Note(id: 'k1', text: 'v1'));
+        await col.put(_Note(id: 'k2', text: 'v2'));
+        await db.close();
+
+        // Simulate an interrupted rotation: re-encrypt only the first blob.
+        final oldKey = await keyStore.getKey('test/notes');
+        final newKey = _xorDerive(pp2);
+        final oldCipher = _XorCipher(oldKey!);
+        final newCipher = _XorCipher(newKey);
+        final raw = stores['notes']!;
+        final blobKeys = await raw.keys();
+        final first = blobKeys.first;
+        final encrypted = await raw.read(first);
+        if (encrypted != null) {
+          final plaintext = await oldCipher.decrypt(encrypted);
+          final reEncrypted = await newCipher.encrypt(plaintext);
+          await raw.write(first, reEncrypted);
+        }
+        // Do NOT store the new key — simulate a crash before KeyStore update.
+        // Also store rotate_* keys as rotatePassphrase would have done.
+        await keyStore.setKey('test/notes.rotate_backup', oldKey);
+        await keyStore.setKey('test/notes.rotate_new', newKey);
+
+        // Recovery with the NEW passphrase should complete the rotation.
+        db = await c.openDatabase('notes', passphrase: pp2);
+
+        // All data must be intact and readable with the new key.
+        final col2 = db.collection('items', _Note.codec);
+        await col2.ready;
+        expect(col2.get('k1')?.text, 'v1');
+        expect(col2.get('k2')?.text, 'v2');
+        await db.close();
+      } finally {
+        await c.close();
+      }
+    });
+
+    test('interrupted rotation is reversable with old passphrase', () async {
+      final bus = InMemoryBus();
+      final stores = <String, _MemStore>{};
+      final keyStore = _MemKeyStore();
+
+      const pp1 =
+          'one two three four five six seven eight nine ten eleven twelve';
+      const pp2 =
+          'two three four five six seven eight nine ten eleven twelve thirteen';
+
+      final c = await _openPersistentConclave(bus, stores, keyStore);
+      try {
+        var db = await c.openDatabase('notes', passphrase: pp1);
+        final col = db.collection('items', _Note.codec);
+        await col.put(_Note(id: 'k1', text: 'v1'));
+        await db.close();
+
+        // Simulate interrupted rotation: first blob re-encrypted to new key.
+        final oldKey = await keyStore.getKey('test/notes');
+        final newKey = _xorDerive(pp2);
+        final oldCipher = _XorCipher(oldKey!);
+        final newCipher = _XorCipher(newKey);
+        final raw = stores['notes']!;
+        final blobKeys = await raw.keys();
+        final encrypted = await raw.read(blobKeys.first);
+        if (encrypted != null) {
+          final plaintext = await oldCipher.decrypt(encrypted);
+          final reEncrypted = await newCipher.encrypt(plaintext);
+          await raw.write(blobKeys.first, reEncrypted);
+        }
+        await keyStore.setKey('test/notes.rotate_backup', oldKey);
+        await keyStore.setKey('test/notes.rotate_new', newKey);
+
+        // Recovery with the OLD passphrase should reverse the rotation.
+        db = await c.openDatabase('notes', passphrase: pp1);
+        final col2 = db.collection('items', _Note.codec);
+        await col2.ready;
+        expect(col2.get('k1')?.text, 'v1');
+        await db.close();
+
+        // The stored key is the old key, so reopenDatabase also works.
+        db = await c.reopenDatabase('notes');
+        final col3 = db.collection('items', _Note.codec);
+        await col3.ready;
+        expect(col3.get('k1')?.text, 'v1');
+        await db.close();
+      } finally {
+        await c.close();
+      }
+    });
+
+    test('reopenDatabase after interrupted rotation completes forward', () async {
+      final bus = InMemoryBus();
+      final stores = <String, _MemStore>{};
+      final keyStore = _MemKeyStore();
+
+      const pp1 =
+          'one two three four five six seven eight nine ten eleven twelve';
+      const pp2 =
+          'two three four five six seven eight nine ten eleven twelve thirteen';
+
+      final c = await _openPersistentConclave(bus, stores, keyStore);
+      Conclave? c2;
+      try {
+        var db = await c.openDatabase('notes', passphrase: pp1);
+        final col = db.collection('items', _Note.codec);
+        await col.put(_Note(id: 'k1', text: 'v1'));
+        await db.close();
+
+        // Simulate interrupted rotation: first blob re-encrypted to new key.
+        final oldKey = await keyStore.getKey('test/notes');
+        final newKey = _xorDerive(pp2);
+        final oldCipher = _XorCipher(oldKey!);
+        final newCipher = _XorCipher(newKey);
+        final raw = stores['notes']!;
+        final blobKeys = await raw.keys();
+        final encrypted = await raw.read(blobKeys.first);
+        if (encrypted != null) {
+          final plaintext = await oldCipher.decrypt(encrypted);
+          final reEncrypted = await newCipher.encrypt(plaintext);
+          await raw.write(blobKeys.first, reEncrypted);
+        }
+        await keyStore.setKey('test/notes.rotate_backup', oldKey);
+        await keyStore.setKey('test/notes.rotate_new', newKey);
+
+        // hasPendingRotation should detect the interrupted rotation.
+        expect(await c.hasPendingRotation('notes'), isTrue);
+
+        // reopenDatabase (no passphrase) should complete the rotation forward.
+        // Simulate an app restart by closing the whole Conclave and opening a
+        // fresh one (so _databases is empty and the full reopen path runs).
+        await c.close();
+        c2 = await _openPersistentConclave(bus, stores, keyStore);
+
+        db = await c2.reopenDatabase('notes');
+        final col2 = db.collection('items', _Note.codec);
+        await col2.ready;
+        expect(col2.get('k1')?.text, 'v1');
+
+        // The stored key is now the new key (rotation completed forward).
+        final storedKey = await keyStore.getKey('test/notes');
+        expect(storedKey?[0], _xorDerive(pp2)[0]);
+        await db.close();
+
+        // hasPendingRotation is now resolved.
+        expect(await c2.hasPendingRotation('notes'), isFalse);
+      } finally {
+        await c.close();
+        await c2?.close();
+      }
+    });
+
+    test('rotatePassphrase skips a corrupt blob without bricking', () async {
+      final bus = InMemoryBus();
+      final stores = <String, _MemStore>{};
+      final keyStore = _MemKeyStore();
+      const pp1 =
+          'one two three four five six seven eight nine ten eleven twelve';
+      const pp2 =
+          'two three four five six seven eight nine ten eleven twelve thirteen';
+
+      final c = await _openPersistentConclave(bus, stores, keyStore);
+      try {
+        var db = await c.openDatabase('notes', passphrase: pp1);
+        final col = db.collection('items', _Note.codec);
+        await col.put(_Note(id: 'k1', text: 'v1'));
+        await col.put(_Note(id: 'k2', text: 'v2'));
+        await db.close();
+
+        // Corrupt the second blob (the first blob must be intact for
+        // validation to pass).
+        final raw = stores['notes']!;
+        final blobKeys = await raw.keys();
+        if (blobKeys.length > 1) {
+          await raw.write(blobKeys.elementAt(1), [0, 0, 0, 0]);
+        }
+
+        // Rotation must complete without crashing; the corrupt blob is
+        // skipped, the healthy blob is re-encrypted.
+        await c.rotatePassphrase(
+          'notes',
+          oldPassphrase: pp1,
+          newPassphrase: pp2,
+        );
+
+        db = await c.openDatabase('notes', passphrase: pp2);
+        final col2 = db.collection('items', _Note.codec);
+        await col2.ready;
+        // The document behind the corrupt blob may or may not survive
+        // depending on merge strategy, but the rotation must not throw.
+        expect(col2.get('k1')?.text, 'v1');
+        await db.close();
+      } finally {
+        await c.close();
+      }
+    });
+
+    test('rotatePassphrase rejects wrong old passphrase after interruption',
+        () async {
+      final bus = InMemoryBus();
+      final stores = <String, _MemStore>{};
+      final keyStore = _MemKeyStore();
+      const pp1 =
+          'one two three four five six seven eight nine ten eleven twelve';
+      const pp2 =
+          'two three four five six seven eight nine ten eleven twelve thirteen';
+      const wrong =
+          'wrong wrong wrong wrong wrong wrong wrong wrong wrong wrong wrong wrong';
+
+      final c = await _openPersistentConclave(bus, stores, keyStore);
+      try {
+        final db = await c.openDatabase('notes', passphrase: pp1);
+        final col = db.collection('items', _Note.codec);
+        await col.put(_Note(id: 'k1', text: 'v1'));
+        await db.close();
+
+        // Simulate interrupted rotation: first blob re-encrypted to new key.
+        final oldKey = await keyStore.getKey('test/notes');
+        final newKey = _xorDerive(pp2);
+        final oldCipher = _XorCipher(oldKey!);
+        final newCipher = _XorCipher(newKey);
+        final raw = stores['notes']!;
+        final blobKeys = await raw.keys();
+        final encrypted = await raw.read(blobKeys.first);
+        if (encrypted != null) {
+          final plaintext = await oldCipher.decrypt(encrypted);
+          final reEncrypted = await newCipher.encrypt(plaintext);
+          await raw.write(blobKeys.first, reEncrypted);
+        }
+        await keyStore.setKey('test/notes.rotate_backup', oldKey);
+        await keyStore.setKey('test/notes.rotate_new', newKey);
+
+        // Calling rotatePassphrase with a wrong old passphrase must fail even
+        // though the first blob happens to be decryptable with the new key.
+        await expectLater(
+          () => c.rotatePassphrase(
+            'notes',
+            oldPassphrase: wrong,
+            newPassphrase: pp2,
+          ),
+          throwsA(isA<WrongPassphraseException>()),
+        );
+      } finally {
+        await c.close();
+      }
+    });
+
+    test('peers converge after both rotate', () async {
+      final bus = InMemoryBus();
+      final storesA = <String, _MemStore>{};
+      final storesB = <String, _MemStore>{};
+      final keyStoreA = _MemKeyStore();
+      final keyStoreB = _MemKeyStore();
+      const pp1 =
+          'one two three four five six seven eight nine ten eleven twelve';
+      const pp2 =
+          'two three four five six seven eight nine ten eleven twelve thirteen';
+
+      final nodeA = await _openPersistentConclave(
+        bus, storesA, keyStoreA,
+        appId: 'converge',
+      );
+      final nodeB = await _openPersistentConclave(
+        bus, storesB, keyStoreB,
+        appId: 'converge',
+      );
+      try {
+        // Both open with pp1 and sync.
+        var dbA = await nodeA.openDatabase('notes', passphrase: pp1);
+        var dbB = await nodeB.openDatabase('notes', passphrase: pp1);
+        final colA = dbA.collection('items', _Note.codec);
+        final colB = dbB.collection('items', _Note.codec);
+        await colA.put(_Note(id: 'k1', text: 'from A before'));
+        await colB.watch().where((l) => l.isNotEmpty).first
+            .timeout(const Duration(seconds: 5));
+        await dbA.close();
+        await dbB.close();
+
+        // Both rotate to pp2.
+        await nodeA.rotatePassphrase(
+          'notes',
+          oldPassphrase: pp1,
+          newPassphrase: pp2,
+        );
+        await nodeB.rotatePassphrase(
+          'notes',
+          oldPassphrase: pp1,
+          newPassphrase: pp2,
+        );
+
+        // Reopen both with pp2 and verify convergence.
+        dbA = await nodeA.openDatabase('notes', passphrase: pp2);
+        dbB = await nodeB.openDatabase('notes', passphrase: pp2);
+        final colA2 = dbA.collection('items', _Note.codec);
+        final colB2 = dbB.collection('items', _Note.codec);
+        await colA2.ready;
+        await colB2.ready;
+        expect(colA2.get('k1')?.text, 'from A before');
+        expect(colB2.get('k1')?.text, 'from A before');
+
+        // A makes a change after rotation; B must receive it.
+        await colA2.put(_Note(id: 'k2', text: 'from A after'));
+        await colB2.watch().where((l) => l.length >= 2).first
+            .timeout(const Duration(seconds: 5));
+        expect(colB2.get('k2')?.text, 'from A after');
+        await dbA.close();
+        await dbB.close();
+      } finally {
+        await nodeA.close();
+        await nodeB.close();
+      }
+    });
+  });
+
   group('Collection.length', () {
     test('zero on a fresh collection', () async {
       final bus = InMemoryBus();
       final c = await _openConclave(bus);
-      final db = await c.openDatabase(
+      var db = await c.openDatabase(
           'notes', passphrase: 'one two three four five six seven eight nine ten eleven twelve');
       final notes = db.collection<_Note>('notes', _Note.codec);
       await notes.ready;
@@ -521,7 +1047,7 @@ void main() {
     test('increases after put', () async {
       final bus = InMemoryBus();
       final c = await _openConclave(bus);
-      final db = await c.openDatabase(
+      var db = await c.openDatabase(
           'notes', passphrase: 'one two three four five six seven eight nine ten eleven twelve');
       final notes = db.collection<_Note>('notes', _Note.codec);
       await notes.ready;
@@ -535,7 +1061,7 @@ void main() {
     test('decreases after delete', () async {
       final bus = InMemoryBus();
       final c = await _openConclave(bus);
-      final db = await c.openDatabase(
+      var db = await c.openDatabase(
           'notes', passphrase: 'one two three four five six seven eight nine ten eleven twelve');
       final notes = db.collection<_Note>('notes', _Note.codec);
       await notes.ready;
@@ -550,7 +1076,7 @@ void main() {
     test('matches all.length', () async {
       final bus = InMemoryBus();
       final c = await _openConclave(bus);
-      final db = await c.openDatabase(
+      var db = await c.openDatabase(
           'notes', passphrase: 'one two three four five six seven eight nine ten eleven twelve');
       final notes = db.collection<_Note>('notes', _Note.codec);
       await notes.ready;

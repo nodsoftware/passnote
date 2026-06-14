@@ -121,6 +121,8 @@ class Database {
   /// reopened by re-supplying the original passphrase.
   Future<void> leave() async {
     await _keyStore.clear(_entryKey);
+    await _keyStore.clear('$_entryKey.rotate_backup');
+    await _keyStore.clear('$_entryKey.rotate_new');
     await _store.close();
   }
 

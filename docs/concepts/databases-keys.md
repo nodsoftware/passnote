@@ -87,3 +87,60 @@ final work = await conclave.openDatabase('work', passphrase: workWords);
 `conclave.close()` closes all open databases and stops the transport. An
 individual database can be removed with `db.leave()`, which stops syncing it and
 drops its local encryption key.
+
+## Rotating the passphrase
+
+To change a database's passphrase (e.g. after a compromise or as routine key
+hygiene) call `rotatePassphrase`:
+
+```dart
+await conclave.rotatePassphrase(
+  'home',
+  oldPassphrase: oldWords,
+  newPassphrase: newWords,
+);
+```
+
+This re-encrypts every blob in the local store with the new key, then updates
+the `KeyStore`. If the database is currently open it is closed first — call
+`openDatabase` with the new passphrase, or `reopenDatabase`, to resume.
+
+### Peer isolation
+
+Changing the passphrase changes the room tag (it is derived from the key, not
+from a stable identifier). After rotation the calling node broadcasts and listens
+in a different room, so it can no longer communicate with peers still on the
+old key. Those peers continue syncing among themselves unaffected.
+
+To re-establish sync all devices must be rotated to the same new passphrase. The
+order does not matter — each device rotates independently, and after they all
+reopen in the new room the normal CRDT sync converges any changes made in the
+meantime.
+
+### Crash safety
+
+If the process is interrupted (process kill, power loss) the caller has three
+recovery paths:
+
+**`openDatabase` with the old passphrase** — the partial rotation is reversed;
+every blob is re-encrypted back to the old key and the old key stays primary.
+
+**`openDatabase` with the new passphrase** — the rotation is completed;
+remaining old-key blobs are re-encrypted with the new key and the new key is
+promoted.
+
+**`reopenDatabase` without a passphrase** — the rotation is always **completed
+forward**. This is critical for security: a crash during rotation must not
+silently revert on app restart, otherwise a compromised peer would never be
+isolated.
+
+All three paths are idempotent and safe to retry. Use `hasPendingRotation` to detect a prior crash before opening.
+
+The crash-safety mechanism works because:
+1. Both keys are stored in the `KeyStore` (`rotate_backup` + `rotate_new`)
+   before re-encryption starts.
+2. The re-encryption loop handles partial progress — a blob already encrypted
+   with the target key is decrypted with that same key and re-encrypted (a
+   no-op).
+3. Only after every blob is confirmed re-encrypted is the appropriate key
+   promoted to primary, then the backup entries removed.
