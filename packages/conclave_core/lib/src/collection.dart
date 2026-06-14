@@ -2,11 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:crdt/crdt.dart';
-import 'package:crdt/map_crdt.dart';
 
 import 'codec.dart';
+import 'map_crdt_table.dart';
 import 'merge_strategies.dart';
 import 'ports/blob_store.dart';
+import 'ports/crdt_table.dart';
 import 'ports/merge_strategy.dart';
 
 /// A function that transforms a document id into an opaque storage-key token.
@@ -16,7 +17,7 @@ import 'ports/merge_strategy.dart';
 typedef IdMasker = String Function(String id);
 
 
-/// A typed, queryable set of documents backed by a per-collection [MapCrdt].
+/// A typed, queryable set of documents backed by a per-collection [CrdtTable].
 ///
 /// Documents are identified by the string returned from [Codec.idOf]. Each
 /// document is split into one or more independently timestamped CRDT records by a
@@ -47,13 +48,14 @@ class Collection<T> {
     this._store, {
     required MergeStrategy merge,
     IdMasker? idMasker,
+    CrdtTable? table,
     void Function()? onLocalChange,
     void Function(String documentId)? onRemoteConflict,
   })  : _merge = merge,
         _idMasker = idMasker,
+        _engine = table ?? MapCrdtTable(_name),
         _onLocalChange = onLocalChange,
-        _onRemoteConflict = onRemoteConflict,
-        _crdt = MapCrdt([_name]) {
+        _onRemoteConflict = onRemoteConflict {
     _ready = _serialize(_restore);
   }
 
@@ -65,7 +67,7 @@ class Collection<T> {
   final Codec<T> _codec;
   final BlobStore _store;
   final MergeStrategy _merge;
-  final MapCrdt _crdt;
+  final CrdtTable _engine;
   final void Function()? _onLocalChange;
   final void Function(String documentId)? _onRemoteConflict;
 
@@ -108,7 +110,7 @@ class Collection<T> {
   /// least one field record — the same set that [all] returns. Does not
   /// decode documents and is therefore cheaper than `all.length`.
   int get length {
-    final map = _crdt.getMap(_name);
+    final map = _engine.liveFields(_name, '');
     final aliveIds = <String>{};
     final idsWithFields = <String>{};
     for (final entry in map.entries) {
@@ -128,16 +130,15 @@ class Collection<T> {
   /// A document exists only while its existence register is live; field records
   /// that linger after a delete are ignored.
   T? get(String documentId) {
-    final map = _crdt.getMap(_name);
-    if (!map.containsKey(documentId)) return null;
-    final fields = _fieldsFor(documentId, map);
+    if (_engine.value(_name, documentId) == null) return null;
+    final fields = _fieldsForDoc(documentId);
     if (fields.isEmpty) return null;
     return _codec.fromMap(_merge.unflatten(fields));
   }
 
   /// All live (non-deleted) documents in unspecified order.
   List<T> get all {
-    final map = _crdt.getMap(_name);
+    final map = _engine.liveFields(_name, '');
     final aliveIds = <String>{};
     final grouped = <String, Map<String, Object?>>{};
     for (final entry in map.entries) {
@@ -174,11 +175,11 @@ class Collection<T> {
       final id = _codec.idOf(value);
       final fields = _merge.flatten(_codec.toMap(value));
       final prefix = '$id$_sep';
-      final current = _fieldsFor(id, _crdt.getMap(_name));
+      final current = _fieldsForDoc(id);
 
       // Mark the document alive. Refreshing this on every write means an edit
       // competes with a concurrent delete on a single register (latest wins).
-      await _crdt.put(_name, id, true);
+      await _engine.put(_name, id, true);
 
       for (final field in fields.entries) {
         // Only write fields whose value actually changed. Rewriting an unchanged
@@ -188,14 +189,14 @@ class Collection<T> {
             jsonEncode(current[field.key]) == jsonEncode(field.value)) {
           continue;
         }
-        await _crdt.put(_name, '$prefix${field.key}', field.value);
+        await _engine.put(_name, '$prefix${field.key}', field.value);
       }
       // Tombstone fields that no longer exist on the document (e.g. a key removed
       // from a map under shallow/deep merge). The schema of a fixed type rarely
       // changes, but custom strategies may vary the field set.
       for (final path in current.keys) {
         if (!fields.containsKey(path)) {
-          await _crdt.put(_name, '$prefix$path', null, true);
+          await _engine.put(_name, '$prefix$path', null, isDeleted: true);
         }
       }
       await _persistDocuments({id});
@@ -213,7 +214,7 @@ class Collection<T> {
   Future<void> delete(String documentId) async {
     await _ready;
     await _serialize(() async {
-      await _crdt.put(_name, documentId, null, true);
+      await _engine.put(_name, documentId, null, isDeleted: true);
       await _persistDocuments({documentId});
     });
     _onLocalChange?.call();
@@ -222,14 +223,14 @@ class Collection<T> {
   /// Returns a stream that emits the current document list once the initial
   /// storage load completes, then on every subsequent change.
   Stream<List<T>> watch() {
-    // `_crdt.watch` is a broadcast stream that drops events while it has no
+    // `_engine.watch` is a broadcast stream that drops events while it has no
     // listener. Subscribe to it *before* emitting the initial snapshot so a
     // merge that lands between subscription and the first emit is never lost.
     late final StreamController<List<T>> controller;
     StreamSubscription<void>? sub;
     controller = StreamController<List<T>>(
       onListen: () {
-        sub = _crdt.watch(_name).listen((_) => controller.add(all));
+        sub = _engine.watch(_name).listen((_) => controller.add(all));
         _ready.then((_) => controller.add(all));
       },
       onCancel: () async {
@@ -252,26 +253,18 @@ class Collection<T> {
 
   /// The highest modified-HLC seen in this collection as a string, or the
   /// empty string when the collection is empty.
-  String get maxHlc {
-    final cs = _crdt.getChangeset(onlyTables: [_name]);
-    if (cs.isEmpty) return '';
-    return _crdt.getLastModified().toString();
-  }
+  String get maxHlc => _engine.maxHlc(_name);
 
   /// Returns records modified after [sinceHlc] (or all records when null) in
   /// [CrdtChangeset] format ready for wire serialisation.
-  CrdtChangeset getChangeset({String? sinceHlc}) => _crdt.getChangeset(
-        onlyTables: [_name],
-        modifiedAfter:
-            (sinceHlc == null || sinceHlc.isEmpty) ? null : Hlc.parse(sinceHlc),
-      );
+  CrdtChangeset getChangeset({String? sinceHlc}) =>
+      _engine.changeset(_name, sinceHlc: sinceHlc);
 
   /// Merges a [CrdtChangeset] received from a peer and persists the result.
   /// Does NOT trigger [onLocalChange] — remote changes must not be re-broadcast.
   Future<void> mergeChangeset(CrdtChangeset changeset) async {
     await _ready;
     await _serialize(() async {
-      final map = _crdt.getMap(_name);
       final touched = <String>{};
       final conflicted = <String>{};
       for (final records in changeset.values) {
@@ -280,12 +273,13 @@ class Collection<T> {
           final sep = key.indexOf(_sep);
           final docId = sep < 0 ? key : key.substring(0, sep);
           touched.add(docId);
-          if (_onRemoteConflict != null && map.containsKey(docId)) {
+          if (_onRemoteConflict != null &&
+              _engine.value(_name, docId) != null) {
             conflicted.add(docId);
           }
         }
       }
-      await _crdt.merge(changeset);
+      await _engine.merge(changeset);
       await _persistDocuments(touched);
       for (final docId in conflicted) {
         _onRemoteConflict!(docId);
@@ -296,17 +290,18 @@ class Collection<T> {
   // ---------------------------------------------------------------------------
   // Field helpers
 
-  /// Collects the live field entries (field-path → value) for [documentId] from
-  /// a CRDT live-record [map].
-  Map<String, Object?> _fieldsFor(String documentId, Map<String, dynamic> map) {
+  /// Returns the live field entries (field-path → value) for [documentId],
+  /// scoped to a single document. Strips the `"$id\x1F"` prefix from the keys
+  /// so the result is path → value as [MergeStrategy.unflatten] expects.
+  ///
+  /// Uses the engine's scoped [CrdtTable.liveFields] so a lazy adapter can
+  /// load only the requested document without scanning the full table.
+  Map<String, Object?> _fieldsForDoc(String documentId) {
     final prefix = '$documentId$_sep';
-    final fields = <String, Object?>{};
-    for (final entry in map.entries) {
-      if (entry.key.startsWith(prefix)) {
-        fields[entry.key.substring(prefix.length)] = entry.value;
-      }
-    }
-    return fields;
+    return {
+      for (final e in _engine.liveFields(_name, prefix).entries)
+        e.key.substring(prefix.length): e.value,
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -325,7 +320,7 @@ class Collection<T> {
   /// persisted and others not — but a CRDT converges this safely on the next
   /// sync without data loss.
   Future<void> _persistDocuments(Set<String> docIds) async {
-    final cs = _crdt.getChangeset(onlyTables: [_name]);
+    final cs = _engine.changeset(_name);
     final rows = cs[_name] ?? const [];
 
     // Group all rows by their document id.
@@ -385,7 +380,7 @@ class Collection<T> {
       }
     }
     if (rows.isNotEmpty) {
-      await _crdt.merge({_name: rows});
+      await _engine.merge({_name: rows});
     }
   }
 
@@ -411,12 +406,17 @@ class Collection<T> {
   /// that existed locally before the merge and whose key appears in the
   /// incoming changeset. Use this to detect when a document was edited on
   /// another device.
+  ///
+  /// [table] overrides the default [MapCrdtTable]. Pass a custom
+  /// [CrdtTable] implementation to back the collection with disk-based or
+  /// otherwise lazy storage.
   static Collection<T> create<T>(
     String name,
     Codec<T> codec,
     BlobStore store, {
     MergeStrategy merge = const ObjectMergeStrategy(),
     IdMasker? idMasker,
+    CrdtTable? table,
     void Function()? onLocalChange,
     void Function(String documentId)? onRemoteConflict,
   }) =>
@@ -426,6 +426,7 @@ class Collection<T> {
         store,
         merge: merge,
         idMasker: idMasker,
+        table: table,
         onLocalChange: onLocalChange,
         onRemoteConflict: onRemoteConflict,
       );
