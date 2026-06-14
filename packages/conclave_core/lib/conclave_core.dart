@@ -4,6 +4,7 @@ library conclave_core;
 
 export 'src/codec.dart';
 export 'src/collection.dart';
+export 'src/id.dart';
 export 'src/conclave.dart';
 export 'src/database.dart';
 export 'src/encrypted_store.dart';

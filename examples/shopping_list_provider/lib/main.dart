@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:conclave/conclave.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -11,11 +9,6 @@ final _codec = JsonCodec<Item>(
   fromMap: Item.fromJson,
   idOf: (i) => i.id,
 );
-
-String _newId() {
-  final rand = Random();
-  return '${DateTime.now().microsecondsSinceEpoch}-${rand.nextInt(1 << 32)}';
-}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -71,7 +64,7 @@ class _ShoppingPageState extends State<_ShoppingPage> {
   Future<void> _add() async {
     final name = _controller.text.trim();
     if (name.isEmpty) return;
-    await widget.items.put(Item(id: _newId(), name: name));
+    await widget.items.put(Item(id: newId(), name: name));
     _controller.clear();
   }
 
