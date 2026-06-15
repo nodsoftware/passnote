@@ -24,7 +24,7 @@ class MapCrdtTable implements CrdtTable {
       _crdt.put(table, key, value, isDeleted);
 
   @override
-  Object? value(String table, String key) => _crdt.getMap(table)[key];
+  Object? value(String table, String key) => _crdt.get(table, key);
 
   @override
   Map<String, Object?> liveFields(String table, String prefix) {

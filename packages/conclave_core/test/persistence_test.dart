@@ -92,7 +92,7 @@ void main() {
 
       expect(col2.get('a')?.text, equals('alpha'));
       expect(col2.get('b')?.text, equals('beta'));
-      expect(col2.all, hasLength(2));
+      expect(col2.all(), hasLength(2));
     });
 
     test('3. delete retains a tombstone blob (not a hard delete)', () async {
@@ -109,7 +109,7 @@ void main() {
 
       // The collection correctly reports the document as absent.
       expect(col.get('doc1'), isNull);
-      expect(col.all, isEmpty);
+      expect(col.all(), isEmpty);
 
       // The stored blob contains the tombstoned existence register.
       final bytes = store.data[blobKeys.first]!;

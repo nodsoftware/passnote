@@ -23,7 +23,7 @@ import 'package:flutter/foundation.dart';
 class CollectionNotifier<T> extends ChangeNotifier {
   /// Creates a notifier that subscribes to [collection] immediately.
   CollectionNotifier(this._collection) {
-    _items = _collection.all;
+    _items = _collection.all();
     _subscription = _collection.watch().listen((items) {
       _items = items;
       notifyListeners();

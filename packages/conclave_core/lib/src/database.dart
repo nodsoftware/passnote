@@ -86,6 +86,7 @@ class Database {
     String name,
     Codec<T> codec, {
     MergeStrategy merge = const ObjectMergeStrategy(),
+    List<String> indexedFields = const [],
     void Function(String documentId)? onRemoteConflict,
   }) {
     if (_collections.containsKey(name)) {
@@ -105,6 +106,7 @@ class Database {
       codec,
       _store,
       merge: merge,
+      indexedFields: indexedFields,
       onLocalChange: () => _broadcastCollection(col),
       onRemoteConflict: onRemoteConflict,
       idMasker: _idMasker,

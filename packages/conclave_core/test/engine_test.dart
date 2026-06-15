@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:conclave_core/conclave_core.dart';
+import 'package:crdt/crdt.dart' show CrdtChangeset;
 import 'package:test/test.dart';
 
 // ---------------------------------------------------------------------------
@@ -77,6 +78,66 @@ class _Note {
     fromMap: (m) => _Note(id: m['id'] as String, text: m['text'] as String),
     idOf: (n) => n.id,
   );
+}
+
+/// Wraps a codec and counts how many documents are actually decoded, so a test
+/// can assert that a paginated/indexed read does not decode the whole
+/// collection.
+class _CountingCodec<T> implements Codec<T> {
+  _CountingCodec(this._inner);
+  final Codec<T> _inner;
+  int decodes = 0;
+
+  @override
+  Map<String, dynamic> toMap(T value) => _inner.toMap(value);
+
+  @override
+  T fromMap(Map<String, dynamic> map) {
+    decodes++;
+    return _inner.fromMap(map);
+  }
+
+  @override
+  String idOf(T value) => _inner.idOf(value);
+}
+
+/// Wraps a [CrdtTable] and counts engine reads, so a test can assert that a
+/// query does not re-scan the table once per matched id.
+class _CountingTable implements CrdtTable {
+  _CountingTable(this._inner);
+  final CrdtTable _inner;
+  int liveFieldsCalls = 0;
+  int valueCalls = 0;
+
+  @override
+  Map<String, Object?> liveFields(String table, String prefix) {
+    liveFieldsCalls++;
+    return _inner.liveFields(table, prefix);
+  }
+
+  @override
+  Object? value(String table, String key) {
+    valueCalls++;
+    return _inner.value(table, key);
+  }
+
+  @override
+  Future<void> put(String table, String key, Object? value,
+          {bool isDeleted = false}) =>
+      _inner.put(table, key, value, isDeleted: isDeleted);
+
+  @override
+  CrdtChangeset changeset(String table, {String? sinceHlc}) =>
+      _inner.changeset(table, sinceHlc: sinceHlc);
+
+  @override
+  String maxHlc(String table) => _inner.maxHlc(table);
+
+  @override
+  Future<void> merge(CrdtChangeset changeset) => _inner.merge(changeset);
+
+  @override
+  Stream<void> watch(String table) => _inner.watch(table);
 }
 
 /// Multi-field model used to exercise field-granular merge strategies.
@@ -202,8 +263,8 @@ void main() {
         bDone.timeout(const Duration(seconds: 5)),
       ]);
 
-      expect(notesA.all.map((n) => n.id), containsAll(['na', 'nb']));
-      expect(notesB.all.map((n) => n.id), containsAll(['na', 'nb']));
+      expect(notesA.all().map((n) => n.id), containsAll(['na', 'nb']));
+      expect(notesB.all().map((n) => n.id), containsAll(['na', 'nb']));
     });
 
     test('delete propagates', () async {
@@ -239,7 +300,7 @@ void main() {
 
       await notesB.watch().where((l) => l.length == 2).first
           .timeout(const Duration(seconds: 5));
-      expect(notesB.all.map((n) => n.id), containsAll(['n1', 'n2']));
+      expect(notesB.all().map((n) => n.id), containsAll(['n1', 'n2']));
     });
   });
 
@@ -336,8 +397,8 @@ void main() {
       // The document is fully absent on both nodes — never a partial record.
       expect(cardsA.get('c1'), isNull);
       expect(cardsB.get('c1'), isNull);
-      expect(cardsA.all, isEmpty);
-      expect(cardsB.all, isEmpty);
+      expect(cardsA.all(), isEmpty);
+      expect(cardsB.all(), isEmpty);
     });
 
     test('shallow mode: a later edit revives a concurrently deleted document with all fields', () async {
@@ -1083,13 +1144,13 @@ void main() {
           'notes', passphrase: 'one two three four five six seven eight nine ten eleven twelve');
       final notes = db.collection<_Note>('notes', _Note.codec);
       await notes.ready;
-      expect(notes.length, equals(notes.all.length));
+      expect(notes.length, equals(notes.all().length));
       await notes.put(_Note(id: 'n1', text: 'a'));
-      expect(notes.length, equals(notes.all.length));
+      expect(notes.length, equals(notes.all().length));
       await notes.put(_Note(id: 'n2', text: 'b'));
-      expect(notes.length, equals(notes.all.length));
+      expect(notes.length, equals(notes.all().length));
       await notes.delete('n1');
-      expect(notes.length, equals(notes.all.length));
+      expect(notes.length, equals(notes.all().length));
       await c.close();
     });
 
@@ -1117,6 +1178,392 @@ void main() {
     });
   });
 
+  group('Collection pagination', () {
+    test('all(limit: 10) returns exactly 10 docs from 100', () async {
+      final store = _MemStore();
+      final col = Collection.create<_Note>('notes', _Note.codec, store);
+      await col.ready;
+
+      for (int i = 0; i < 100; i++) {
+        await col.put(_Note(id: 'n$i', text: 'text$i'));
+      }
+
+      expect(col.all(limit: 10), hasLength(10));
+      expect(col.all(limit: 10).map((n) => n.id), equals([
+        for (int i = 0; i < 10; i++) 'n$i',
+      ]));
+    });
+
+    test('all(offset: 95) returns the last 5 docs', () async {
+      final store = _MemStore();
+      final col = Collection.create<_Note>('notes', _Note.codec, store);
+      await col.ready;
+
+      for (int i = 0; i < 100; i++) {
+        await col.put(_Note(id: 'n$i', text: 'text$i'));
+      }
+
+      expect(col.all(offset: 95), hasLength(5));
+      expect(col.all(offset: 95).map((n) => n.id), equals([
+        for (int i = 95; i < 100; i++) 'n$i',
+      ]));
+    });
+
+    test('all(offset: 100) returns empty on a collection of 100', () async {
+      final store = _MemStore();
+      final col = Collection.create<_Note>('notes', _Note.codec, store);
+      await col.ready;
+
+      for (int i = 0; i < 100; i++) {
+        await col.put(_Note(id: 'n$i', text: 'text$i'));
+      }
+
+      expect(col.all(offset: 100), isEmpty);
+    });
+
+    test('all() with no args still returns everything', () async {
+      final store = _MemStore();
+      final col = Collection.create<_Note>('notes', _Note.codec, store);
+      await col.ready;
+
+      for (int i = 0; i < 100; i++) {
+        await col.put(_Note(id: 'n$i', text: 'text$i'));
+      }
+
+      expect(col.all(), hasLength(100));
+    });
+
+    test('where with limit stops after N matches', () async {
+      final store = _MemStore();
+      final col = Collection.create<_Note>('notes', _Note.codec, store);
+      await col.ready;
+
+      for (int i = 0; i < 100; i++) {
+        final text = i.isEven ? 'even' : 'odd';
+        await col.put(_Note(id: 'n$i', text: text));
+      }
+
+      final result = col.where((n) => n.text == 'even', limit: 3);
+      expect(result, hasLength(3));
+      expect(result.map((n) => n.id), equals(['n0', 'n2', 'n4']));
+    });
+
+    test('where with skip + limit returns correct page', () async {
+      final store = _MemStore();
+      final col = Collection.create<_Note>('notes', _Note.codec, store);
+      await col.ready;
+
+      for (int i = 0; i < 100; i++) {
+        final text = i.isEven ? 'even' : 'odd';
+        await col.put(_Note(id: 'n$i', text: text));
+      }
+
+      // Skip first 10 even docs, take 3.
+      final result = col.where((n) => n.text == 'even', offset: 10, limit: 3);
+      expect(result, hasLength(3));
+      expect(result.map((n) => n.id), equals(['n20', 'n22', 'n24']));
+    });
+
+    test('where with offset only does not crash', () async {
+      final store = _MemStore();
+      final col = Collection.create<_Note>('notes', _Note.codec, store);
+      await col.ready;
+
+      for (int i = 0; i < 10; i++) {
+        await col.put(_Note(id: 'n$i', text: i.isEven ? 'even' : 'odd'));
+      }
+
+      // offset without limit: skip first 3 even docs, return the rest.
+      final result =
+          col.where((n) => n.text == 'even', offset: 3).toList();
+      expect(result, hasLength(2));
+      expect(result.map((n) => n.id), equals(['n6', 'n8']));
+    });
+
+    test('where without pagination behaves like all().where', () async {
+      final store = _MemStore();
+      final col = Collection.create<_Note>('notes', _Note.codec, store);
+      await col.ready;
+
+      for (int i = 0; i < 10; i++) {
+        final text = i.isEven ? 'even' : 'odd';
+        await col.put(_Note(id: 'n$i', text: text));
+      }
+
+      expect(
+        col.where((n) => n.text == 'even').map((n) => n.id),
+        orderedEquals(col.all().where((n) => n.text == 'even').map((n) => n.id)),
+      );
+    });
+  });
+
+  group('Secondary indexes (4b)', () {
+    // Index granularity matches the merge strategy's flattened field paths.
+    // ShallowMergeStrategy exposes top-level fields (text, status, …);
+    // ObjectMergeStrategy only exposes '' (the whole doc), so these tests
+    // use ShallowMergeStrategy for per-field indexing.
+    final merge = const ShallowMergeStrategy();
+
+    test('findBy returns matching documents', () async {
+      final store = _MemStore();
+      final col = Collection.create<_Note>(
+        'notes', _Note.codec, store,
+        merge: merge,
+        indexedFields: ['text'],
+      );
+      await col.ready;
+
+      await col.put(_Note(id: 'a', text: 'done'));
+      await col.put(_Note(id: 'b', text: 'pending'));
+      await col.put(_Note(id: 'c', text: 'done'));
+
+      expect(col.findBy('text', 'done').map((n) => n.id),
+          unorderedEquals(['a', 'c']));
+      expect(col.findBy('text', 'pending').map((n) => n.id), equals(['b']));
+    });
+
+    test('findBy returns empty for unmatched value', () async {
+      final store = _MemStore();
+      final col = Collection.create<_Note>(
+        'notes', _Note.codec, store,
+        merge: merge,
+        indexedFields: ['text'],
+      );
+      await col.ready;
+
+      await col.put(_Note(id: 'a', text: 'done'));
+
+      expect(col.findBy('text', 'missing'), isEmpty);
+    });
+
+    test('findBy on undeclared field throws', () async {
+      final store = _MemStore();
+      final col = Collection.create<_Note>(
+        'notes', _Note.codec, store,
+        merge: merge,
+        indexedFields: ['text'],
+      );
+      await col.ready;
+
+      expect(
+        () => col.findBy('nonexistent', 'x'),
+        throwsArgumentError,
+      );
+    });
+
+    test('index survives put that changes an indexed field', () async {
+      final store = _MemStore();
+      final col = Collection.create<_Note>(
+        'notes', _Note.codec, store,
+        merge: merge,
+        indexedFields: ['text'],
+      );
+      await col.ready;
+
+      await col.put(_Note(id: 'a', text: 'pending'));
+      await col.put(_Note(id: 'a', text: 'done'));
+
+      expect(col.findBy('text', 'pending'), isEmpty);
+      expect(col.findBy('text', 'done').map((n) => n.id), equals(['a']));
+    });
+
+    test('index reflects delete', () async {
+      final store = _MemStore();
+      final col = Collection.create<_Note>(
+        'notes', _Note.codec, store,
+        merge: merge,
+        indexedFields: ['text'],
+      );
+      await col.ready;
+
+      await col.put(_Note(id: 'a', text: 'done'));
+      await col.delete('a');
+
+      expect(col.findBy('text', 'done'), isEmpty);
+    });
+
+    test('index reflects concurrent edit through mergeChangeset', () async {
+      final storeA = _MemStore();
+      final storeB = _MemStore();
+
+      // Node A creates a doc with status 'pending'.
+      final colA = Collection.create<_Note>(
+        'notes', _Note.codec, storeA,
+        merge: merge,
+        indexedFields: ['text'],
+      );
+      await colA.ready;
+      await colA.put(_Note(id: 'a', text: 'pending'));
+
+      // Node B receives the changeset and indexes it.
+      final colB = Collection.create<_Note>(
+        'notes', _Note.codec, storeB,
+        merge: merge,
+        indexedFields: ['text'],
+      );
+      await colB.ready;
+      await colB.mergeChangeset(colA.getChangeset());
+
+      expect(colB.findBy('text', 'pending').map((n) => n.id), equals(['a']));
+
+      // Node B edits the doc's text.
+      await colB.put(_Note(id: 'a', text: 'done'));
+
+      expect(colB.findBy('text', 'pending'), isEmpty);
+      expect(colB.findBy('text', 'done').map((n) => n.id), equals(['a']));
+    });
+
+    test('index is rebuilt on restore', () async {
+      final store = _MemStore();
+      var col = Collection.create<_Note>(
+        'notes', _Note.codec, store,
+        merge: merge,
+        indexedFields: ['text'],
+      );
+      await col.ready;
+
+      await col.put(_Note(id: 'a', text: 'done'));
+
+      // Simulate reopen.
+      col = Collection.create<_Note>(
+        'notes', _Note.codec, store,
+        merge: merge,
+        indexedFields: ['text'],
+      );
+      await col.ready;
+
+      expect(col.findBy('text', 'done').map((n) => n.id), equals(['a']));
+    });
+
+    test('findBy supports limit and offset', () async {
+      final store = _MemStore();
+      final col = Collection.create<_Note>(
+        'notes', _Note.codec, store,
+        merge: merge,
+        indexedFields: ['text'],
+      );
+      await col.ready;
+
+      for (int i = 0; i < 10; i++) {
+        await col.put(_Note(id: 'n$i', text: 'even'));
+      }
+
+      expect(col.findBy('text', 'even', limit: 3), hasLength(3));
+      expect(col.findBy('text', 'even', offset: 8), hasLength(2));
+      expect(col.findBy('text', 'even', offset: 10), isEmpty);
+    });
+
+    test('no-index collection works unchanged', () async {
+      final store = _MemStore();
+      final col = Collection.create<_Note>(
+        'notes', _Note.codec, store,
+        merge: merge,
+      );
+      await col.ready;
+
+      await col.put(_Note(id: 'a', text: 'hello'));
+      expect(col.get('a')?.text, equals('hello'));
+      expect(col.all(), hasLength(1));
+    });
+
+    test('declaring indexedFields with ObjectMergeStrategy throws', () {
+      // The default ObjectMergeStrategy flattens each document to a single
+      // record (key ''), so per-field index paths would never be populated.
+      // This must fail loudly at construction rather than silently returning
+      // empty results from findBy.
+      final store = _MemStore();
+      expect(
+        () => Collection.create<_Note>(
+          'notes', _Note.codec, store,
+          indexedFields: ['text'],
+        ),
+        throwsA(isA<AssertionError>()),
+      );
+    });
+  });
+
+  // The point of the feature: an indexed/paginated read must not decode the
+  // whole collection, and must not re-scan the engine once per matched id.
+  group('Query cost', () {
+    test('findBy decodes only matching documents, not the whole collection',
+        () async {
+      final store = _MemStore();
+      final codec = _CountingCodec(_Note.codec);
+      final col = Collection.create<_Note>(
+        'notes', codec, store,
+        merge: const ShallowMergeStrategy(),
+        indexedFields: ['text'],
+      );
+      await col.ready;
+
+      for (int i = 0; i < 100; i++) {
+        await col.put(_Note(id: 'n$i', text: i % 20 == 0 ? 'hit' : 'miss'));
+      }
+
+      codec.decodes = 0;
+      final hits = col.findBy('text', 'hit').toList();
+      expect(hits, hasLength(5));
+      // Only the 5 matches are decoded — not all 100. The old O(matches·n)
+      // implementation decoded one doc per match too, but via get(); the win
+      // here is over `where`, which would decode all 100.
+      expect(codec.decodes, equals(5));
+    });
+
+    test('findBy scans the engine once, not once per matched id', () async {
+      final store = _MemStore();
+      final table = _CountingTable(MapCrdtTable('notes'));
+      final col = Collection.create<_Note>(
+        'notes', _Note.codec, store,
+        merge: const ShallowMergeStrategy(),
+        indexedFields: ['text'],
+        table: table,
+      );
+      await col.ready;
+
+      for (int i = 0; i < 50; i++) {
+        await col.put(_Note(id: 'n$i', text: 'hit'));
+      }
+
+      table.liveFieldsCalls = 0;
+      final hits = col.findBy('text', 'hit').toList();
+      expect(hits, hasLength(50));
+      // Regression guard for the O(matches·n) bug: a single scan, not 50.
+      expect(table.liveFieldsCalls, equals(1));
+    });
+
+    test('all(limit: N) decodes only the page', () async {
+      final store = _MemStore();
+      final codec = _CountingCodec(_Note.codec);
+      final col = Collection.create<_Note>('notes', codec, store);
+      await col.ready;
+
+      for (int i = 0; i < 100; i++) {
+        await col.put(_Note(id: 'n$i', text: 'text$i'));
+      }
+
+      codec.decodes = 0;
+      expect(col.all(limit: 10), hasLength(10));
+      expect(codec.decodes, equals(10));
+    });
+
+    test('where(limit: N) stops decoding after N matches', () async {
+      final store = _MemStore();
+      final codec = _CountingCodec(_Note.codec);
+      final col = Collection.create<_Note>('notes', codec, store);
+      await col.ready;
+
+      // All documents match, so the generator must stop at exactly `limit`.
+      for (int i = 0; i < 100; i++) {
+        await col.put(_Note(id: 'n$i', text: 'same'));
+      }
+
+      codec.decodes = 0;
+      expect(col.where((n) => n.text == 'same', limit: 3).toList(),
+          hasLength(3));
+      expect(codec.decodes, equals(3));
+    });
+  });
+
   group('Inbound rate limiting', () {
     test('normal frame rate is not throttled', () async {
       final bus = InMemoryBus();
@@ -1134,7 +1581,7 @@ void main() {
 
       await colB.watch().where((l) => l.length == 2).first
           .timeout(const Duration(seconds: 5));
-      expect(colB.all, hasLength(2));
+      expect(colB.all(), hasLength(2));
 
       await nodeA.close();
       await nodeB.close();
@@ -1236,7 +1683,7 @@ void main() {
 
       // B (normal, no limit) gets all 20.
       await bDone.timeout(const Duration(seconds: 5));
-      expect(colB.all, hasLength(20));
+      expect(colB.all(), hasLength(20));
 
       // C (rate-limited) does NOT get all 20 within the rate window.
       await expectLater(
@@ -1292,7 +1739,7 @@ void main() {
         burstDone.timeout(const Duration(milliseconds: 300)),
         throwsA(isA<TimeoutException>()),
       );
-      final countBefore = colB.all.length;
+      final countBefore = colB.all().length;
       expect(countBefore, lessThan(10));
 
       // Let the rate window expire, then force sync from A.
@@ -1302,7 +1749,7 @@ void main() {
       // B now receives all 20.
       await colB.watch().where((l) => l.length == 20).first
           .timeout(const Duration(seconds: 5));
-      expect(colB.all, hasLength(20));
+      expect(colB.all(), hasLength(20));
 
       await nodeA.close();
       await nodeB.close();
@@ -1352,7 +1799,7 @@ void main() {
 
       // Confirm A does NOT have all 20.
       await Future<void>.delayed(const Duration(milliseconds: 100));
-      expect(colA.all.length, lessThan(20));
+      expect(colA.all().length, lessThan(20));
 
       // Let the rate window expire, then force sync from A.
       await Future<void>.delayed(const Duration(seconds: 2));
@@ -1361,9 +1808,9 @@ void main() {
       // A receives the missing docs via the Poke → Hello back exchange.
       await colA.watch().where((l) => l.length == 20).first
           .timeout(const Duration(seconds: 5));
-      expect(colA.all, hasLength(20));
+      expect(colA.all(), hasLength(20));
       // B has everything too.
-      expect(colB.all, hasLength(20));
+      expect(colB.all(), hasLength(20));
 
       await nodeA.close();
       await nodeB.close();
