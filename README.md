@@ -91,9 +91,15 @@ zensical serve   # http://localhost:8000
 
 ## Development
 
+The toolchain is pinned so `dart format` stays deterministic. Use Flutter
+**3.44.1** (Dart 3.12.1); with [fvm](https://fvm.app) installed, `fvm use` reads
+the version from [`.fvmrc`](.fvmrc). CI pins the same version in
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml); keep the two in sync.
+
 ```sh
 dart pub global activate melos
 melos bootstrap
+melos run format
 melos run analyze
 melos run test
 ```
