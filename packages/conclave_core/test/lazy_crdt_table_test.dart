@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:conclave_core/conclave_core.dart';
+// LazyCrdtTable is a dead sketch, not exported; imported straight from src for
+// its remaining internal test until the SQLite engine replaces it.
+import 'package:conclave_core/src/lazy_crdt_table.dart';
 import 'package:crdt/crdt.dart' show Hlc;
 import 'package:test/test.dart';
 

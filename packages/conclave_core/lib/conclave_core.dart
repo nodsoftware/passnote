@@ -12,7 +12,6 @@ export 'src/merge_strategies.dart';
 export 'src/map_crdt_table.dart';
 export 'src/ports/blob_store.dart';
 export 'src/ports/cipher.dart';
-export 'src/lazy_crdt_table.dart';
 export 'src/ports/crdt_table.dart';
 export 'src/ports/key_store.dart';
 export 'src/ports/merge_strategy.dart';

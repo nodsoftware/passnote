@@ -1,3 +1,5 @@
+// Dead sketch for a lazy KV engine. Not exported, not covered by semver.
+// The v1.0 engine is SQLite-backed; this file is deleted when that lands.
 import 'dart:async';
 import 'dart:convert';
 
