@@ -3,8 +3,8 @@ version: 0.1.0
 description: >-
   Pure-Dart core for Conclave: port interfaces, CRDT engine, encrypted-store
   decorator, typed collections, and in-memory transport for testing.
-repository: https://github.com/nodsoftware/conclave
 homepage: https://github.com/nodsoftware/conclave
+repository: https://github.com/nodsoftware/conclave
 
 environment:
   sdk: ^3.6.0

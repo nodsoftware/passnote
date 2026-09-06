@@ -1,6 +1,6 @@
 [project]
 site_name = "Conclave"
-site_url = "https://wouterd.github.io/conclave/"
+site_url = "https://nodsoftware.github.io/conclave/"
 site_description = """
 End-to-end encrypted, server-less, local-first CRDT sync engine for Dart and \
 Flutter."""
@@ -8,8 +8,8 @@ site_author = "Conclave contributors"
 copyright = "&copy; 2026 Conclave contributors"
 docs_dir = "docs"
 site_dir = "site"
-repo_url = "https://github.com/wouterd/conclave"
-repo_name = "wouterd/conclave"
+repo_url = "https://github.com/nodsoftware/conclave"
+repo_name = "nodsoftware/conclave"
 
 nav = [
   { "Home" = "index.md" },
