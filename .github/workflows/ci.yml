@@ -18,7 +18,8 @@ jobs:
           flutter-version: 3.44.1
           channel: stable
 
-      - run: dart pub global activate melos
+      # Pinned melos (config lives in pubspec.yaml; keep in sync with README).
+      - run: dart pub global activate melos 7.8.2
 
       - run: melos bootstrap
 
@@ -26,4 +27,6 @@ jobs:
 
       - run: melos run analyze
 
+      # Runs test:dart, then test:flutter, then a check that every package with
+      # a test/ dir was picked up by one of them.
       - run: melos run test

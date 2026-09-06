@@ -3,7 +3,7 @@ publish_to: none
 environment:
   sdk: ^3.6.0
 dev_dependencies:
-  melos: ^7.0.0
+  melos: ^7.8.0
 workspace:
   - packages/conclave_core
   - packages/conclave_crypto
@@ -14,3 +14,47 @@ workspace:
   - packages/conclave
   - examples/shopping_list_provider
   - examples/shopping_list_bloc
+
+# Melos config lives here (not melos.yaml): melos 7 with a pub `workspace:`
+# reads its config from pubspec.yaml.
+melos:
+  command:
+    bootstrap:
+      usePubWorkspace: true
+
+  scripts:
+    analyze:
+      run: dart analyze --fatal-infos
+      exec:
+        concurrency: 4
+
+    format:
+      run: dart format --output=none --set-exit-if-changed .
+
+    # Runs each package's tests with the runner it needs (Flutter packages
+    # cannot be tested with `dart test`), then checks nothing slipped through.
+    test:
+      steps:
+        - test:dart
+        - test:flutter
+        - test:coverage-check
+
+    test:dart:
+      run: dart test
+      exec:
+        concurrency: 2
+      packageFilters:
+        dirExists: test
+        flutter: false
+
+    test:flutter:
+      run: flutter test
+      exec:
+        # Flutter holds a global startup lock, so its packages run one at a time.
+        concurrency: 1
+      packageFilters:
+        dirExists: test
+        flutter: true
+
+    test:coverage-check:
+      run: bash tool/check-test-coverage.sh

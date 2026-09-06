@@ -96,12 +96,15 @@ The toolchain is pinned so `dart format` stays deterministic. Use Flutter
 the version from [`.fvmrc`](.fvmrc). CI pins the same version in
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml); keep the two in sync.
 
+Melos config lives in [`pubspec.yaml`](pubspec.yaml) under `melos:`, and CI runs
+melos **7.8.2**.
+
 ```sh
-dart pub global activate melos
+dart pub global activate melos 7.8.2
 melos bootstrap
 melos run format
 melos run analyze
-melos run test
+melos run test   # test:dart, then test:flutter, then a coverage check
 ```
 
 The LAN transport's socket-bound integration test is excluded from the default
