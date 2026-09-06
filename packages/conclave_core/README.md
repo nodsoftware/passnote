@@ -1,6 +1,6 @@
 # conclave_core
 
-The pure-Dart core of [Conclave](https://github.com/wouterd/conclave) — the sync
+The pure-Dart core of [Conclave](https://github.com/nodsoftware/conclave) — the sync
 engine, CRDT-backed collections, port interfaces, and the wire protocol. No
 Flutter dependency.
 
@@ -54,5 +54,5 @@ Backends implementing the ports are published separately:
 
 ## Documentation
 
-See the [Conclave documentation](https://wouterd.github.io/conclave/), in
-particular [Sync & CRDTs](https://wouterd.github.io/conclave/concepts/sync-and-crdt/).
+See the [Conclave documentation](https://nodsoftware.github.io/conclave/), in
+particular [Sync & CRDTs](https://nodsoftware.github.io/conclave/concepts/sync-and-crdt/).

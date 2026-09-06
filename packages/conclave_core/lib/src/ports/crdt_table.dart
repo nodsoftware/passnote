@@ -34,10 +34,50 @@ import 'package:crdt/crdt.dart';
 ///   there are no listeners is acceptable, but no event must be emitted after
 ///   [merge] or [put] returns without the record being durably stored.
 ///
+/// ## Persistence
+///
+/// Set [isPersistent] to `true` in implementations that own their own
+/// durability (e.g. a disk-backed engine that writes synchronously on every
+/// mutation). [Collection] skips its own `_restore` and `_persistDocuments`
+/// steps for persistent tables, delegating lifecycle to [init] and [compact]
+/// instead.
+///
+/// ## Async reads
+///
+/// Read methods ([value], [liveFields], [changeset]) are async so a
+/// disk-backed engine can load data on demand without keeping every value in
+/// memory. [liveKeys] is sync and returns only metadata (key + tombstone flag),
+/// enabling operations such as [Collection.length] without I/O.
+///
 /// The default [MapCrdtTable] satisfies all of the above by delegating to the
 /// `crdt` package's `MapCrdt`. Swap it for a disk-backed implementation to
 /// bound memory use on large or long-lived collections.
 abstract interface class CrdtTable {
+  /// Whether this table owns its own durability.
+  ///
+  /// When true, [Collection] will not call [init] during startup (and will
+  /// skip its internal `_persistDocuments` step after mutations).
+  bool get isPersistent => false;
+
+  /// Initializes the table from storage (called by [Collection] during
+  /// startup when [isPersistent] is true).
+  ///
+  /// The default implementation is a no-op. Override to load an index, warm a
+  /// cache, or set up internal state from the backing store. Must be called
+  /// exactly once before any other method.
+  Future<void> init() async {}
+
+  /// Permanently removes tombstoned records whose wall-clock time is older
+  /// than [horizon] and returns the number of reclaimed records.
+  ///
+  /// Defaults to throwing [UnsupportedError]. Override for engines that
+  /// support in-place compaction.
+  Future<int> compact(String table, {required Duration horizon}) async =>
+      throw UnsupportedError(
+        '$runtimeType does not support in-place compaction; '
+        'use Collection.compact for a rebuild-based approach.',
+      );
+
   /// Writes or tombstones the record identified by [table]/[key].
   ///
   /// Setting [isDeleted] to `true` tombstones the record (soft-delete); the
@@ -52,23 +92,31 @@ abstract interface class CrdtTable {
 
   /// Returns the live value for [key] in [table], or `null` if absent or
   /// tombstoned.
-  Object? value(String table, String key);
+  Future<Object?> value(String table, String key);
 
   /// Returns all live (non-tombstoned) records in [table] whose key starts
   /// with [prefix], as a flat map of key → value.
   ///
   /// Pass an empty prefix to scan the full table (used by [Collection.all]
-  /// and [Collection.length]). Pass a document-id prefix (e.g.
+  /// and [Collection.all]). Pass a document-id prefix (e.g.
   /// `"$id\x1F"`) to narrow the read to a single document's field records —
   /// a disk-backed adapter can use this to avoid loading the whole table.
-  Map<String, Object?> liveFields(String table, String prefix);
+  Future<Map<String, Object?>> liveFields(String table, String prefix);
+
+  /// All live (non-tombstoned) keys in [table] whose key starts with
+  /// [prefix].
+  ///
+  /// Like [liveFields] but without values — returns only metadata so
+  /// operations such as [Collection.length] can avoid I/O. Must be safe to
+  /// call synchronously after [init].
+  Set<String> liveKeys(String table, String prefix);
 
   /// Returns records in [table] in [CrdtChangeset] format.
   ///
   /// When [sinceHlc] is non-null, only records modified after that HLC string
   /// are returned. Pass `null` (the default) for the full table, including
   /// tombstones — required for persistence and sync.
-  CrdtChangeset changeset(String table, {String? sinceHlc});
+  Future<CrdtChangeset> changeset(String table, {String? sinceHlc});
 
   /// The highest HLC seen in [table] as a string, or the empty string when
   /// the table is empty.

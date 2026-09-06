@@ -23,8 +23,7 @@ class ShoppingCubit extends Cubit<List<Item>> {
 
   Future<void> add(Item item) => _items.put(item);
 
-  Future<void> toggle(Item item) =>
-      _items.put(item.copyWith(done: !item.done));
+  Future<void> toggle(Item item) => _items.put(item.copyWith(done: !item.done));
 
   Future<void> remove(String id) => _items.delete(id);
 

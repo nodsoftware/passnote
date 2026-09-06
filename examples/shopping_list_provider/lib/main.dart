@@ -107,9 +107,8 @@ class _ShoppingPageState extends State<_ShoppingPage> {
                         title: Text(
                           item.name,
                           style: TextStyle(
-                            decoration: item.done
-                                ? TextDecoration.lineThrough
-                                : null,
+                            decoration:
+                                item.done ? TextDecoration.lineThrough : null,
                           ),
                         ),
                         value: item.done,

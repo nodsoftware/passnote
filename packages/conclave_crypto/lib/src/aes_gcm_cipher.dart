@@ -34,6 +34,12 @@ class AesGcmCipher implements Cipher {
 
   @override
   Future<List<int>> encrypt(List<int> plaintext) async {
+    // AES-GCM with random 96-bit nonces has a safe ceiling of ~2^32 messages per
+    // key before nonce-collision probability becomes non-negligible (birthday
+    // bound). Irrelevant for this workload (a household/LAN dataset will never
+    // approach billions of frames under one key), but documented for the
+    // security-conscious. If a deployment could exceed it, rotate the key
+    // (Conclave.rotatePassphrase) or switch to a counter/XChaCha nonce scheme.
     final nonce = _algorithm.newNonce();
     final box = await _algorithm.encrypt(
       plaintext,

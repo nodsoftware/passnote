@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:conclave_core/conclave_core.dart';
-import 'package:crdt/crdt.dart' show CrdtChangeset;
+import 'package:crdt/crdt.dart' show CrdtChangeset, Hlc;
 import 'package:test/test.dart';
 
 // ---------------------------------------------------------------------------
@@ -110,13 +110,13 @@ class _CountingTable implements CrdtTable {
   int valueCalls = 0;
 
   @override
-  Map<String, Object?> liveFields(String table, String prefix) {
+  Future<Map<String, Object?>> liveFields(String table, String prefix) {
     liveFieldsCalls++;
     return _inner.liveFields(table, prefix);
   }
 
   @override
-  Object? value(String table, String key) {
+  Future<Object?> value(String table, String key) {
     valueCalls++;
     return _inner.value(table, key);
   }
@@ -127,7 +127,7 @@ class _CountingTable implements CrdtTable {
       _inner.put(table, key, value, isDeleted: isDeleted);
 
   @override
-  CrdtChangeset changeset(String table, {String? sinceHlc}) =>
+  Future<CrdtChangeset> changeset(String table, {String? sinceHlc}) =>
       _inner.changeset(table, sinceHlc: sinceHlc);
 
   @override
@@ -137,7 +137,21 @@ class _CountingTable implements CrdtTable {
   Future<void> merge(CrdtChangeset changeset) => _inner.merge(changeset);
 
   @override
+  bool get isPersistent => false;
+
+  @override
+  Future<void> init() async {}
+
+  @override
+  Future<int> compact(String table, {required Duration horizon}) async =>
+      throw UnsupportedError('not used in tests');
+
+  @override
   Stream<void> watch(String table) => _inner.watch(table);
+
+  @override
+  Set<String> liveKeys(String table, String prefix) =>
+      _inner.liveKeys(table, prefix);
 }
 
 /// Multi-field model used to exercise field-granular merge strategies.
@@ -155,8 +169,8 @@ class _Card {
     toMap: (c) => {'id': c.id, 'title': c.title, 'body': c.body},
     fromMap: (m) => _Card(
       id: m['id'] as String,
-      title: m['title'] as String,
-      body: m['body'] as String,
+      title: (m['title'] ?? '') as String,
+      body: (m['body'] ?? '') as String,
     ),
     idOf: (c) => c.id,
   );
@@ -169,12 +183,14 @@ Future<Conclave> _openConclave(InMemoryBus bus, {String appId = 'test'}) =>
       store: (_) => _MemStore(),
       keyStore: _MemKeyStore(),
       transport: InMemoryTransport(bus),
-      deriveKey: (passphrase, salt) async =>
-          List<int>.generate(32, (i) => passphrase.codeUnitAt(i % passphrase.length) ^ i),
-      roomTag: (key) => key.take(8).map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
+      deriveKey: (passphrase, salt) async => List<int>.generate(
+          32, (i) => passphrase.codeUnitAt(i % passphrase.length) ^ i),
+      roomTag: (key) =>
+          key.take(8).map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
       cipher: _XorCipher.new,
       mnemonicGenerator: (words) => List.generate(words, (i) => 'word$i'),
       idMaskerFactory: (key) => (id) => id,
+      validateMnemonic: (_) => true,
     );
 
 /// Builds a [Conclave] whose stores persist across reopen calls, keyed by
@@ -198,12 +214,13 @@ Future<Conclave> _openPersistentConclave(
       cipher: _XorCipher.new,
       mnemonicGenerator: (words) => List.generate(words, (i) => 'word$i'),
       idMaskerFactory: (key) => (id) => id,
+      validateMnemonic: (_) => true,
     );
 
 /// Derives a 32-byte test key from [passphrase] (mirrors the `deriveKey`
 /// injected into `_openPersistentConclave`).
 List<int> _xorDerive(String passphrase) => List<int>.generate(
-      32, (i) => passphrase.codeUnitAt(i % passphrase.length) ^ i);
+    32, (i) => passphrase.codeUnitAt(i % passphrase.length) ^ i);
 
 // ---------------------------------------------------------------------------
 
@@ -225,7 +242,8 @@ void main() {
     });
 
     test('put on A converges to B', () async {
-      const passphrase = 'one two three four five six seven eight nine ten eleven twelve';
+      const passphrase =
+          'one two three four five six seven eight nine ten eleven twelve';
       final dbA = await nodeA.openDatabase('notes', passphrase: passphrase);
       final dbB = await nodeB.openDatabase('notes', passphrase: passphrase);
 
@@ -243,7 +261,8 @@ void main() {
     });
 
     test('concurrent edits both survive on both nodes', () async {
-      const passphrase = 'word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11';
+      const passphrase =
+          'word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11';
       final dbA = await nodeA.openDatabase('notes', passphrase: passphrase);
       final dbB = await nodeB.openDatabase('notes', passphrase: passphrase);
 
@@ -263,12 +282,13 @@ void main() {
         bDone.timeout(const Duration(seconds: 5)),
       ]);
 
-      expect(notesA.all().map((n) => n.id), containsAll(['na', 'nb']));
-      expect(notesB.all().map((n) => n.id), containsAll(['na', 'nb']));
+      expect((await notesA.all()).map((n) => n.id), containsAll(['na', 'nb']));
+      expect((await notesB.all()).map((n) => n.id), containsAll(['na', 'nb']));
     });
 
     test('delete propagates', () async {
-      const passphrase = 'word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11';
+      const passphrase =
+          'word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11';
       final dbA = await nodeA.openDatabase('notes', passphrase: passphrase);
       final dbB = await nodeB.openDatabase('notes', passphrase: passphrase);
 
@@ -276,14 +296,20 @@ void main() {
       final notesB = dbB.collection<_Note>('notes', _Note.codec);
 
       await notesA.put(_Note(id: 'n1', text: 'To delete'));
-      await notesB.watch().where((l) => l.isNotEmpty).first
+      await notesB
+          .watch()
+          .where((l) => l.isNotEmpty)
+          .first
           .timeout(const Duration(seconds: 5));
 
       await notesA.delete('n1');
-      await notesB.watch().where((l) => l.isEmpty).first
+      await notesB
+          .watch()
+          .where((l) => l.isEmpty)
+          .first
           .timeout(const Duration(seconds: 5));
 
-      expect(notesB.get('n1'), isNull);
+      expect(await notesB.get('n1'), isNull);
     });
 
     test('successive local writes both propagate (delta watermark)', () async {
@@ -298,9 +324,12 @@ void main() {
       await notesA.put(_Note(id: 'n1', text: 'first'));
       await notesA.put(_Note(id: 'n2', text: 'second'));
 
-      await notesB.watch().where((l) => l.length == 2).first
+      await notesB
+          .watch()
+          .where((l) => l.length == 2)
+          .first
           .timeout(const Duration(seconds: 5));
-      expect(notesB.all().map((n) => n.id), containsAll(['n1', 'n2']));
+      expect((await notesB.all()).map((n) => n.id), containsAll(['n1', 'n2']));
     });
   });
 
@@ -321,7 +350,8 @@ void main() {
     });
 
     test('object mode loses one of two concurrent field edits', () async {
-      const passphrase = 'word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11';
+      const passphrase =
+          'word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11';
       final dbA = await nodeA.openDatabase('cards', passphrase: passphrase);
       final dbB = await nodeB.openDatabase('cards', passphrase: passphrase);
 
@@ -330,18 +360,22 @@ void main() {
 
       // Seed a shared card and let both nodes observe it.
       await cardsA.put(_Card(id: 'c1', title: 'Title', body: 'Body'));
-      await cardsB.watch().where((l) => l.isNotEmpty).first
+      await cardsB
+          .watch()
+          .where((l) => l.isNotEmpty)
+          .first
           .timeout(const Duration(seconds: 5));
 
       // Concurrent edits to DIFFERENT fields of the same document.
-      await cardsA.put(cardsA.get('c1')!.copyWith(title: 'Edited by A'));
-      await cardsB.put(cardsB.get('c1')!.copyWith(body: 'Edited by B'));
+      await cardsA
+          .put((await cardsA.get('c1'))!.copyWith(title: 'Edited by A'));
+      await cardsB.put((await cardsB.get('c1'))!.copyWith(body: 'Edited by B'));
 
       // Let the two writes propagate and converge.
       await Future<void>.delayed(const Duration(milliseconds: 200));
 
-      final a = cardsA.get('c1')!;
-      final b = cardsB.get('c1')!;
+      final a = (await cardsA.get('c1'))!;
+      final b = (await cardsB.get('c1'))!;
       // Both nodes converge to the SAME whole-document winner...
       expect(a.title, equals(b.title));
       expect(a.body, equals(b.body));
@@ -351,7 +385,8 @@ void main() {
     });
 
     test('shallow mode keeps concurrent edits to different fields', () async {
-      const passphrase = 'word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11';
+      const passphrase =
+          'word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11';
       final dbA = await nodeA.openDatabase('cards', passphrase: passphrase);
       final dbB = await nodeB.openDatabase('cards', passphrase: passphrase);
 
@@ -360,24 +395,30 @@ void main() {
       final cardsB = dbB.collection<_Card>('cards', _Card.codec, merge: merge);
 
       await cardsA.put(_Card(id: 'c1', title: 'Title', body: 'Body'));
-      await cardsB.watch().where((l) => l.isNotEmpty).first
+      await cardsB
+          .watch()
+          .where((l) => l.isNotEmpty)
+          .first
           .timeout(const Duration(seconds: 5));
 
-      await cardsA.put(cardsA.get('c1')!.copyWith(title: 'Edited by A'));
-      await cardsB.put(cardsB.get('c1')!.copyWith(body: 'Edited by B'));
+      await cardsA
+          .put((await cardsA.get('c1'))!.copyWith(title: 'Edited by A'));
+      await cardsB.put((await cardsB.get('c1'))!.copyWith(body: 'Edited by B'));
 
       await Future<void>.delayed(const Duration(milliseconds: 200));
 
       // Both field edits survive on both nodes.
       for (final cards in [cardsA, cardsB]) {
-        final c = cards.get('c1')!;
+        final c = (await cards.get('c1'))!;
         expect(c.title, equals('Edited by A'));
         expect(c.body, equals('Edited by B'));
       }
     });
 
-    test('shallow mode keeps a deleted document fully gone, not partial', () async {
-      const passphrase = 'word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11';
+    test('shallow mode keeps a deleted document fully gone, not partial',
+        () async {
+      const passphrase =
+          'word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11';
       final dbA = await nodeA.openDatabase('cards', passphrase: passphrase);
       final dbB = await nodeB.openDatabase('cards', passphrase: passphrase);
 
@@ -386,23 +427,32 @@ void main() {
       final cardsB = dbB.collection<_Card>('cards', _Card.codec, merge: merge);
 
       await cardsA.put(_Card(id: 'c1', title: 'Title', body: 'Body'));
-      await cardsB.watch().where((l) => l.isNotEmpty).first
+      await cardsB
+          .watch()
+          .where((l) => l.isNotEmpty)
+          .first
           .timeout(const Duration(seconds: 5));
 
       // Delete on A wins the existence register over B's later non-edit.
       await cardsA.delete('c1');
-      await cardsB.watch().where((l) => l.isEmpty).first
+      await cardsB
+          .watch()
+          .where((l) => l.isEmpty)
+          .first
           .timeout(const Duration(seconds: 5));
 
       // The document is fully absent on both nodes — never a partial record.
-      expect(cardsA.get('c1'), isNull);
-      expect(cardsB.get('c1'), isNull);
-      expect(cardsA.all(), isEmpty);
-      expect(cardsB.all(), isEmpty);
+      expect(await cardsA.get('c1'), isNull);
+      expect(await cardsB.get('c1'), isNull);
+      expect(await cardsA.all(), isEmpty);
+      expect(await cardsB.all(), isEmpty);
     });
 
-    test('shallow mode: a later edit revives a concurrently deleted document with all fields', () async {
-      const passphrase = 'word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11';
+    test(
+        'shallow mode: a later edit revives a concurrently deleted document with all fields',
+        () async {
+      const passphrase =
+          'word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11';
       final dbA = await nodeA.openDatabase('cards', passphrase: passphrase);
       final dbB = await nodeB.openDatabase('cards', passphrase: passphrase);
 
@@ -411,19 +461,22 @@ void main() {
       final cardsB = dbB.collection<_Card>('cards', _Card.codec, merge: merge);
 
       await cardsA.put(_Card(id: 'c1', title: 'Title', body: 'Body'));
-      await cardsB.watch().where((l) => l.isNotEmpty).first
+      await cardsB
+          .watch()
+          .where((l) => l.isNotEmpty)
+          .first
           .timeout(const Duration(seconds: 5));
 
       // A deletes; B then edits a single field. B's edit refreshes the
       // existence register with a higher HLC, so the document stays alive.
       await cardsA.delete('c1');
-      await cardsB.put(cardsB.get('c1')!.copyWith(title: 'Revived'));
+      await cardsB.put((await cardsB.get('c1'))!.copyWith(title: 'Revived'));
 
       await Future<void>.delayed(const Duration(milliseconds: 200));
 
       // Both converge to a complete document — never one missing `body`.
       for (final cards in [cardsA, cardsB]) {
-        final c = cards.get('c1');
+        final c = await cards.get('c1');
         expect(c, isNotNull);
         expect(c!.title, equals('Revived'));
         expect(c.body, equals('Body'));
@@ -437,12 +490,14 @@ void main() {
       final nodeA = await _openConclave(bus);
       final nodeB = await _openConclave(bus);
 
-      const ppAlpha = 'alpha one two three four five six seven eight nine ten eleven';
-      const ppBeta  = 'beta  one two three four five six seven eight nine ten eleven';
+      const ppAlpha =
+          'alpha one two three four five six seven eight nine ten eleven';
+      const ppBeta =
+          'beta  one two three four five six seven eight nine ten eleven';
 
       final dbAlphaA = await nodeA.openDatabase('alpha', passphrase: ppAlpha);
-      final dbBetaA  = await nodeA.openDatabase('beta',  passphrase: ppBeta);
-      final dbBetaB  = await nodeB.openDatabase('beta',  passphrase: ppBeta);
+      final dbBetaA = await nodeA.openDatabase('beta', passphrase: ppBeta);
+      final dbBetaB = await nodeB.openDatabase('beta', passphrase: ppBeta);
 
       final notesAlpha = dbAlphaA.collection<_Note>('notes', _Note.codec);
       final notesBetaA = dbBetaA.collection<_Note>('notes', _Note.codec);
@@ -452,11 +507,14 @@ void main() {
       await notesBetaA.put(_Note(id: 'shared', text: 'Beta'));
 
       // Beta/B should see the Beta note, never the Alpha note.
-      await notesBetaB.watch().where((l) => l.isNotEmpty).first
+      await notesBetaB
+          .watch()
+          .where((l) => l.isNotEmpty)
+          .first
           .timeout(const Duration(seconds: 5));
 
-      expect(notesBetaB.get('shared'), isNotNull);
-      expect(notesBetaB.get('secret'), isNull);
+      expect(await notesBetaB.get('shared'), isNotNull);
+      expect(await notesBetaB.get('secret'), isNull);
 
       await nodeA.close();
       await nodeB.close();
@@ -487,6 +545,7 @@ void main() {
         cipher: _XorCipher.new,
         mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
         idMaskerFactory: (key) => (id) => id,
+        validateMnemonic: (_) => true,
       );
       expect(c.generatePassphrase(), hasLength(12));
       await c.close();
@@ -505,7 +564,8 @@ void main() {
       // First open writes data with the good key.
       var c = await _openPersistentConclave(bus, stores, keyStore);
       var db = await c.openDatabase('notes', passphrase: good);
-      await db.collection<_Note>('notes', _Note.codec)
+      await db
+          .collection<_Note>('notes', _Note.codec)
           .put(_Note(id: 'n1', text: 'secret'));
       await c.close(); // keeps the key
 
@@ -519,9 +579,12 @@ void main() {
       // Reopen with the CORRECT passphrase still works and sees the data.
       db = await c.openDatabase('notes', passphrase: good);
       final notes = db.collection<_Note>('notes', _Note.codec);
-      await notes.watch().where((l) => l.isNotEmpty).first
+      await notes
+          .watch()
+          .where((l) => l.isNotEmpty)
+          .first
           .timeout(const Duration(seconds: 5));
-      expect(notes.get('n1')?.text, equals('secret'));
+      expect((await notes.get('n1'))?.text, equals('secret'));
       await c.close();
     });
 
@@ -533,16 +596,20 @@ void main() {
 
       var c = await _openPersistentConclave(bus, stores, keyStore);
       var db = await c.openDatabase('notes', passphrase: pp);
-      await db.collection<_Note>('notes', _Note.codec)
+      await db
+          .collection<_Note>('notes', _Note.codec)
           .put(_Note(id: 'n1', text: 'hello'));
       await c.close();
 
       c = await _openPersistentConclave(bus, stores, keyStore);
       db = await c.reopenDatabase('notes'); // no passphrase
       final notes = db.collection<_Note>('notes', _Note.codec);
-      await notes.watch().where((l) => l.isNotEmpty).first
+      await notes
+          .watch()
+          .where((l) => l.isNotEmpty)
+          .first
           .timeout(const Duration(seconds: 5));
-      expect(notes.get('n1')?.text, equals('hello'));
+      expect((await notes.get('n1'))?.text, equals('hello'));
       await c.close();
     });
 
@@ -571,6 +638,121 @@ void main() {
       expect(await keyStore.getKey('test/notes'), isNull);
 
       await expectLater(c.reopenDatabase('notes'), throwsStateError);
+      await c.close();
+    });
+  });
+
+  group('Passphrase strictness', () {
+    test('reject policy throws WeakPassphraseException for weak passphrase',
+        () async {
+      final bus = InMemoryBus();
+      final c = await Conclave.open(
+        config: ConclaveConfig(
+          appId: 'strict',
+          salt: 'strict:v1',
+          passphrasePolicy:
+              const PassphrasePolicy(strictness: PassphraseStrictness.reject),
+        ),
+        store: (_) => _MemStore(),
+        keyStore: _MemKeyStore(),
+        transport: InMemoryTransport(bus),
+        deriveKey: (p, s) async =>
+            List<int>.generate(32, (i) => p.codeUnitAt(i % p.length) ^ i),
+        roomTag: (_) => 'room',
+        cipher: _XorCipher.new,
+        mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
+        idMaskerFactory: (key) => (id) => id,
+        validateMnemonic: (_) => false,
+      );
+      await expectLater(
+        c.openDatabase('notes', passphrase: 'password'),
+        throwsA(isA<WeakPassphraseException>()),
+      );
+      await c.close();
+    });
+
+    test('reject policy accepts a valid mnemonic', () async {
+      final bus = InMemoryBus();
+      final keyStore = _MemKeyStore();
+      final c = await Conclave.open(
+        config: ConclaveConfig(
+          appId: 'strict',
+          salt: 'strict:v1',
+          passphrasePolicy:
+              const PassphrasePolicy(strictness: PassphraseStrictness.reject),
+        ),
+        store: (_) => _MemStore(),
+        keyStore: keyStore,
+        transport: InMemoryTransport(bus),
+        deriveKey: (p, s) async =>
+            List<int>.generate(32, (i) => p.codeUnitAt(i % p.length) ^ i),
+        roomTag: (_) => 'room',
+        cipher: _XorCipher.new,
+        mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
+        idMaskerFactory: (key) => (id) => id,
+        validateMnemonic: (_) => true,
+      );
+      const mnemonic =
+          'one two three four five six seven eight nine ten eleven twelve';
+      await c.openDatabase('notes', passphrase: mnemonic);
+      expect(await keyStore.getKey('strict/notes'), isNotNull);
+      await c.close();
+    });
+
+    test('warn policy (default) accepts weak passphrase (back-compat)',
+        () async {
+      final bus = InMemoryBus();
+      final keyStore = _MemKeyStore();
+      final c = await Conclave.open(
+        config: ConclaveConfig(
+          appId: 'lax',
+          salt: 'lax:v1',
+        ),
+        store: (_) => _MemStore(),
+        keyStore: keyStore,
+        transport: InMemoryTransport(bus),
+        deriveKey: (p, s) async =>
+            List<int>.generate(32, (i) => p.codeUnitAt(i % p.length) ^ i),
+        roomTag: (_) => 'room',
+        cipher: _XorCipher.new,
+        mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
+        idMaskerFactory: (key) => (id) => id,
+        validateMnemonic: (_) => false,
+      );
+      await c.openDatabase('notes', passphrase: 'password');
+      expect(await keyStore.getKey('lax/notes'), isNotNull);
+      await c.close();
+    });
+
+    test(
+        'WeakPassphraseException is thrown before any key is written to KeyStore',
+        () async {
+      final bus = InMemoryBus();
+      final keyStore = _MemKeyStore();
+      final c = await Conclave.open(
+        config: ConclaveConfig(
+          appId: 'strict',
+          salt: 'strict:v1',
+          passphrasePolicy:
+              const PassphrasePolicy(strictness: PassphraseStrictness.reject),
+        ),
+        store: (_) => _MemStore(),
+        keyStore: keyStore,
+        transport: InMemoryTransport(bus),
+        deriveKey: (p, s) async =>
+            List<int>.generate(32, (i) => p.codeUnitAt(i % p.length) ^ i),
+        roomTag: (_) => 'room',
+        cipher: _XorCipher.new,
+        mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
+        idMaskerFactory: (key) => (id) => id,
+        validateMnemonic: (_) => false,
+      );
+      await expectLater(
+        c.openDatabase('notes', passphrase: 'weak'),
+        throwsA(isA<WeakPassphraseException>()),
+      );
+      // No key should have been stored.
+      expect(await keyStore.getKey('strict/notes'), isNull);
       await c.close();
     });
   });
@@ -605,8 +787,8 @@ void main() {
         db = await c.openDatabase('notes', passphrase: pp2);
         final col2 = db.collection('items', _Note.codec);
         await col2.ready;
-        expect(col2.get('k1')?.text, 'v1');
-        expect(col2.get('k2')?.text, 'v2');
+        expect((await col2.get('k1'))?.text, 'v1');
+        expect((await col2.get('k2'))?.text, 'v2');
         await db.close();
       } finally {
         await c.close();
@@ -639,7 +821,7 @@ void main() {
         db = await c.reopenDatabase('notes');
         final col2 = db.collection('items', _Note.codec);
         await col2.ready;
-        expect(col2.get('k1')?.text, 'v1');
+        expect((await col2.get('k1'))?.text, 'v1');
         await db.close();
       } finally {
         await c.close();
@@ -655,7 +837,7 @@ void main() {
 
       final c = await _openPersistentConclave(bus, stores, keyStore);
       try {
-        var db = await c.openDatabase('notes', passphrase: pp);
+        final db = await c.openDatabase('notes', passphrase: pp);
         final col = db.collection('items', _Note.codec);
         await col.put(_Note(id: 'k1', text: 'v1'));
         await db.close();
@@ -665,8 +847,7 @@ void main() {
             'notes',
             oldPassphrase:
                 'wrong wrong wrong wrong wrong wrong wrong wrong wrong wrong wrong wrong',
-            newPassphrase:
-                'new new new new new new new new new new new new',
+            newPassphrase: 'new new new new new new new new new new new new',
           ),
           throwsA(isA<WrongPassphraseException>()),
         );
@@ -732,7 +913,7 @@ void main() {
         db = await c.openDatabase('notes', passphrase: pp2);
         final col2 = db.collection('items', _Note.codec);
         await col2.ready;
-        expect(col2.get('k1')?.text, 'v1');
+        expect((await col2.get('k1'))?.text, 'v1');
         await db.close();
       } finally {
         await c.close();
@@ -750,7 +931,7 @@ void main() {
 
       final c = await _openPersistentConclave(bus, stores, keyStore);
       try {
-        var db = await c.openDatabase('notes', passphrase: pp1);
+        final db = await c.openDatabase('notes', passphrase: pp1);
         final col = db.collection('items', _Note.codec);
         await col.put(_Note(id: 'k1', text: 'v1'));
         await db.close();
@@ -814,8 +995,8 @@ void main() {
         // All data must be intact and readable with the new key.
         final col2 = db.collection('items', _Note.codec);
         await col2.ready;
-        expect(col2.get('k1')?.text, 'v1');
-        expect(col2.get('k2')?.text, 'v2');
+        expect((await col2.get('k1'))?.text, 'v1');
+        expect((await col2.get('k2'))?.text, 'v2');
         await db.close();
       } finally {
         await c.close();
@@ -859,21 +1040,22 @@ void main() {
         db = await c.openDatabase('notes', passphrase: pp1);
         final col2 = db.collection('items', _Note.codec);
         await col2.ready;
-        expect(col2.get('k1')?.text, 'v1');
+        expect((await col2.get('k1'))?.text, 'v1');
         await db.close();
 
         // The stored key is the old key, so reopenDatabase also works.
         db = await c.reopenDatabase('notes');
         final col3 = db.collection('items', _Note.codec);
         await col3.ready;
-        expect(col3.get('k1')?.text, 'v1');
+        expect((await col3.get('k1'))?.text, 'v1');
         await db.close();
       } finally {
         await c.close();
       }
     });
 
-    test('reopenDatabase after interrupted rotation completes forward', () async {
+    test('reopenDatabase after interrupted rotation completes forward',
+        () async {
       final bus = InMemoryBus();
       final stores = <String, _MemStore>{};
       final keyStore = _MemKeyStore();
@@ -919,7 +1101,7 @@ void main() {
         db = await c2.reopenDatabase('notes');
         final col2 = db.collection('items', _Note.codec);
         await col2.ready;
-        expect(col2.get('k1')?.text, 'v1');
+        expect((await col2.get('k1'))?.text, 'v1');
 
         // The stored key is now the new key (rotation completed forward).
         final storedKey = await keyStore.getKey('test/notes');
@@ -972,7 +1154,7 @@ void main() {
         await col2.ready;
         // The document behind the corrupt blob may or may not survive
         // depending on merge strategy, but the rotation must not throw.
-        expect(col2.get('k1')?.text, 'v1');
+        expect((await col2.get('k1'))?.text, 'v1');
         await db.close();
       } finally {
         await c.close();
@@ -1041,11 +1223,15 @@ void main() {
           'two three four five six seven eight nine ten eleven twelve thirteen';
 
       final nodeA = await _openPersistentConclave(
-        bus, storesA, keyStoreA,
+        bus,
+        storesA,
+        keyStoreA,
         appId: 'converge',
       );
       final nodeB = await _openPersistentConclave(
-        bus, storesB, keyStoreB,
+        bus,
+        storesB,
+        keyStoreB,
         appId: 'converge',
       );
       try {
@@ -1055,7 +1241,10 @@ void main() {
         final colA = dbA.collection('items', _Note.codec);
         final colB = dbB.collection('items', _Note.codec);
         await colA.put(_Note(id: 'k1', text: 'from A before'));
-        await colB.watch().where((l) => l.isNotEmpty).first
+        await colB
+            .watch()
+            .where((l) => l.isNotEmpty)
+            .first
             .timeout(const Duration(seconds: 5));
         await dbA.close();
         await dbB.close();
@@ -1079,14 +1268,17 @@ void main() {
         final colB2 = dbB.collection('items', _Note.codec);
         await colA2.ready;
         await colB2.ready;
-        expect(colA2.get('k1')?.text, 'from A before');
-        expect(colB2.get('k1')?.text, 'from A before');
+        expect((await colA2.get('k1'))?.text, 'from A before');
+        expect((await colB2.get('k1'))?.text, 'from A before');
 
         // A makes a change after rotation; B must receive it.
         await colA2.put(_Note(id: 'k2', text: 'from A after'));
-        await colB2.watch().where((l) => l.length >= 2).first
+        await colB2
+            .watch()
+            .where((l) => l.length >= 2)
+            .first
             .timeout(const Duration(seconds: 5));
-        expect(colB2.get('k2')?.text, 'from A after');
+        expect((await colB2.get('k2'))?.text, 'from A after');
         await dbA.close();
         await dbB.close();
       } finally {
@@ -1100,8 +1292,9 @@ void main() {
     test('zero on a fresh collection', () async {
       final bus = InMemoryBus();
       final c = await _openConclave(bus);
-      var db = await c.openDatabase(
-          'notes', passphrase: 'one two three four five six seven eight nine ten eleven twelve');
+      final db = await c.openDatabase('notes',
+          passphrase:
+              'one two three four five six seven eight nine ten eleven twelve');
       final notes = db.collection<_Note>('notes', _Note.codec);
       await notes.ready;
       expect(notes.length, equals(0));
@@ -1111,8 +1304,9 @@ void main() {
     test('increases after put', () async {
       final bus = InMemoryBus();
       final c = await _openConclave(bus);
-      var db = await c.openDatabase(
-          'notes', passphrase: 'one two three four five six seven eight nine ten eleven twelve');
+      final db = await c.openDatabase('notes',
+          passphrase:
+              'one two three four five six seven eight nine ten eleven twelve');
       final notes = db.collection<_Note>('notes', _Note.codec);
       await notes.ready;
       await notes.put(_Note(id: 'n1', text: 'a'));
@@ -1125,8 +1319,9 @@ void main() {
     test('decreases after delete', () async {
       final bus = InMemoryBus();
       final c = await _openConclave(bus);
-      var db = await c.openDatabase(
-          'notes', passphrase: 'one two three four five six seven eight nine ten eleven twelve');
+      final db = await c.openDatabase('notes',
+          passphrase:
+              'one two three four five six seven eight nine ten eleven twelve');
       final notes = db.collection<_Note>('notes', _Note.codec);
       await notes.ready;
       await notes.put(_Note(id: 'n1', text: 'a'));
@@ -1140,17 +1335,18 @@ void main() {
     test('matches all.length', () async {
       final bus = InMemoryBus();
       final c = await _openConclave(bus);
-      var db = await c.openDatabase(
-          'notes', passphrase: 'one two three four five six seven eight nine ten eleven twelve');
+      final db = await c.openDatabase('notes',
+          passphrase:
+              'one two three four five six seven eight nine ten eleven twelve');
       final notes = db.collection<_Note>('notes', _Note.codec);
       await notes.ready;
-      expect(notes.length, equals(notes.all().length));
+      expect(notes.length, equals((await notes.all()).length));
       await notes.put(_Note(id: 'n1', text: 'a'));
-      expect(notes.length, equals(notes.all().length));
+      expect(notes.length, equals((await notes.all()).length));
       await notes.put(_Note(id: 'n2', text: 'b'));
-      expect(notes.length, equals(notes.all().length));
+      expect(notes.length, equals((await notes.all()).length));
       await notes.delete('n1');
-      expect(notes.length, equals(notes.all().length));
+      expect(notes.length, equals((await notes.all()).length));
       await c.close();
     });
 
@@ -1188,10 +1384,12 @@ void main() {
         await col.put(_Note(id: 'n$i', text: 'text$i'));
       }
 
-      expect(col.all(limit: 10), hasLength(10));
-      expect(col.all(limit: 10).map((n) => n.id), equals([
-        for (int i = 0; i < 10; i++) 'n$i',
-      ]));
+      expect(await col.all(limit: 10), hasLength(10));
+      expect(
+          (await col.all(limit: 10)).map((n) => n.id),
+          equals([
+            for (int i = 0; i < 10; i++) 'n$i',
+          ]));
     });
 
     test('all(offset: 95) returns the last 5 docs', () async {
@@ -1203,10 +1401,12 @@ void main() {
         await col.put(_Note(id: 'n$i', text: 'text$i'));
       }
 
-      expect(col.all(offset: 95), hasLength(5));
-      expect(col.all(offset: 95).map((n) => n.id), equals([
-        for (int i = 95; i < 100; i++) 'n$i',
-      ]));
+      expect(await col.all(offset: 95), hasLength(5));
+      expect(
+          (await col.all(offset: 95)).map((n) => n.id),
+          equals([
+            for (int i = 95; i < 100; i++) 'n$i',
+          ]));
     });
 
     test('all(offset: 100) returns empty on a collection of 100', () async {
@@ -1218,7 +1418,7 @@ void main() {
         await col.put(_Note(id: 'n$i', text: 'text$i'));
       }
 
-      expect(col.all(offset: 100), isEmpty);
+      expect(await col.all(offset: 100), isEmpty);
     });
 
     test('all() with no args still returns everything', () async {
@@ -1230,7 +1430,7 @@ void main() {
         await col.put(_Note(id: 'n$i', text: 'text$i'));
       }
 
-      expect(col.all(), hasLength(100));
+      expect(await col.all(), hasLength(100));
     });
 
     test('where with limit stops after N matches', () async {
@@ -1243,7 +1443,7 @@ void main() {
         await col.put(_Note(id: 'n$i', text: text));
       }
 
-      final result = col.where((n) => n.text == 'even', limit: 3);
+      final result = await col.where((n) => n.text == 'even', limit: 3);
       expect(result, hasLength(3));
       expect(result.map((n) => n.id), equals(['n0', 'n2', 'n4']));
     });
@@ -1259,7 +1459,8 @@ void main() {
       }
 
       // Skip first 10 even docs, take 3.
-      final result = col.where((n) => n.text == 'even', offset: 10, limit: 3);
+      final result =
+          await col.where((n) => n.text == 'even', offset: 10, limit: 3);
       expect(result, hasLength(3));
       expect(result.map((n) => n.id), equals(['n20', 'n22', 'n24']));
     });
@@ -1275,7 +1476,7 @@ void main() {
 
       // offset without limit: skip first 3 even docs, return the rest.
       final result =
-          col.where((n) => n.text == 'even', offset: 3).toList();
+          (await col.where((n) => n.text == 'even', offset: 3)).toList();
       expect(result, hasLength(2));
       expect(result.map((n) => n.id), equals(['n6', 'n8']));
     });
@@ -1291,8 +1492,9 @@ void main() {
       }
 
       expect(
-        col.where((n) => n.text == 'even').map((n) => n.id),
-        orderedEquals(col.all().where((n) => n.text == 'even').map((n) => n.id)),
+        (await col.where((n) => n.text == 'even')).map((n) => n.id),
+        orderedEquals(
+            (await col.all()).where((n) => n.text == 'even').map((n) => n.id)),
       );
     });
   });
@@ -1307,7 +1509,9 @@ void main() {
     test('findBy returns matching documents', () async {
       final store = _MemStore();
       final col = Collection.create<_Note>(
-        'notes', _Note.codec, store,
+        'notes',
+        _Note.codec,
+        store,
         merge: merge,
         indexedFields: ['text'],
       );
@@ -1317,15 +1521,18 @@ void main() {
       await col.put(_Note(id: 'b', text: 'pending'));
       await col.put(_Note(id: 'c', text: 'done'));
 
-      expect(col.findBy('text', 'done').map((n) => n.id),
+      expect((await col.findBy('text', 'done')).map((n) => n.id),
           unorderedEquals(['a', 'c']));
-      expect(col.findBy('text', 'pending').map((n) => n.id), equals(['b']));
+      expect((await col.findBy('text', 'pending')).map((n) => n.id),
+          equals(['b']));
     });
 
     test('findBy returns empty for unmatched value', () async {
       final store = _MemStore();
       final col = Collection.create<_Note>(
-        'notes', _Note.codec, store,
+        'notes',
+        _Note.codec,
+        store,
         merge: merge,
         indexedFields: ['text'],
       );
@@ -1333,20 +1540,22 @@ void main() {
 
       await col.put(_Note(id: 'a', text: 'done'));
 
-      expect(col.findBy('text', 'missing'), isEmpty);
+      expect(await col.findBy('text', 'missing'), isEmpty);
     });
 
     test('findBy on undeclared field throws', () async {
       final store = _MemStore();
       final col = Collection.create<_Note>(
-        'notes', _Note.codec, store,
+        'notes',
+        _Note.codec,
+        store,
         merge: merge,
         indexedFields: ['text'],
       );
       await col.ready;
 
       expect(
-        () => col.findBy('nonexistent', 'x'),
+        () async => await col.findBy('nonexistent', 'x'),
         throwsArgumentError,
       );
     });
@@ -1354,7 +1563,9 @@ void main() {
     test('index survives put that changes an indexed field', () async {
       final store = _MemStore();
       final col = Collection.create<_Note>(
-        'notes', _Note.codec, store,
+        'notes',
+        _Note.codec,
+        store,
         merge: merge,
         indexedFields: ['text'],
       );
@@ -1363,14 +1574,17 @@ void main() {
       await col.put(_Note(id: 'a', text: 'pending'));
       await col.put(_Note(id: 'a', text: 'done'));
 
-      expect(col.findBy('text', 'pending'), isEmpty);
-      expect(col.findBy('text', 'done').map((n) => n.id), equals(['a']));
+      expect(await col.findBy('text', 'pending'), isEmpty);
+      expect(
+          (await col.findBy('text', 'done')).map((n) => n.id), equals(['a']));
     });
 
     test('index reflects delete', () async {
       final store = _MemStore();
       final col = Collection.create<_Note>(
-        'notes', _Note.codec, store,
+        'notes',
+        _Note.codec,
+        store,
         merge: merge,
         indexedFields: ['text'],
       );
@@ -1379,7 +1593,7 @@ void main() {
       await col.put(_Note(id: 'a', text: 'done'));
       await col.delete('a');
 
-      expect(col.findBy('text', 'done'), isEmpty);
+      expect(await col.findBy('text', 'done'), isEmpty);
     });
 
     test('index reflects concurrent edit through mergeChangeset', () async {
@@ -1388,7 +1602,9 @@ void main() {
 
       // Node A creates a doc with status 'pending'.
       final colA = Collection.create<_Note>(
-        'notes', _Note.codec, storeA,
+        'notes',
+        _Note.codec,
+        storeA,
         merge: merge,
         indexedFields: ['text'],
       );
@@ -1397,26 +1613,32 @@ void main() {
 
       // Node B receives the changeset and indexes it.
       final colB = Collection.create<_Note>(
-        'notes', _Note.codec, storeB,
+        'notes',
+        _Note.codec,
+        storeB,
         merge: merge,
         indexedFields: ['text'],
       );
       await colB.ready;
-      await colB.mergeChangeset(colA.getChangeset());
+      await colB.mergeChangeset(await colA.getChangeset());
 
-      expect(colB.findBy('text', 'pending').map((n) => n.id), equals(['a']));
+      expect((await colB.findBy('text', 'pending')).map((n) => n.id),
+          equals(['a']));
 
       // Node B edits the doc's text.
       await colB.put(_Note(id: 'a', text: 'done'));
 
-      expect(colB.findBy('text', 'pending'), isEmpty);
-      expect(colB.findBy('text', 'done').map((n) => n.id), equals(['a']));
+      expect(await colB.findBy('text', 'pending'), isEmpty);
+      expect(
+          (await colB.findBy('text', 'done')).map((n) => n.id), equals(['a']));
     });
 
     test('index is rebuilt on restore', () async {
       final store = _MemStore();
       var col = Collection.create<_Note>(
-        'notes', _Note.codec, store,
+        'notes',
+        _Note.codec,
+        store,
         merge: merge,
         indexedFields: ['text'],
       );
@@ -1426,19 +1648,24 @@ void main() {
 
       // Simulate reopen.
       col = Collection.create<_Note>(
-        'notes', _Note.codec, store,
+        'notes',
+        _Note.codec,
+        store,
         merge: merge,
         indexedFields: ['text'],
       );
       await col.ready;
 
-      expect(col.findBy('text', 'done').map((n) => n.id), equals(['a']));
+      expect(
+          (await col.findBy('text', 'done')).map((n) => n.id), equals(['a']));
     });
 
     test('findBy supports limit and offset', () async {
       final store = _MemStore();
       final col = Collection.create<_Note>(
-        'notes', _Note.codec, store,
+        'notes',
+        _Note.codec,
+        store,
         merge: merge,
         indexedFields: ['text'],
       );
@@ -1448,22 +1675,24 @@ void main() {
         await col.put(_Note(id: 'n$i', text: 'even'));
       }
 
-      expect(col.findBy('text', 'even', limit: 3), hasLength(3));
-      expect(col.findBy('text', 'even', offset: 8), hasLength(2));
-      expect(col.findBy('text', 'even', offset: 10), isEmpty);
+      expect(await col.findBy('text', 'even', limit: 3), hasLength(3));
+      expect(await col.findBy('text', 'even', offset: 8), hasLength(2));
+      expect(await col.findBy('text', 'even', offset: 10), isEmpty);
     });
 
     test('no-index collection works unchanged', () async {
       final store = _MemStore();
       final col = Collection.create<_Note>(
-        'notes', _Note.codec, store,
+        'notes',
+        _Note.codec,
+        store,
         merge: merge,
       );
       await col.ready;
 
       await col.put(_Note(id: 'a', text: 'hello'));
-      expect(col.get('a')?.text, equals('hello'));
-      expect(col.all(), hasLength(1));
+      expect((await col.get('a'))?.text, equals('hello'));
+      expect(await col.all(), hasLength(1));
     });
 
     test('declaring indexedFields with ObjectMergeStrategy throws', () {
@@ -1474,7 +1703,9 @@ void main() {
       final store = _MemStore();
       expect(
         () => Collection.create<_Note>(
-          'notes', _Note.codec, store,
+          'notes',
+          _Note.codec,
+          store,
           indexedFields: ['text'],
         ),
         throwsA(isA<AssertionError>()),
@@ -1490,7 +1721,9 @@ void main() {
       final store = _MemStore();
       final codec = _CountingCodec(_Note.codec);
       final col = Collection.create<_Note>(
-        'notes', codec, store,
+        'notes',
+        codec,
+        store,
         merge: const ShallowMergeStrategy(),
         indexedFields: ['text'],
       );
@@ -1501,7 +1734,7 @@ void main() {
       }
 
       codec.decodes = 0;
-      final hits = col.findBy('text', 'hit').toList();
+      final hits = (await col.findBy('text', 'hit')).toList();
       expect(hits, hasLength(5));
       // Only the 5 matches are decoded — not all 100. The old O(matches·n)
       // implementation decoded one doc per match too, but via get(); the win
@@ -1513,7 +1746,9 @@ void main() {
       final store = _MemStore();
       final table = _CountingTable(MapCrdtTable('notes'));
       final col = Collection.create<_Note>(
-        'notes', _Note.codec, store,
+        'notes',
+        _Note.codec,
+        store,
         merge: const ShallowMergeStrategy(),
         indexedFields: ['text'],
         table: table,
@@ -1525,7 +1760,7 @@ void main() {
       }
 
       table.liveFieldsCalls = 0;
-      final hits = col.findBy('text', 'hit').toList();
+      final hits = (await col.findBy('text', 'hit')).toList();
       expect(hits, hasLength(50));
       // Regression guard for the O(matches·n) bug: a single scan, not 50.
       expect(table.liveFieldsCalls, equals(1));
@@ -1542,7 +1777,7 @@ void main() {
       }
 
       codec.decodes = 0;
-      expect(col.all(limit: 10), hasLength(10));
+      expect(await col.all(limit: 10), hasLength(10));
       expect(codec.decodes, equals(10));
     });
 
@@ -1558,7 +1793,7 @@ void main() {
       }
 
       codec.decodes = 0;
-      expect(col.where((n) => n.text == 'same', limit: 3).toList(),
+      expect((await col.where((n) => n.text == 'same', limit: 3)).toList(),
           hasLength(3));
       expect(codec.decodes, equals(3));
     });
@@ -1569,7 +1804,8 @@ void main() {
       final bus = InMemoryBus();
       final nodeA = await _openConclave(bus);
       final nodeB = await _openConclave(bus);
-      const pp = 'one two three four five six seven eight nine ten eleven twelve';
+      const pp =
+          'one two three four five six seven eight nine ten eleven twelve';
 
       final dbA = await nodeA.openDatabase('notes', passphrase: pp);
       final dbB = await nodeB.openDatabase('notes', passphrase: pp);
@@ -1579,9 +1815,12 @@ void main() {
       await colA.put(_Note(id: 'n1', text: 'a'));
       await colA.put(_Note(id: 'n2', text: 'b'));
 
-      await colB.watch().where((l) => l.length == 2).first
+      await colB
+          .watch()
+          .where((l) => l.length == 2)
+          .first
           .timeout(const Duration(seconds: 5));
-      expect(colB.all(), hasLength(2));
+      expect(await colB.all(), hasLength(2));
 
       await nodeA.close();
       await nodeB.close();
@@ -1606,9 +1845,11 @@ void main() {
         cipher: _XorCipher.new,
         mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
         idMaskerFactory: (key) => (id) => id,
+        validateMnemonic: (_) => true,
       );
       final nodeA = await _openConclave(bus);
-      const pp = 'one two three four five six seven eight nine ten eleven twelve';
+      const pp =
+          'one two three four five six seven eight nine ten eleven twelve';
 
       final dbA = await nodeA.openDatabase('notes', passphrase: pp);
       final dbB = await nodeB.openDatabase('notes', passphrase: pp);
@@ -1633,9 +1874,12 @@ void main() {
       // After the rate window expires a new write gets through.
       await Future<void>.delayed(const Duration(seconds: 2));
       await colA.put(_Note(id: 'last', text: 'last'));
-      await colB.watch().where((l) => l.any((n) => n.id == 'last')).first
+      await colB
+          .watch()
+          .where((l) => l.any((n) => n.id == 'last'))
+          .first
           .timeout(const Duration(seconds: 5));
-      expect(colB.get('last')?.text, equals('last'));
+      expect((await colB.get('last'))?.text, equals('last'));
 
       await nodeA.close();
       await nodeB.close();
@@ -1660,10 +1904,12 @@ void main() {
         cipher: _XorCipher.new,
         mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
         idMaskerFactory: (key) => (id) => id,
+        validateMnemonic: (_) => true,
       );
       final nodeA = await _openConclave(bus);
       final nodeB = await _openConclave(bus);
-      const pp = 'one two three four five six seven eight nine ten eleven twelve';
+      const pp =
+          'one two three four five six seven eight nine ten eleven twelve';
 
       final dbA = await nodeA.openDatabase('notes', passphrase: pp);
       final dbB = await nodeB.openDatabase('notes', passphrase: pp);
@@ -1683,7 +1929,7 @@ void main() {
 
       // B (normal, no limit) gets all 20.
       await bDone.timeout(const Duration(seconds: 5));
-      expect(colB.all(), hasLength(20));
+      expect(await colB.all(), hasLength(20));
 
       // C (rate-limited) does NOT get all 20 within the rate window.
       await expectLater(
@@ -1717,9 +1963,11 @@ void main() {
         cipher: _XorCipher.new,
         mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
         idMaskerFactory: (key) => (id) => id,
+        validateMnemonic: (_) => true,
       );
       final nodeA = await _openConclave(bus);
-      const pp = 'one two three four five six seven eight nine ten eleven twelve';
+      const pp =
+          'one two three four five six seven eight nine ten eleven twelve';
 
       final dbA = await nodeA.openDatabase('notes', passphrase: pp);
       final dbB = await nodeB.openDatabase('notes', passphrase: pp);
@@ -1739,7 +1987,7 @@ void main() {
         burstDone.timeout(const Duration(milliseconds: 300)),
         throwsA(isA<TimeoutException>()),
       );
-      final countBefore = colB.all().length;
+      final countBefore = (await colB.all()).length;
       expect(countBefore, lessThan(10));
 
       // Let the rate window expire, then force sync from A.
@@ -1747,9 +1995,12 @@ void main() {
       await nodeA.forceSync();
 
       // B now receives all 20.
-      await colB.watch().where((l) => l.length == 20).first
+      await colB
+          .watch()
+          .where((l) => l.length == 20)
+          .first
           .timeout(const Duration(seconds: 5));
-      expect(colB.all(), hasLength(20));
+      expect(await colB.all(), hasLength(20));
 
       await nodeA.close();
       await nodeB.close();
@@ -1776,9 +2027,11 @@ void main() {
         cipher: _XorCipher.new,
         mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
         idMaskerFactory: (key) => (id) => id,
+        validateMnemonic: (_) => true,
       );
       final nodeB = await _openConclave(bus);
-      const pp = 'one two three four five six seven eight nine ten eleven twelve';
+      const pp =
+          'one two three four five six seven eight nine ten eleven twelve';
 
       final dbA = await nodeA.openDatabase('notes', passphrase: pp);
       final dbB = await nodeB.openDatabase('notes', passphrase: pp);
@@ -1789,7 +2042,10 @@ void main() {
       for (int i = 0; i < 5; i++) {
         await colA.put(_Note(id: 'n$i', text: 'a$i'));
       }
-      await colB.watch().where((l) => l.length == 5).first
+      await colB
+          .watch()
+          .where((l) => l.length == 5)
+          .first
           .timeout(const Duration(seconds: 5));
 
       // B writes 15 more docs rapidly — A's 5 fps limit drops some.
@@ -1799,18 +2055,21 @@ void main() {
 
       // Confirm A does NOT have all 20.
       await Future<void>.delayed(const Duration(milliseconds: 100));
-      expect(colA.all().length, lessThan(20));
+      expect((await colA.all()).length, lessThan(20));
 
       // Let the rate window expire, then force sync from A.
       await Future<void>.delayed(const Duration(seconds: 2));
       await nodeA.forceSync();
 
       // A receives the missing docs via the Poke → Hello back exchange.
-      await colA.watch().where((l) => l.length == 20).first
+      await colA
+          .watch()
+          .where((l) => l.length == 20)
+          .first
           .timeout(const Duration(seconds: 5));
-      expect(colA.all(), hasLength(20));
+      expect(await colA.all(), hasLength(20));
       // B has everything too.
-      expect(colB.all(), hasLength(20));
+      expect(await colB.all(), hasLength(20));
 
       await nodeA.close();
       await nodeB.close();
@@ -1834,7 +2093,8 @@ void main() {
     });
 
     test('fires when remote edit overwrites an existing document', () async {
-      const pp = 'one two three four five six seven eight nine ten eleven twelve';
+      const pp =
+          'one two three four five six seven eight nine ten eleven twelve';
       final dbA = await nodeA.openDatabase('notes', passphrase: pp);
       final dbB = await nodeB.openDatabase('notes', passphrase: pp);
 
@@ -1846,14 +2106,16 @@ void main() {
       final nodeC = await _openConclave(bus);
       final dbC = await nodeC.openDatabase('notes', passphrase: pp);
       final conflicts = <String>[];
-      final notesC = dbC.collection<_Note>('notes', _Note.codec,
+      final notesC = dbC.collection<_Note>(
+        'notes',
+        _Note.codec,
         onRemoteConflict: (id) => conflicts.add(id),
       );
       await notesC.ready;
 
       // Seed A with a document, then copy the entire changeset to C.
       await notesA.put(_Note(id: 'n1', text: 'Hello'));
-      final seed = notesA.getChangeset();
+      final seed = await notesA.getChangeset();
       await notesC.mergeChangeset(seed);
       expect(conflicts, isEmpty);
 
@@ -1862,7 +2124,7 @@ void main() {
       // overwrite C's version — and since n1 already exists locally, the
       // conflict observer fires.
       await notesA.put(_Note(id: 'n1', text: 'World'));
-      final update = notesA.getChangeset();
+      final update = await notesA.getChangeset();
       await notesC.mergeChangeset(update);
 
       expect(conflicts, contains('n1'));
@@ -1871,24 +2133,293 @@ void main() {
     });
 
     test('does not fire when the document did not exist locally', () async {
-      const pp = 'one two three four five six seven eight nine ten eleven twelve';
+      const pp =
+          'one two three four five six seven eight nine ten eleven twelve';
       final dbA = await nodeA.openDatabase('notes', passphrase: pp);
       final dbB = await nodeB.openDatabase('notes', passphrase: pp);
 
       final conflicts = <String>[];
       final notesA = dbA.collection<_Note>('notes', _Note.codec);
-      final notesB = dbB.collection<_Note>('notes', _Note.codec,
+      final notesB = dbB.collection<_Note>(
+        'notes',
+        _Note.codec,
         onRemoteConflict: (id) => conflicts.add(id),
       );
 
       // A writes two documents; B has never seen either.
       await notesA.put(_Note(id: 'n1', text: 'a'));
       await notesA.put(_Note(id: 'n2', text: 'b'));
-      await notesB.watch().where((l) => l.length == 2).first
+      await notesB
+          .watch()
+          .where((l) => l.length == 2)
+          .first
           .timeout(const Duration(seconds: 5));
 
       // Neither existed locally on B before the merge, so no conflicts.
       expect(conflicts, isEmpty);
+    });
+  });
+
+  group('Compaction', () {
+    /// Builds a minimal test environment and returns the collection.
+    Future<Collection<_Note>> withCol() async {
+      final bus = InMemoryBus();
+      final c = await _openConclave(bus);
+      final db = await c.openDatabase(
+        'test',
+        passphrase:
+            'one two three four five six seven eight nine ten eleven twelve',
+      );
+      final col = db.collection<_Note>('notes', _Note.codec);
+      await col.ready;
+      return col;
+    }
+
+    /// Injects records directly via [Collection.mergeChangeset].
+    /// The changeset key is the collection's name ([Collection.name]).
+    Future<void> inject(
+      Collection<_Note> col,
+      Iterable<Map<String, Object?>> records,
+    ) =>
+        col.mergeChangeset({col.name: records.toList()});
+
+    /// Version of [inject] for non-_Note collections.
+    Future<void> injectCard(
+      Collection<_Card> col,
+      Iterable<Map<String, Object?>> records,
+    ) =>
+        col.mergeChangeset({col.name: records.toList()});
+
+    test('empty collection returns 0', () async {
+      final col = await withCol();
+      expect(await col.compact(horizon: const Duration(days: 1)), 0);
+    });
+
+    test('only live docs returns 0', () async {
+      final col = await withCol();
+      await col.put(_Note(id: 'n1', text: 'a'));
+      expect(await col.compact(horizon: const Duration(days: 1)), 0);
+      expect(col.length, 1);
+    });
+
+    test('young tombstones are not reclaimed', () async {
+      final col = await withCol();
+      await col.put(_Note(id: 'n1', text: 'a'));
+      await col.delete('n1');
+      expect(await col.compact(horizon: const Duration(days: 30)), 0);
+    });
+
+    test('old tombstones are reclaimed', () async {
+      final col = await withCol();
+      final old = Hlc(DateTime.utc(2020, 1, 1), 0, 'test');
+      await inject(col, [
+        {'key': 'dead', 'value': null, 'is_deleted': true, 'hlc': old},
+        {'key': 'dead\x1F', 'value': null, 'is_deleted': true, 'hlc': old},
+      ]);
+      await col.put(_Note(id: 'n1', text: 'a'));
+      expect(col.length, 1);
+      expect(
+        await col.compact(horizon: const Duration(days: 1)),
+        greaterThan(0),
+      );
+      expect(col.length, 1);
+    });
+
+    test('reclaimed count is precise and idempotent', () async {
+      final col = await withCol();
+      final old = Hlc(DateTime.utc(2020, 1, 1), 0, 'test');
+      await inject(col, [
+        {'key': 'd1', 'value': null, 'is_deleted': true, 'hlc': old},
+        {'key': 'd1\x1F', 'value': null, 'is_deleted': true, 'hlc': old},
+      ]);
+      expect(await col.compact(horizon: const Duration(days: 1)), 2);
+      expect(await col.compact(horizon: const Duration(days: 1)), 0);
+    });
+
+    test('watcher survives compaction', () async {
+      final col = await withCol();
+      final seen = <int>[];
+      col.watch().listen((docs) => seen.add(docs.length));
+
+      // 1. Initial snapshot of empty collection.
+      await col.ready;
+      await Future<void>.delayed(Duration.zero);
+      expect(seen, contains(0));
+      seen.clear();
+
+      // 2. Inject old tombstones — watcher fires.
+      final old = Hlc(DateTime.utc(2020, 1, 1), 0, 'test');
+      await inject(col, [
+        {'key': 'dead', 'value': null, 'is_deleted': true, 'hlc': old},
+        {'key': 'dead\x1F', 'value': null, 'is_deleted': true, 'hlc': old},
+      ]);
+      await Future<void>.delayed(Duration.zero);
+      expect(seen, contains(0));
+      seen.clear();
+
+      // 3. Compact — watcher fires a fresh snapshot.
+      await col.compact(horizon: const Duration(days: 1));
+      await Future<void>.delayed(Duration.zero);
+      expect(seen, contains(0));
+      seen.clear();
+
+      // 4. Put after compact — watcher still fires.
+      await col.put(_Note(id: 'n1', text: 'hi'));
+      await Future<void>.delayed(Duration.zero);
+      expect(seen, contains(1));
+    });
+
+    test('field tombstones are reclaimed', () async {
+      final bus = InMemoryBus();
+      final c = await _openConclave(bus);
+      final db = await c.openDatabase(
+        'test',
+        passphrase:
+            'one two three four five six seven eight nine ten eleven twelve',
+      );
+      final col = db.collection<_Card>(
+        'cards',
+        _Card.codec,
+        merge: ShallowMergeStrategy(),
+      );
+      await col.ready;
+
+      // Seed a doc with backdated HLCs on both title and body fields.
+      final docHlc = Hlc(DateTime.utc(2020, 1, 1), 0, 'test');
+      await injectCard(col, [
+        {'key': 'c1', 'value': true, 'is_deleted': false, 'hlc': docHlc},
+        {'key': 'c1\x1Fid', 'value': 'c1', 'is_deleted': false, 'hlc': docHlc},
+        {
+          'key': 'c1\x1Ftitle',
+          'value': 'hello',
+          'is_deleted': false,
+          'hlc': docHlc
+        },
+        {
+          'key': 'c1\x1Fbody',
+          'value': 'world',
+          'is_deleted': false,
+          'hlc': docHlc
+        },
+      ]);
+      expect(col.length, 1);
+
+      // Tombstone the title field with a newer HLC.
+      final tombHlc = Hlc(DateTime.utc(2020, 6, 1), 0, 'test');
+      await injectCard(col, [
+        {
+          'key': 'c1\x1Ftitle',
+          'value': null,
+          'is_deleted': true,
+          'hlc': tombHlc
+        },
+      ]);
+
+      // Compact reclaims the old field tombstone for title (Jun 2020 tombstone
+      // beyond the 365-day horizon). The original title value (Jan 2020) was
+      // overwritten by the tombstone at merge time and is gone — after compact,
+      // the field is simply absent.
+      final reclaimed = await col.compact(horizon: const Duration(days: 365));
+      expect(reclaimed, greaterThan(0));
+      // Doc is still alive with the body field intact.
+      expect(col.length, 1);
+      expect((await col.get('c1'))?.title, '');
+      expect((await col.get('c1'))?.body, 'world');
+      await c.close();
+    });
+
+    test('convergence after compaction (peer already had tombstone)', () async {
+      // A peer that already observed the delete will re-sync the tombstone
+      // after compact, keeping the doc deleted — no surprise resurrection.
+      final col = await withCol();
+      final old = Hlc(DateTime.utc(2020, 1, 1), 0, 'test');
+      await inject(col, [
+        {'key': 'dead', 'value': null, 'is_deleted': true, 'hlc': old},
+        {'key': 'dead\x1F', 'value': null, 'is_deleted': true, 'hlc': old},
+      ]);
+      expect(col.length, 0);
+
+      // Compact removes the tombstone.
+      await col.compact(horizon: const Duration(days: 1));
+      expect(col.length, 0);
+
+      // Peer re-syncs its copy of the tombstone — it's new to the empty
+      // engine so it's accepted again. Doc stays deleted.
+      await inject(col, [
+        {'key': 'dead', 'value': null, 'is_deleted': true, 'hlc': old},
+        {'key': 'dead\x1F', 'value': null, 'is_deleted': true, 'hlc': old},
+      ]);
+      expect(col.length, 0);
+    });
+
+    test('resurrection after compaction works', () async {
+      final col = await withCol();
+      final docHlc = Hlc(DateTime.utc(2020, 1, 1), 0, 'test');
+      final tombHlc = Hlc(DateTime.utc(2020, 6, 1), 0, 'test');
+      // Doc created.
+      await inject(col, [
+        {'key': 'n1', 'value': true, 'is_deleted': false, 'hlc': docHlc},
+        {
+          'key': 'n1\x1F',
+          'value': {'id': 'n1', 'text': 'hello'},
+          'is_deleted': false,
+          'hlc': docHlc
+        },
+      ]);
+      expect(col.length, 1);
+      // Tombstone with higher HLC wins.
+      await inject(col, [
+        {'key': 'n1', 'value': null, 'is_deleted': true, 'hlc': tombHlc},
+        {'key': 'n1\x1F', 'value': null, 'is_deleted': true, 'hlc': tombHlc},
+      ]);
+      expect(col.length, 0);
+      // Compact removes the tombstone.
+      await col.compact(horizon: const Duration(days: 365));
+      expect(col.length, 0);
+      // Peer re-syncs its pre-tombstone doc — without the tombstone it wins.
+      await inject(col, [
+        {'key': 'n1', 'value': true, 'is_deleted': false, 'hlc': docHlc},
+        {
+          'key': 'n1\x1F',
+          'value': {'id': 'n1', 'text': 'hello'},
+          'is_deleted': false,
+          'hlc': docHlc
+        },
+      ]);
+      expect(col.length, 1);
+      expect((await col.get('n1'))?.text, 'hello');
+    });
+
+    test('Database.compact fans out to all collections', () async {
+      final bus = InMemoryBus();
+      final c = await _openConclave(bus);
+      final db = await c.openDatabase(
+        'test',
+        passphrase:
+            'one two three four five six seven eight nine ten eleven twelve',
+      );
+      final colA = db.collection<_Note>('a', _Note.codec);
+      final colB = db.collection<_Note>('b', _Note.codec);
+      await colA.ready;
+      await colB.ready;
+
+      final old = Hlc(DateTime.utc(2020, 1, 1), 0, 'test');
+      await colA.mergeChangeset({
+        'a': [
+          {'key': 'd1', 'value': null, 'is_deleted': true, 'hlc': old},
+          {'key': 'd1\x1F', 'value': null, 'is_deleted': true, 'hlc': old},
+        ],
+      });
+      await colB.mergeChangeset({
+        'b': [
+          {'key': 'd2', 'value': null, 'is_deleted': true, 'hlc': old},
+          {'key': 'd2\x1F', 'value': null, 'is_deleted': true, 'hlc': old},
+        ],
+      });
+
+      final total = await db.compact(horizon: const Duration(days: 1));
+      expect(total, 4);
+      await c.close();
     });
   });
 }

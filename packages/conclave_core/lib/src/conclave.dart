@@ -22,16 +22,54 @@ class WrongPassphraseException implements Exception {
       'WrongPassphraseException: passphrase does not match existing data';
 }
 
-/// Passphrase word-count policy.
+/// Thrown by [Conclave.openDatabase] when [PassphrasePolicy.strictness] is
+/// [PassphraseStrictness.reject] and the supplied passphrase is not a valid
+/// BIP39 mnemonic with known entropy.
+///
+/// The exception is thrown **before** any key derivation or storage write, so
+/// no keys are written to the [KeyStore] on rejection.
+class WeakPassphraseException implements Exception {
+  const WeakPassphraseException();
+
+  @override
+  String toString() =>
+      'WeakPassphraseException: passphrase is not a valid BIP39 mnemonic';
+}
+
+/// How [Conclave.open] treats a passphrase that is not a recognised BIP39
+/// mnemonic.
+enum PassphraseStrictness {
+  /// Accept any string. The app is responsible for vetting entropy.
+  warn,
+
+  /// Throw [WeakPassphraseException] unless the passphrase is a valid BIP39
+  /// mnemonic.
+  ///
+  /// This gate accepts **only** valid BIP39 mnemonics; it cannot recognise a
+  /// high-entropy non-mnemonic string. Apps that want to allow long random
+  /// strings must stay on [warn] and vet entropy themselves.
+  reject,
+}
+
+/// Passphrase word-count and strictness policy.
 ///
 /// The word count maps directly to BIP39 entropy strength:
 /// 12 = 128 bit, 15 = 160 bit, 18 = 192 bit, 21 = 224 bit, 24 = 256 bit
 /// (default).
 class PassphrasePolicy {
-  const PassphrasePolicy({this.words = 24});
+  const PassphrasePolicy({
+    this.words = 24,
+    this.strictness = PassphraseStrictness.warn,
+  });
 
   /// Number of mnemonic words to generate. Must be 12, 15, 18, 21, or 24.
   final int words;
+
+  /// How [Conclave.openDatabase] treats a passphrase that is not a recognised
+  /// BIP39 mnemonic. Defaults to [PassphraseStrictness.warn] (allow, but it is
+  /// the app's responsibility to vet entropy). Set to [PassphraseStrictness.reject]
+  /// to force callers through the generated-mnemonic path.
+  final PassphraseStrictness strictness;
 }
 
 /// Top-level configuration for a [Conclave] instance.
@@ -40,6 +78,7 @@ class ConclaveConfig {
     required this.appId,
     required this.salt,
     this.passphrasePolicy = const PassphrasePolicy(),
+    this.compactionHorizon = const Duration(days: 30),
     this.maxInboundFramesPerSecond = 100,
   });
 
@@ -52,6 +91,13 @@ class ConclaveConfig {
 
   /// Passphrase generation policy.
   final PassphrasePolicy passphrasePolicy;
+
+  /// Tombstones (deleted documents and removed fields) older than this are
+  /// eligible for physical compaction. Must comfortably exceed the longest time
+  /// any peer is expected to stay offline, or compaction can resurrect deleted
+  /// data when that peer reconnects. Compaction never runs automatically; call
+  /// [Database.compact] explicitly. Defaults to 30 days.
+  final Duration compactionHorizon;
 
   /// Max inbound frames per second per peer before rate limiting kicks in.
   ///
@@ -92,6 +138,7 @@ class Conclave {
     required Cipher Function(List<int>) cipherFactory,
     required List<String> Function(int words) mnemonicGenerator,
     required IdMasker Function(List<int>) idMaskerFactory,
+    required bool Function(String) validateMnemonic,
   })  : _config = config,
         _storeFactory = storeFactory,
         _keyStore = keyStore,
@@ -101,7 +148,8 @@ class Conclave {
         _roomTag = roomTag,
         _cipherFactory = cipherFactory,
         _mnemonicGenerator = mnemonicGenerator,
-        _idMaskerFactory = idMaskerFactory;
+        _idMaskerFactory = idMaskerFactory,
+        _validateMnemonic = validateMnemonic;
 
   final ConclaveConfig _config;
   final BlobStore Function(String) _storeFactory;
@@ -113,6 +161,7 @@ class Conclave {
   final Cipher Function(List<int>) _cipherFactory;
   final List<String> Function(int words) _mnemonicGenerator;
   final IdMasker Function(List<int>) _idMaskerFactory;
+  final bool Function(String) _validateMnemonic;
 
   final Map<String, Database> _databases = {};
   final Set<PeerId> _connectedPeers = {};
@@ -138,6 +187,11 @@ class Conclave {
     required String passphrase,
   }) async {
     if (_databases.containsKey(localId)) return _databases[localId]!;
+
+    if (_config.passphrasePolicy.strictness == PassphraseStrictness.reject &&
+        !_validateMnemonic(passphrase)) {
+      throw const WeakPassphraseException();
+    }
 
     final entryKey = '${_config.appId}/$localId';
     final key = await _deriveKey(passphrase, _config.salt);
@@ -582,6 +636,7 @@ class Conclave {
     required Cipher Function(List<int> key) cipher,
     required List<String> Function(int words) mnemonicGenerator,
     required IdMasker Function(List<int>) idMaskerFactory,
+    required bool Function(String) validateMnemonic,
   }) async {
     final nodeId = generateNodeId();
 
@@ -596,6 +651,7 @@ class Conclave {
       cipherFactory: cipher,
       mnemonicGenerator: mnemonicGenerator,
       idMaskerFactory: idMaskerFactory,
+      validateMnemonic: validateMnemonic,
     );
     // Wire listeners BEFORE start so PeerConnected events emitted during
     // registration are not missed.

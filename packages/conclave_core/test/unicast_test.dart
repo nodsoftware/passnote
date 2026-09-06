@@ -4,7 +4,8 @@ import 'package:conclave_core/conclave_core.dart';
 import 'package:test/test.dart';
 
 void main() {
-  test('InMemoryTransport delivers a frame only to the addressed peer', () async {
+  test('InMemoryTransport delivers a frame only to the addressed peer',
+      () async {
     final bus = InMemoryBus();
     final a = InMemoryTransport(bus);
     final b = InMemoryTransport(bus);
@@ -27,7 +28,8 @@ void main() {
 
     expect(bFrames, hasLength(1), reason: 'B is the addressee');
     expect(bFrames.single.from, equals('a'));
-    expect(cFrames, isEmpty, reason: 'C was not addressed and must not receive it');
+    expect(cFrames, isEmpty,
+        reason: 'C was not addressed and must not receive it');
 
     await a.stop();
     await b.stop();

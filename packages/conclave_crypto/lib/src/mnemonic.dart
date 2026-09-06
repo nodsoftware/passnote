@@ -1,3 +1,5 @@
+import 'dart:math' show log;
+
 import 'package:bip39/bip39.dart' as bip39;
 
 /// Valid BIP39 word counts mapped to their entropy strength in bits.
@@ -30,3 +32,47 @@ List<String> generateMnemonic({int words = 24}) {
 
 /// Returns `true` if [mnemonic] is a valid BIP39 phrase (checksum included).
 bool validateMnemonic(String mnemonic) => bip39.validateMnemonic(mnemonic);
+
+/// Returns `true` if [phrase] is a valid BIP39 mnemonic (so its entropy is known
+/// and adequate). Apps that accept user-supplied passphrases should gate on this
+/// or on an explicit "I understand the risk" path.
+bool isValidMnemonic(String phrase) => bip39.validateMnemonic(phrase);
+
+/// A coarse entropy estimate in bits for a free-form passphrase, for surfacing
+/// a strength meter.
+///
+/// Estimates are based on charset size × length — the actual entropy may be
+/// lower (e.g. dictionary words). **Not a security guarantee.**
+double estimatePassphraseBits(String phrase) {
+  if (phrase.isEmpty) return 0.0;
+
+  // Detect character sets present in the phrase.
+  var hasLower = false;
+  var hasUpper = false;
+  var hasDigit = false;
+  var hasSpecial = false;
+
+  for (var i = 0; i < phrase.length; i++) {
+    final c = phrase.codeUnitAt(i);
+    if (c >= 0x61 && c <= 0x7a) {
+      hasLower = true;
+    } else if (c >= 0x41 && c <= 0x5a) {
+      hasUpper = true;
+    } else if (c >= 0x30 && c <= 0x39) {
+      hasDigit = true;
+    } else {
+      hasSpecial = true;
+    }
+  }
+
+  // Compute charset size.
+  var charset = 0;
+  if (hasLower) charset += 26;
+  if (hasUpper) charset += 26;
+  if (hasDigit) charset += 10;
+  if (hasSpecial) charset += 32; // approx pool of common special chars
+
+  if (charset == 0) return 0.0;
+
+  return phrase.length * (log(charset) / log(2));
+}

@@ -1,9 +1,8 @@
 name: conclave_hive
 version: 0.1.0
 description: Hive-backed BlobStore adapter for Conclave.
-homepage: https://github.com/wouterd/conclave
-repository: https://github.com/wouterd/conclave
-publish_to: none
+homepage: https://github.com/nodsoftware/conclave
+repository: https://github.com/nodsoftware/conclave
 resolution: workspace
 
 environment:

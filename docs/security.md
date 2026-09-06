@@ -30,6 +30,13 @@ defends against, what it does not, and the limits you must respect when shipping
   write the data. Share it only over a trusted channel; treat it like a password.
   There is no recovery and no server-side revocation — rotating means choosing a
   new passphrase and re-pairing devices.
+- **Custom passphrases weaken the model.** Conclave's security assumes a
+  high-entropy passphrase. The generated BIP39 mnemonic (default 24 words,
+  256-bit) provides this. If you supply your own passphrase string, its entropy —
+  not the KDF iteration count — sets the security ceiling. A human-memorable
+  phrase can be brute-forced regardless of PBKDF2 work factor. Prefer the
+  generated mnemonic; if you must accept user input, require a BIP39 mnemonic or
+  a long random string.
 - **LAN-only, by design.** Discovery and sync happen over the local network
   (mDNS + WebSocket). Conclave does not traverse NAT, relay through a server, or
   sync over the internet. Devices must share a network to sync.
@@ -40,9 +47,17 @@ defends against, what it does not, and the limits you must respect when shipping
 - **Compromised devices.** Conclave protects data between devices, not against a
   device that is already compromised. If an attacker controls the OS or has the
   unlocked keychain, they have the key.
-- **Denial of service.** A malicious peer on the LAN can attempt to flood or
-  disrupt connections. Conclave does not include rate-limiting or peer
-  authentication beyond key possession.
+- **Replay.** Conclave does not add an anti-replay nonce at the protocol layer.
+  Replaying a captured encrypted frame is **harmless**: deltas are CRDT records
+  reconciled last-write-wins by HLC, so a replayed (older or equal) record never
+  overwrites a newer value — it is idempotent. A replayed frame cannot forge new
+  data (it is authenticated by the key it was encrypted under).
+- **Denial of service.** A malicious peer on the LAN can attempt to flood
+  connections. Conclave applies **per-peer inbound rate limiting**
+  (`ConclaveConfig.maxInboundFramesPerSecond`, default 100/s) to stop a single
+  noisy peer from starving the event loop. This is defence-in-depth, **not** a
+  security boundary: a peer with the key is already inside the trust boundary.
+  Conclave does not authenticate peers beyond key possession.
 
 ## Cryptographic details
 
@@ -50,10 +65,29 @@ defends against, what it does not, and the limits you must respect when shipping
 | --- | --- |
 | Symmetric cipher | AES-256-GCM (12-byte random nonce, 16-byte tag) |
 | Frame layout | `nonce ‖ ciphertext ‖ tag` |
-| Key derivation | BIP39 seed → PBKDF2-HMAC-SHA256, 100 000 iterations |
+| Key derivation | BIP39 seed → PBKDF2-HMAC-SHA256, 600 000 iterations |
 | Passphrase | BIP39 mnemonic, 128–256 bits of entropy (12–24 words) |
 | Room tag | truncated SHA-256 of the key with a domain-separation label |
 | Nonce policy | a fresh random nonce per message |
+
+## At-rest storage layout
+
+With per-document persistence (the default), the storage layout is:
+
+- **Blob values** are AES-256-GCM ciphertext.
+- **Collection names** appear as plaintext storage keys (`"<collection>/d/<blinded-id>"`).
+- **Document ids and field paths** are **blinded** via keyed HMAC-SHA256 so they do
+  not appear in plaintext on disk.
+
+An attacker with disk access can still observe:
+
+- The **number of documents** per collection (one blob per document).
+- The approximate **size of each document** (per-blob ciphertext length).
+- **Which documents change over time** (update patterns from blob rewrites).
+
+This is acceptable under the LAN-only threat model (an attacker with disk access
+already controls the device), but it is stated honestly here so you can evaluate
+your own threat model.
 
 ## Recommendations
 
@@ -68,5 +102,5 @@ defends against, what it does not, and the limits you must respect when shipping
 ## Reporting a vulnerability
 
 Please report security issues privately rather than opening a public issue. See
-[`SECURITY.md`](https://github.com/wouterd/conclave/blob/main/SECURITY.md) in the
+[`SECURITY.md`](https://github.com/nodsoftware/conclave/blob/main/SECURITY.md) in the
 repository for the disclosure process.

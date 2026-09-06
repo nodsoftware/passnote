@@ -1,6 +1,6 @@
 # conclave_flutter
 
-Flutter-specific adapters for [Conclave](https://github.com/wouterd/conclave):
+Flutter-specific adapters for [Conclave](https://github.com/nodsoftware/conclave):
 an OS-keychain key store and a `ChangeNotifier` that mirrors a collection.
 
 ## What's inside
@@ -44,6 +44,6 @@ to `Conclave.open` if you wire adapters yourself.
 ## Examples
 
 See the runnable apps in the repository:
-[`shopping_list_provider`](https://github.com/wouterd/conclave/tree/main/examples/shopping_list_provider)
+[`shopping_list_provider`](https://github.com/nodsoftware/conclave/tree/main/examples/shopping_list_provider)
 and
-[`shopping_list_bloc`](https://github.com/wouterd/conclave/tree/main/examples/shopping_list_bloc).
+[`shopping_list_bloc`](https://github.com/nodsoftware/conclave/tree/main/examples/shopping_list_bloc).

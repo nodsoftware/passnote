@@ -1,7 +1,7 @@
 # conclave_hive
 
 [Hive](https://pub.dev/packages/hive_ce)-backed `BlobStore` for
-[Conclave](https://github.com/wouterd/conclave). A lightweight, fast key-value
+[Conclave](https://github.com/nodsoftware/conclave). A lightweight, fast key-value
 storage backend — an alternative to the default
 [`conclave_sembast`](https://pub.dev/packages/conclave_sembast).
 
@@ -36,4 +36,4 @@ store: (dbId) => HiveStore(namespace: 'myapp/$dbId', path: appDir.path),
 
 `HiveStore` passes Conclave's shared `BlobStore` conformance suite, so it behaves
 identically to other backends through the port. See
-[Storage adapters](https://wouterd.github.io/conclave/adapters/storage/).
+[Storage adapters](https://nodsoftware.github.io/conclave/adapters/storage/).

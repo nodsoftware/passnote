@@ -1,6 +1,6 @@
 # conclave
 
-Umbrella package for [Conclave](https://github.com/wouterd/conclave) — an
+Umbrella package for [Conclave](https://github.com/nodsoftware/conclave) — an
 end-to-end encrypted, server-less, local-first CRDT sync engine for Dart and
 Flutter.
 
@@ -40,11 +40,11 @@ For custom wiring (alternative storage, transport, or crypto), use
 
 ## Documentation
 
-See the [Conclave documentation](https://wouterd.github.io/conclave/) and the
-[Getting started guide](https://wouterd.github.io/conclave/getting-started/).
+See the [Conclave documentation](https://nodsoftware.github.io/conclave/) and the
+[Getting started guide](https://nodsoftware.github.io/conclave/getting-started/).
 
 ## Security
 
 Conclave has not been independently audited and the passphrase is the root of
-all security. Read the [security model](https://wouterd.github.io/conclave/security/)
+all security. Read the [security model](https://nodsoftware.github.io/conclave/security/)
 before shipping.

@@ -1,6 +1,6 @@
 # conclave_crypto
 
-Cryptographic adapters for [Conclave](https://github.com/wouterd/conclave):
+Cryptographic adapters for [Conclave](https://github.com/nodsoftware/conclave):
 AES-256-GCM encryption, BIP39 passphrase generation, and PBKDF2 key derivation.
 
 Implements the `Cipher` port from `conclave_core` and provides the key-derivation
@@ -14,7 +14,7 @@ umbrella's `openDefault`.
   Authentication failures surface as `CipherAuthError`.
 - **`generateMnemonic` / `validateMnemonic`** — BIP39 passphrases at 12, 15, 18,
   21, or 24 words (128–256 bits of entropy).
-- **`deriveKey`** — BIP39 seed → PBKDF2-HMAC-SHA256 (100 000 iterations) → 32-byte
+- **`deriveKey`** — BIP39 seed → PBKDF2-HMAC-SHA256 (600 000 iterations) → 32-byte
   key.
 - **`roomTag`** — a one-way, truncated SHA-256 of the key for mDNS discovery that
   reveals nothing about the key or data.
@@ -41,5 +41,5 @@ final opened = await cipher.decrypt(sealed); // throws CipherAuthError if tamper
 
 ## Documentation
 
-See the [Conclave security model](https://wouterd.github.io/conclave/security/)
+See the [Conclave security model](https://nodsoftware.github.io/conclave/security/)
 for cryptographic details and the threat model.

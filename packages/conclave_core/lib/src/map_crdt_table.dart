@@ -15,6 +15,19 @@ class MapCrdtTable implements CrdtTable {
   final MapCrdt _crdt;
 
   @override
+  bool get isPersistent => false;
+
+  @override
+  Future<void> init() async {}
+
+  @override
+  Future<int> compact(String table, {required Duration horizon}) async =>
+      throw UnsupportedError(
+        '$runtimeType does not support in-place compaction; '
+        'use Collection.compact for a rebuild-based approach.',
+      );
+
+  @override
   Future<void> put(
     String table,
     String key,
@@ -24,26 +37,38 @@ class MapCrdtTable implements CrdtTable {
       _crdt.put(table, key, value, isDeleted);
 
   @override
-  Object? value(String table, String key) => _crdt.get(table, key);
+  Future<Object?> value(String table, String key) =>
+      Future.value(_crdt.get(table, key));
 
   @override
-  Map<String, Object?> liveFields(String table, String prefix) {
+  Future<Map<String, Object?>> liveFields(String table, String prefix) {
     final map = _crdt.getMap(table);
-    if (prefix.isEmpty) return Map.of(map);
-    return {
+    if (prefix.isEmpty) return Future.value(Map.of(map));
+    return Future.value({
       for (final e in map.entries)
         if (e.key.startsWith(prefix)) e.key: e.value,
+    });
+  }
+
+  @override
+  Set<String> liveKeys(String table, String prefix) {
+    final map = _crdt.getMap(table);
+    if (prefix.isEmpty) {
+      return map.keys.where((k) => _crdt.get(table, k) != null).toSet();
+    }
+    return {
+      for (final e in map.entries)
+        if (e.key.startsWith(prefix) && _crdt.get(table, e.key) != null) e.key,
     };
   }
 
   @override
-  CrdtChangeset changeset(String table, {String? sinceHlc}) =>
-      _crdt.getChangeset(
+  Future<CrdtChangeset> changeset(String table, {String? sinceHlc}) =>
+      Future.value(_crdt.getChangeset(
         onlyTables: [table],
-        modifiedAfter: (sinceHlc == null || sinceHlc.isEmpty)
-            ? null
-            : Hlc.parse(sinceHlc),
-      );
+        modifiedAfter:
+            (sinceHlc == null || sinceHlc.isEmpty) ? null : Hlc.parse(sinceHlc),
+      ));
 
   @override
   String maxHlc(String table) {

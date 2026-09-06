@@ -102,6 +102,40 @@ void main() {
     });
   });
 
+  group('isValidMnemonic', () {
+    test('accepts a generated mnemonic', () {
+      final mnemonic = generateMnemonic().join(' ');
+      expect(isValidMnemonic(mnemonic), isTrue);
+    });
+
+    test('rejects a plain word', () {
+      expect(isValidMnemonic('password'), isFalse);
+    });
+
+    test('rejects empty string', () {
+      expect(isValidMnemonic(''), isFalse);
+    });
+  });
+
+  group('estimatePassphraseBits', () {
+    test('returns 0 for empty string', () {
+      expect(estimatePassphraseBits(''), equals(0.0));
+    });
+
+    test('estimates bits for a lowercase phrase', () {
+      // 8 lowercase chars: 8 * log2(26) ≈ 8 * 4.7 = 37.6
+      final bits = estimatePassphraseBits('password');
+      expect(bits, greaterThan(30));
+      expect(bits, lessThan(45));
+    });
+
+    test('estimates higher bits for mixed-case with digits', () {
+      final lower = estimatePassphraseBits('password');
+      final mixed = estimatePassphraseBits('Password1');
+      expect(mixed, greaterThan(lower));
+    });
+  });
+
   group('deriveKey', () {
     const phrase =
         'abandon abandon abandon abandon abandon abandon abandon abandon '
@@ -128,7 +162,7 @@ void main() {
       final a = await deriveKey(phrase, 'app:v1');
       final b = await deriveKey(
         'legal winner thank year wave sausage worth useful legal '
-        'winner thank yellow',
+            'winner thank yellow',
         'app:v1',
       );
       expect(a, isNot(equals(b)));
@@ -139,7 +173,7 @@ void main() {
     test('is 16 base32 characters', () async {
       final key = await deriveKey(
         'abandon abandon abandon abandon abandon abandon abandon abandon '
-        'abandon abandon abandon about',
+            'abandon abandon abandon about',
         'app:v1',
       );
       final tag = roomTag(key);

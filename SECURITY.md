@@ -6,7 +6,7 @@ If you believe you have found a security vulnerability in Conclave, please repor
 it **privately**. Do not open a public issue, pull request, or discussion for
 security problems.
 
-- Use GitHub's [private vulnerability reporting](https://github.com/wouterd/conclave/security/advisories/new)
+- Use GitHub's [private vulnerability reporting](https://github.com/nodsoftware/conclave/security/advisories/new)
   for this repository, or
 - Contact the maintainers directly through the address listed on the repository
   profile.

@@ -17,7 +17,8 @@ void main() {
 
     test('does not throw on a wrong-typed state.cols', () {
       // Was a crash before the fix: cols is a String, not a Map.
-      expect(decodeMessage(enc({'type': 'state', 'cols': 'not-a-map'})), isNull);
+      expect(
+          decodeMessage(enc({'type': 'state', 'cols': 'not-a-map'})), isNull);
     });
 
     test('does not throw on wrong-typed delta records', () {
@@ -26,7 +27,11 @@ void main() {
         isNull,
       );
       expect(
-        decodeMessage(enc({'type': 'delta', 'col': 'c', 'records': [1, 2, 3]})),
+        decodeMessage(enc({
+          'type': 'delta',
+          'col': 'c',
+          'records': [1, 2, 3]
+        })),
         isNull,
       );
     });
@@ -35,7 +40,10 @@ void main() {
       expect(decodeMessage(enc({'type': 'hello', 'node': 'n1'})),
           isA<HelloMessage>());
       expect(
-        decodeMessage(enc({'type': 'state', 'cols': {'items': 'hlc'}})),
+        decodeMessage(enc({
+          'type': 'state',
+          'cols': {'items': 'hlc'}
+        })),
         isA<StateMessage>(),
       );
     });

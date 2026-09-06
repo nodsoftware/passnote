@@ -6,14 +6,22 @@ void main() {
     const strategy = ObjectMergeStrategy();
 
     test('flattens the whole document to a single field', () {
-      final doc = {'id': 'n1', 'title': 'A', 'meta': {'pinned': true}};
+      final doc = {
+        'id': 'n1',
+        'title': 'A',
+        'meta': {'pinned': true}
+      };
       final fields = strategy.flatten(doc);
       expect(fields, hasLength(1));
       expect(fields.values.single, equals(doc));
     });
 
     test('round-trips a document', () {
-      final doc = {'id': 'n1', 'title': 'A', 'meta': {'pinned': true}};
+      final doc = {
+        'id': 'n1',
+        'title': 'A',
+        'meta': {'pinned': true}
+      };
       expect(strategy.unflatten(strategy.flatten(doc)), equals(doc));
     });
   });
@@ -31,10 +39,18 @@ void main() {
     test('keeps nested objects atomic', () {
       final doc = {
         'id': 'n1',
-        'meta': {'color': 'red', 'tags': ['x', 'y']},
+        'meta': {
+          'color': 'red',
+          'tags': ['x', 'y']
+        },
       };
       final fields = strategy.flatten(doc);
-      expect(fields['meta'], equals({'color': 'red', 'tags': ['x', 'y']}));
+      expect(
+          fields['meta'],
+          equals({
+            'color': 'red',
+            'tags': ['x', 'y']
+          }));
     });
 
     test('round-trips a document', () {
@@ -49,7 +65,10 @@ void main() {
     test('flattens nested maps into dotted paths', () {
       final doc = {
         'id': 'n1',
-        'meta': {'color': 'red', 'author': {'name': 'Ada'}},
+        'meta': {
+          'color': 'red',
+          'author': {'name': 'Ada'}
+        },
       };
       final fields = strategy.flatten(doc);
       expect(fields['id'], equals('n1'));

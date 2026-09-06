@@ -166,8 +166,7 @@ class LanTransport implements Transport {
     if (!_started || _connections.containsKey(peer)) return;
     _dialing.add(peer);
     try {
-      final socket =
-          await WebSocket.connect('ws://${address.address}:$port');
+      final socket = await WebSocket.connect('ws://${address.address}:$port');
       _reconnectAttempts.remove(peer);
       _registerSocket(socket, dialedPeer: peer);
     } catch (_) {

@@ -58,7 +58,8 @@ String Function(String docId) createIdMasker(List<int> key) {
 /// characters. Because it is a one-way hash it is safe to broadcast over mDNS
 /// for peer discovery without revealing the key.
 String roomTag(List<int> key) {
-  final digest = crypto.sha256.convert([...key, ...utf8.encode(_roomTagDomain)]);
+  final digest =
+      crypto.sha256.convert([...key, ...utf8.encode(_roomTagDomain)]);
   return _base32Encode(digest.bytes).substring(0, _roomTagLength);
 }
 

@@ -34,8 +34,8 @@ Future<Conclave> openDefault({
   PassphrasePolicy passphrasePolicy = const PassphrasePolicy(),
 }) {
   return Conclave.open(
-    config:
-        ConclaveConfig(appId: appId, salt: salt, passphrasePolicy: passphrasePolicy),
+    config: ConclaveConfig(
+        appId: appId, salt: salt, passphrasePolicy: passphrasePolicy),
     store: (databaseId) => SembastStore(namespace: '$appId/$databaseId'),
     keyStore: KeychainKeyStore(namespace: appId),
     transport: LanTransport(),
@@ -44,5 +44,6 @@ Future<Conclave> openDefault({
     cipher: AesGcmCipher.new,
     mnemonicGenerator: (words) => generateMnemonic(words: words),
     idMaskerFactory: createIdMasker,
+    validateMnemonic: isValidMnemonic,
   );
 }

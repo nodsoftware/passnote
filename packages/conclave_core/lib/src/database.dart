@@ -119,6 +119,9 @@ class Database {
   /// in the [KeyStore] so the database can later be reopened without the
   /// passphrase via [Conclave.reopenDatabase]. Used on normal shutdown.
   Future<void> close() async {
+    for (final col in _collections.values) {
+      await (col as Collection<dynamic>).dispose();
+    }
     await _store.close();
   }
 
@@ -126,10 +129,28 @@ class Database {
   /// [KeyStore] and then closes the store. After [leave] the data can only be
   /// reopened by re-supplying the original passphrase.
   Future<void> leave() async {
+    for (final col in _collections.values) {
+      await (col as Collection<dynamic>).dispose();
+    }
     await _keyStore.clear(_entryKey);
     await _keyStore.clear('$_entryKey.rotate_backup');
     await _keyStore.clear('$_entryKey.rotate_new');
     await _store.close();
+  }
+
+  /// Permanently removes tombstoned records older than [horizon] from every
+  /// open collection. Returns the total number of records reclaimed across all
+  /// collections.
+  ///
+  /// When [horizon] is `null` it defaults to 30 days. See
+  /// [Collection.compact] for the resurrection caveat.
+  Future<int> compact({Duration? horizon}) async {
+    var total = 0;
+    for (final col in _collections.values) {
+      total += await (col as Collection<dynamic>)
+          .compact(horizon: horizon ?? const Duration(days: 30));
+    }
+    return total;
   }
 
   /// Triggers a full bidirectional re-sync with every connected peer.
@@ -200,15 +221,14 @@ class Database {
       final col = _collections[colName] as Collection<dynamic>?;
       if (col == null) continue;
 
-      final changeset = col.getChangeset(sinceHlc: peerHlc);
+      final changeset = await col.getChangeset(sinceHlc: peerHlc);
       if (changeset.isEmpty) continue;
 
       for (final tableEntry in changeset.entries) {
         // Cast List<CrdtRecord> → List<Map<String,dynamic>>; Hlc values are
         // left as Hlc objects — encodeMessage converts them to strings.
-        final records = tableEntry.value
-            .map((r) => Map<String, dynamic>.from(r))
-            .toList();
+        final records =
+            tableEntry.value.map((r) => Map<String, dynamic>.from(r)).toList();
         await _sendEncrypted(
           from,
           DeltaMessage(col: colName, records: records),
@@ -249,21 +269,22 @@ class Database {
   /// is proportional to the change, not the whole collection.
   void _broadcastCollection(Collection<dynamic> col) {
     if (_peers.isEmpty) return;
-    final changeset = col.getChangeset(sinceHlc: _broadcastHwm[col.name]);
-    if (changeset.isEmpty) return;
-    // Advance the watermark to the collection's current max so the next
-    // broadcast starts after everything sent now.
-    _broadcastHwm[col.name] = col.maxHlc;
-    for (final tableEntry in changeset.entries) {
-      // Cast List<CrdtRecord> → List<Map<String,dynamic>>; Hlc values are
-      // left as Hlc objects — encodeMessage converts them to strings.
-      final records =
-          tableEntry.value.map((r) => Map<String, dynamic>.from(r)).toList();
-      for (final peer in _peers) {
-        // fire-and-forget; errors surface in transport layer
-        _sendEncrypted(peer, DeltaMessage(col: col.name, records: records));
+    col.getChangeset(sinceHlc: _broadcastHwm[col.name]).then((changeset) {
+      if (changeset.isEmpty) return;
+      // Advance the watermark to the collection's current max so the next
+      // broadcast starts after everything sent now.
+      _broadcastHwm[col.name] = col.maxHlc;
+      for (final tableEntry in changeset.entries) {
+        // Cast List<CrdtRecord> → List<Map<String,dynamic>>; Hlc values are
+        // left as Hlc objects — encodeMessage converts them to strings.
+        final records =
+            tableEntry.value.map((r) => Map<String, dynamic>.from(r)).toList();
+        for (final peer in _peers) {
+          // fire-and-forget; errors surface in transport layer
+          _sendEncrypted(peer, DeltaMessage(col: col.name, records: records));
+        }
       }
-    }
+    });
   }
 
   // ---------------------------------------------------------------------------

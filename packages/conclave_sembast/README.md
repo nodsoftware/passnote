@@ -1,7 +1,7 @@
 # conclave_sembast
 
 [Sembast](https://pub.dev/packages/sembast)-backed `BlobStore` for
-[Conclave](https://github.com/wouterd/conclave). This is the default storage
+[Conclave](https://github.com/nodsoftware/conclave). This is the default storage
 backend used by the [`conclave`](https://pub.dev/packages/conclave) umbrella's
 `openDefault`.
 
@@ -40,5 +40,5 @@ store: (dbId) => SembastStore(namespace: 'myapp/$dbId'),
 ## Conformance
 
 `SembastStore` passes Conclave's shared `BlobStore` conformance suite. See
-[Storage adapters](https://wouterd.github.io/conclave/adapters/storage/) for how
+[Storage adapters](https://nodsoftware.github.io/conclave/adapters/storage/) for how
 to write and verify your own backend.

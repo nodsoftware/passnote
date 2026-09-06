@@ -51,12 +51,10 @@ class InMemoryTransport implements Transport {
   // Bus-internal injection API
 
   /// Called by [InMemoryBus] when a new peer appears on the bus.
-  void injectPeerConnected(NodeId peer) =>
-      _events.add(PeerConnected(peer));
+  void injectPeerConnected(NodeId peer) => _events.add(PeerConnected(peer));
 
   /// Called by [InMemoryBus] when a peer leaves the bus.
-  void injectPeerLost(NodeId peer) =>
-      _events.add(PeerLost(peer));
+  void injectPeerLost(NodeId peer) => _events.add(PeerLost(peer));
 
   /// Called by [InMemoryBus] to deliver an inbound frame.
   void injectFrame(NodeId from, Frame frame) =>

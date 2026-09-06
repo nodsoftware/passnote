@@ -1,6 +1,6 @@
 # conclave_lan
 
-LAN transport for [Conclave](https://github.com/wouterd/conclave): mDNS service
+LAN transport for [Conclave](https://github.com/nodsoftware/conclave): mDNS service
 discovery plus WebSocket data connections, in pure Dart. This is the default
 transport used by the [`conclave`](https://pub.dev/packages/conclave) umbrella's
 `openDefault`.
@@ -49,4 +49,4 @@ dart test --run-skipped -t integration packages/conclave_lan
 ```
 
 `FrameCodec` has fast, socket-free unit tests that always run. See
-[Transport adapters](https://wouterd.github.io/conclave/adapters/transport/).
+[Transport adapters](https://nodsoftware.github.io/conclave/adapters/transport/).

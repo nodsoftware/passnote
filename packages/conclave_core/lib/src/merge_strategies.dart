@@ -69,7 +69,8 @@ class DeepMergeStrategy implements MergeStrategy {
     return out;
   }
 
-  void _flattenInto(String prefix, Map<dynamic, dynamic> map, Map<String, Object?> out) {
+  void _flattenInto(
+      String prefix, Map<dynamic, dynamic> map, Map<String, Object?> out) {
     if (map.isEmpty && prefix.isNotEmpty) {
       // Preserve empty nested objects as leaves so they round-trip.
       out[prefix] = <String, dynamic>{};

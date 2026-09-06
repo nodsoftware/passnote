@@ -90,9 +90,9 @@ void main() {
       final col2 = Collection.create<_Note>('notes', _Note.codec, store);
       await col2.ready;
 
-      expect(col2.get('a')?.text, equals('alpha'));
-      expect(col2.get('b')?.text, equals('beta'));
-      expect(col2.all(), hasLength(2));
+      expect((await col2.get('a'))?.text, equals('alpha'));
+      expect((await col2.get('b'))?.text, equals('beta'));
+      expect(await col2.all(), hasLength(2));
     });
 
     test('3. delete retains a tombstone blob (not a hard delete)', () async {
@@ -108,8 +108,8 @@ void main() {
       expect(blobKeys, isNotEmpty);
 
       // The collection correctly reports the document as absent.
-      expect(col.get('doc1'), isNull);
-      expect(col.all(), isEmpty);
+      expect(await col.get('doc1'), isNull);
+      expect(await col.all(), isEmpty);
 
       // The stored blob contains the tombstoned existence register.
       final bytes = store.data[blobKeys.first]!;
@@ -131,7 +131,7 @@ void main() {
       }
 
       // Build a changeset that touches only 2 documents.
-      final delta = colA.getChangeset();
+      final delta = await colA.getChangeset();
       final allRecords = delta['notes']!;
       final touched = {'n0', 'n1'};
       final twoDocRecords = allRecords
@@ -181,7 +181,7 @@ void main() {
       }
 
       // Data still round-trips correctly.
-      expect(col.get(docId)?.text, equals('sensitive'));
+      expect((await col.get(docId))?.text, equals('sensitive'));
 
       // Reopen with the same masker and verify the data is still readable.
       final col2 = Collection.create<_Note>(
@@ -191,7 +191,7 @@ void main() {
         idMasker: testMasker,
       );
       await col2.ready;
-      expect(col2.get(docId)?.text, equals('sensitive'));
+      expect((await col2.get(docId))?.text, equals('sensitive'));
     });
   });
 }
