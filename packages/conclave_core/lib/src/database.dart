@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'codec.dart';
 import 'collection.dart';
+import 'identity/device_roster.dart';
 import 'merge_strategies.dart';
 import 'ports/cipher.dart';
 import 'ports/crdt_table.dart';
+import 'ports/identity.dart';
 import 'ports/key_store.dart';
 import 'ports/merge_strategy.dart';
 import 'ports/transport.dart';
@@ -25,7 +27,10 @@ class Database {
     required Transport transport,
     required KeyStore keyStore,
     required String entryKey,
-    required FutureOr<CrdtTable> Function(String collection) engineFor,
+    required List<int> baseKey,
+    required Identity? identity,
+    required FutureOr<CrdtTable> Function(String collection, List<int> key)
+        engineFor,
   })  : _id = id,
         _room = room,
         _cipher = cipher,
@@ -33,6 +38,8 @@ class Database {
         _transport = transport,
         _keyStore = keyStore,
         _entryKey = entryKey,
+        _baseKey = baseKey,
+        _identity = identity,
         _engineFor = engineFor;
 
   final String _id;
@@ -43,8 +50,22 @@ class Database {
   final KeyStore _keyStore;
   final String _entryKey;
 
-  /// Builds the backing [CrdtTable] for a collection in this database.
-  final FutureOr<CrdtTable> Function(String collection) _engineFor;
+  /// The passphrase-derived key. Encrypts the reserved device-roster collection;
+  /// also encrypts every user collection when no [Identity] is configured.
+  final List<int> _baseKey;
+
+  /// This device's identity, when the device-keypair model is active. `null`
+  /// keeps the legacy behaviour: the passphrase-derived key encrypts everything
+  /// and there is no roster.
+  final Identity? _identity;
+
+  /// The reserved device roster, present iff [_identity] is set.
+  DeviceRoster? _roster;
+
+  /// Builds the backing [CrdtTable] for a collection, given the key that
+  /// collection's data is encrypted with.
+  final FutureOr<CrdtTable> Function(String collection, List<int> key)
+      _engineFor;
 
   // Type-erased collection registry. Values are always Collection<T> for the
   // T supplied by the caller; cast back at retrieval time.
@@ -90,6 +111,30 @@ class Database {
     List<String> indexedFields = const [],
     void Function(String documentId)? onRemoteConflict,
   }) {
+    if (name == kDeviceCollection) {
+      throw ArgumentError.value(
+        name,
+        'name',
+        'Collection name "$kDeviceCollection" is reserved for Conclave device '
+            'management.',
+      );
+    }
+    return _getOrCreate<T>(
+      name,
+      codec,
+      merge: merge,
+      indexedFields: indexedFields,
+      onRemoteConflict: onRemoteConflict,
+    );
+  }
+
+  Collection<T> _getOrCreate<T>(
+    String name,
+    Codec<T> codec, {
+    MergeStrategy merge = const ObjectMergeStrategy(),
+    List<String> indexedFields = const [],
+    void Function(String documentId)? onRemoteConflict,
+  }) {
     if (_collections.containsKey(name)) {
       final existing = _collections[name] as Collection<T>;
       assert(
@@ -106,13 +151,34 @@ class Database {
       name,
       codec,
       merge: merge,
-      engine: () => _engineFor(name),
+      engine: () => _engineForCollection(name),
       indexedFields: indexedFields,
       onLocalChange: () => _broadcastCollection(col),
       onRemoteConflict: onRemoteConflict,
     );
     _collections[name] = col;
     return col;
+  }
+
+  /// Picks the encryption key for [name] and builds its engine.
+  ///
+  /// The reserved roster collection, and every collection when no [Identity] is
+  /// configured, use the passphrase-derived key. Otherwise a user collection
+  /// uses the unwrapped group key; opening one before this device is paired is
+  /// a [StateError].
+  FutureOr<CrdtTable> _engineForCollection(String name) {
+    if (name == kDeviceCollection || _identity == null) {
+      return _engineFor(name, _baseKey);
+    }
+    final groupKey = _roster?.groupKey;
+    if (groupKey == null) {
+      throw StateError(
+        'Database "$_id" needs pairing before collection "$name" can be '
+        'opened (deviceState is ${_roster?.state ?? DeviceState.needsPairing}). '
+        'Pair this device or call Database.foundGroup() on a new database.',
+      );
+    }
+    return _engineFor(name, groupKey);
   }
 
   /// Stops syncing and releases local resources, **keeping** the encryption key
@@ -161,6 +227,101 @@ class Database {
     for (final peer in _peers.toList()) {
       await _sendHello(peer);
       await _sendPoke(peer);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Device roster (only when an Identity is configured)
+
+  /// This device's position relative to the database's group key.
+  ///
+  /// [DeviceState.ready] once a valid wrap has been unwrapped;
+  /// [DeviceState.needsPairing] until this device is admitted (see
+  /// [Conclave.identity] and task-18 pairing); [DeviceState.revoked] if its
+  /// roster entry has been revoked. Always [DeviceState.needsPairing] when no
+  /// [Identity] is configured.
+  DeviceState get deviceState => _roster?.state ?? DeviceState.needsPairing;
+
+  /// The devices in this database's roster, oldest first.
+  ///
+  /// Empty when no [Identity] is configured.
+  Future<List<DeviceRecord>> listDevices() async =>
+      _roster?.listDevices() ?? const [];
+
+  /// Re-resolves [deviceState] from the roster after sync has delivered new
+  /// rows from a peer. Returns the new state.
+  ///
+  /// Drive sync first (`await conclave.forceSync()` then let the event loop
+  /// settle) so a freshly synced wrap is visible.
+  Future<DeviceState> refreshDeviceState() async =>
+      _roster?.resolve() ?? DeviceState.needsPairing;
+
+  /// Founds a brand-new database: generates the random group key and seals it to
+  /// this device at epoch 0.
+  ///
+  /// Only for the very first device. Throws [StateError] if the roster already
+  /// carries a wrap (another device founded it — pair this device instead) or if
+  /// no [Identity] is configured.
+  Future<void> foundGroup({String label = 'this device'}) async {
+    final roster = _requireRoster();
+    await roster.found(label: label);
+  }
+
+  /// Adds [peer] to the roster and seals the current group key to it.
+  ///
+  /// Called by the pairing flow once a new device has been authenticated.
+  /// Requires [deviceState] of [DeviceState.ready].
+  Future<void> admitDevice(
+    DevicePublicKey peer, {
+    required String label,
+  }) async {
+    final roster = _requireRoster();
+    await roster.admit(peer, label: label);
+  }
+
+  /// Marks [deviceId] revoked in the roster.
+  ///
+  /// The flag propagates to every device on the next sync. Cryptographic
+  /// exclusion (rotating the group key) is a separate, later step.
+  Future<void> revokeDevice(String deviceId) async {
+    final roster = _requireRoster();
+    await roster.revoke(deviceId);
+  }
+
+  DeviceRoster _requireRoster() {
+    final roster = _roster;
+    if (roster == null) {
+      throw StateError(
+        'No Identity is configured for this database; the device roster is '
+        'unavailable. Use Conclave.builder with an identity, or pass '
+        'identity: to Conclave.lowLevel.',
+      );
+    }
+    return roster;
+  }
+
+  /// Opens the reserved roster collection and resolves this device's initial
+  /// group-key state. Called by [Conclave] right after the database is
+  /// registered and known peers announced, when an [Identity] is configured.
+  ///
+  /// [autoFound] founds the group key when this device is demonstrably alone
+  /// (no connected peers) and no device has founded it yet — the first-run path.
+  Future<void> initDeviceRoster(
+    Identity identity, {
+    required bool autoFound,
+  }) async {
+    final col =
+        _getOrCreate<DeviceRosterEntry>(kDeviceCollection, deviceRosterCodec);
+    final roster = DeviceRoster(col, identity);
+    _roster = roster;
+    await roster.ready;
+
+    var state = await roster.resolve();
+    if (state == DeviceState.needsPairing &&
+        autoFound &&
+        await roster.isUnfounded) {
+      await roster.found(label: 'this device');
+      state = roster.state;
     }
   }
 
@@ -306,7 +467,10 @@ class Database {
     required Transport transport,
     required KeyStore keyStore,
     required String entryKey,
-    required FutureOr<CrdtTable> Function(String collection) engineFor,
+    required List<int> baseKey,
+    required Identity? identity,
+    required FutureOr<CrdtTable> Function(String collection, List<int> key)
+        engineFor,
   }) async {
     return Database._(
       id: id,
@@ -316,6 +480,8 @@ class Database {
       transport: transport,
       keyStore: keyStore,
       entryKey: entryKey,
+      baseKey: baseKey,
+      identity: identity,
       engineFor: engineFor,
     );
   }

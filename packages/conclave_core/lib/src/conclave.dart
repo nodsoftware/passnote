@@ -309,15 +309,28 @@ class Conclave {
       transport: _transport,
       keyStore: _keyStore,
       entryKey: entryKey,
-      engineFor: (collection) => _buildEngine(localId, collection, key),
+      baseKey: key,
+      identity: _identity,
+      engineFor: (collection, engineKey) =>
+          _buildEngine(localId, collection, engineKey),
     );
 
     _databases[localId] = db;
 
     // Announce to peers that were already connected before this database
     // was opened (common when openDatabase is called after transport start).
+    final aloneAtOpen = _connectedPeers.isEmpty;
     for (final peer in _connectedPeers) {
       await db.onPeerConnected(peer);
+    }
+
+    // With an identity configured, resolve this device's group-key state from
+    // the reserved roster collection. A brand-new database with no peers founds
+    // its own group key here (first-run path); otherwise the device is
+    // `needsPairing` until it is admitted.
+    final identity = _identity;
+    if (identity != null) {
+      await db.initDeviceRoster(identity, autoFound: aloneAtOpen);
     }
 
     return db;

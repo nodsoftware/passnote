@@ -5,8 +5,8 @@
 - Added `DeviceIdentity`, the default `Identity` implementation: an X25519
   key-exchange keypair and an Ed25519 signing keypair generated once and kept
   in the injected `KeyStore`. `wrapFor` / `unwrap` seal a symmetric key with
-  X25519 → HKDF-SHA256 → AES-256-GCM; `deviceId` is a 16-character base32
-  fingerprint of the public keys.
+  X25519 → HKDF-SHA256 → AES-256-GCM; `deviceId` (and `fingerprintOf` for a
+  peer's public key) is a 16-character base32 fingerprint of the public keys.
 
 ## 0.1.0
 

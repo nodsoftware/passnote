@@ -91,6 +91,9 @@ class DeviceIdentity implements Identity {
   Future<DevicePublicKey> get publicKey async => _publicKey;
 
   @override
+  String fingerprintOf(DevicePublicKey publicKey) => _fingerprint(publicKey);
+
+  @override
   Future<List<int>> sign(List<int> message) async {
     final signature = await _ed25519.sign(message, keyPair: _signingKeyPair);
     return signature.bytes;

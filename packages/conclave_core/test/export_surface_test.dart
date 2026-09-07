@@ -26,6 +26,28 @@ void main() {
       isNotNull,
     );
     expect(api.WrappedKey, isNotNull);
+
+    // Device roster.
+    expect(api.kDeviceCollection, '__conclave_devices');
+    expect(api.DeviceState.needsPairing, isNotNull);
+    expect(
+      api.DeviceRecord(
+        deviceId: 'd',
+        publicKey: const [],
+        label: 'l',
+        pairedAt: DateTime.utc(2026),
+      ),
+      isA<api.DeviceRosterEntry>(),
+    );
+    expect(
+      const api.WrappedGroupKey(
+        deviceId: 'd',
+        keyEpoch: 0,
+        wrappedBytes: [],
+      ),
+      isA<api.DeviceRosterEntry>(),
+    );
+
     expect(api.newId(), isNotEmpty);
     expect(const api.ObjectMergeStrategy(), isA<api.MergeStrategy>());
     expect(const api.ShallowMergeStrategy(), isA<api.MergeStrategy>());

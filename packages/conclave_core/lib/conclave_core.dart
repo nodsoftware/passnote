@@ -7,6 +7,13 @@ export 'src/collection.dart';
 export 'src/id.dart';
 export 'src/conclave.dart';
 export 'src/database.dart';
+export 'src/identity/device_roster.dart'
+    show
+        DeviceRecord,
+        DeviceRosterEntry,
+        DeviceState,
+        WrappedGroupKey,
+        kDeviceCollection;
 export 'src/merge_strategies.dart';
 export 'src/map_crdt_table.dart';
 export 'src/ports/cipher.dart';

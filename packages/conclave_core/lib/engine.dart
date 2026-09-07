@@ -11,6 +11,13 @@ library conclave_core.engine;
 
 export 'src/conclave.dart'
     show Conclave, ConclaveEvent, PeerAppeared, PeerDisappeared, StoreRecovered;
+export 'src/identity/device_roster.dart'
+    show
+        DeviceRecord,
+        DeviceRosterEntry,
+        DeviceState,
+        WrappedGroupKey,
+        kDeviceCollection;
 
 export 'src/engine/sqlite_crdt_table.dart';
 export 'src/map_crdt_table.dart';

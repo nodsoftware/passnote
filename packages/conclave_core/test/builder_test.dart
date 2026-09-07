@@ -41,15 +41,22 @@ class _StubIdentity implements Identity {
       const DevicePublicKey(keyExchange: [], signing: []);
 
   @override
+  String fingerprintOf(DevicePublicKey publicKey) => deviceId;
+
+  @override
   Future<List<int>> sign(List<int> message) async => message;
 
   @override
   Future<WrappedKey> wrapFor(DevicePublicKey peer, List<int> key) async =>
       WrappedKey(
-          ephemeralPublicKey: const [], nonce: const [], ciphertext: key);
+        ephemeralPublicKey: List<int>.filled(32, 0),
+        nonce: List<int>.filled(12, 0),
+        ciphertext: [...key, ...List<int>.filled(16, 0)],
+      );
 
   @override
-  Future<List<int>> unwrap(WrappedKey wrapped) async => wrapped.ciphertext;
+  Future<List<int>> unwrap(WrappedKey wrapped) async =>
+      wrapped.ciphertext.sublist(0, wrapped.ciphertext.length - 16);
 }
 
 void main() {

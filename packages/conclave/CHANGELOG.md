@@ -15,6 +15,11 @@
 - `conclaveBuilder` now installs a default device `Identity` (`DeviceIdentity`,
   X25519 + Ed25519) backed by the OS keychain, reachable via
   `Conclave.identity`.
+- A database's data is now encrypted with a per-database **group key** wrapped to
+  each paired device, not straight from the passphrase. The first device founds
+  the group key on open; further devices open in a "needs pairing" state until
+  admitted (`Database.deviceState`, `listDevices`, `admitDevice`, `revokeDevice`).
+  The synced device roster lives in a reserved collection.
 
 ## 0.1.0
 

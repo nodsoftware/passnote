@@ -49,8 +49,25 @@
 - Added the `Identity` port (`DevicePublicKey`, `WrappedKey`) — a per-device
   keypair for pairing, key wrap, and signed control messages.
   `Conclave.builder(...).identity(...)` overrides it; `Conclave.identity`
-  exposes the resolved one (throws until one is configured). Not yet used by
-  `openDatabase`; pairing and key wrap land next.
+  exposes the resolved one (throws until one is configured).
+- When an `Identity` is configured, a database now keeps a reserved, synced
+  `__conclave_devices` collection: one `DeviceRecord` per paired device plus the
+  random group key wrapped (`WrappedGroupKey`) to each device at a `keyEpoch`.
+  `Database.collection` refuses the reserved name.
+  - On open, the device unwraps its wrap and every user collection is encrypted
+    with the **group key**, not the passphrase-derived key (which now only
+    protects the roster).
+  - A brand-new database with no connected peers founds its own group key
+    (`Database.foundGroup()` is the explicit form). A device with no wrap opens
+    in `DeviceState.needsPairing` — not an error; user collections stay
+    unopenable until it is paired.
+  - `Database.deviceState`, `listDevices()`, `admitDevice()`, `revokeDevice()`,
+    and `refreshDeviceState()` manage the roster. It converges under the CRDT
+    like any other collection.
+  - `Identity` gained `fingerprintOf(DevicePublicKey)` so a device can key
+    roster rows for a peer.
+  - No `Identity` configured: unchanged — the passphrase-derived key encrypts
+    everything and there is no roster.
 
 ## 0.1.0
 

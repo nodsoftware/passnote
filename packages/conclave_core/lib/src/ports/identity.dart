@@ -101,6 +101,11 @@ abstract interface class Identity {
   /// device needs to be named (pairing UIs, revocation lists, logs).
   String get deviceId;
 
+  /// The fingerprint for an arbitrary device's [publicKey], by the same rule as
+  /// [deviceId]. Lets a device key roster rows for a peer whose private keys it
+  /// does not hold.
+  String fingerprintOf(DevicePublicKey publicKey);
+
   /// Signs [message] with this device's Ed25519 key. Verifiable against
   /// `publicKey.signing`.
   Future<List<int>> sign(List<int> message);
