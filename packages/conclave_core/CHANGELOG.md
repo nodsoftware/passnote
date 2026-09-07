@@ -19,7 +19,14 @@
 - Added `SqliteCrdtTable` (in `package:conclave_core/engine.dart`): a
   disk-backed `CrdtTable` on `package:sqlite3`, with WAL mode, a `user_version`
   migration, a persisted node id, and optional SQLCipher at-rest encryption.
-  It is not yet the default; the builder still uses `MapCrdtTable`.
+- **The disk-backed engine is now the default.** `Conclave.builder(...)` uses a
+  SQLite engine per collection; `.engine(MapCrdtTable.new)` selects the
+  in-memory engine. Engine selection is threaded through `Conclave`, `Database`,
+  and `Collection` via an engine factory; `Collection` builds its engine
+  asynchronously during the initial load.
+- Added `CrdtTable.close()` (default no-op) so a disk-backed engine releases its
+  file on `Database.close`.
+- Added `InMemoryBus.paused` for simulating a network outage in tests.
 - Added `runCrdtTableConformance`, the shared `CrdtTable` behavioural contract.
 
 ## 0.1.0

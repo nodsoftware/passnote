@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'codec.dart';
 import 'collection.dart';
 import 'merge_strategies.dart';
 import 'ports/cipher.dart';
+import 'ports/crdt_table.dart';
 import 'ports/key_store.dart';
 import 'ports/merge_strategy.dart';
 import 'ports/transport.dart';
@@ -22,13 +25,15 @@ class Database {
     required Transport transport,
     required KeyStore keyStore,
     required String entryKey,
+    required FutureOr<CrdtTable> Function(String collection) engineFor,
   })  : _id = id,
         _room = room,
         _cipher = cipher,
         _nodeId = nodeId,
         _transport = transport,
         _keyStore = keyStore,
-        _entryKey = entryKey;
+        _entryKey = entryKey,
+        _engineFor = engineFor;
 
   final String _id;
   final String _room;
@@ -37,6 +42,9 @@ class Database {
   final Transport _transport;
   final KeyStore _keyStore;
   final String _entryKey;
+
+  /// Builds the backing [CrdtTable] for a collection in this database.
+  final FutureOr<CrdtTable> Function(String collection) _engineFor;
 
   // Type-erased collection registry. Values are always Collection<T> for the
   // T supplied by the caller; cast back at retrieval time.
@@ -98,6 +106,7 @@ class Database {
       name,
       codec,
       merge: merge,
+      engine: () => _engineFor(name),
       indexedFields: indexedFields,
       onLocalChange: () => _broadcastCollection(col),
       onRemoteConflict: onRemoteConflict,
@@ -297,6 +306,7 @@ class Database {
     required Transport transport,
     required KeyStore keyStore,
     required String entryKey,
+    required FutureOr<CrdtTable> Function(String collection) engineFor,
   }) async {
     return Database._(
       id: id,
@@ -306,6 +316,7 @@ class Database {
       transport: transport,
       keyStore: keyStore,
       entryKey: entryKey,
+      engineFor: engineFor,
     );
   }
 }

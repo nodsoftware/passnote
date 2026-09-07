@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:crdt/crdt.dart';
 
 import 'database.dart';
+import 'ports/crdt_table.dart';
 import 'ports/cipher.dart';
 import 'ports/key_store.dart';
 import 'ports/transport.dart';
@@ -133,7 +136,11 @@ class Conclave {
     required Cipher Function(List<int>) cipherFactory,
     required List<String> Function(int words) mnemonicGenerator,
     required bool Function(String) validateMnemonic,
+    required FutureOr<CrdtTable> Function(
+            String databaseId, String collection, List<int> key)
+        engineFactory,
   })  : _config = config,
+        _engineFactory = engineFactory,
         _keyStore = keyStore,
         _transport = transport,
         _nodeId = nodeId,
@@ -152,6 +159,8 @@ class Conclave {
   final Cipher Function(List<int>) _cipherFactory;
   final List<String> Function(int words) _mnemonicGenerator;
   final bool Function(String) _validateMnemonic;
+  final FutureOr<CrdtTable> Function(
+      String databaseId, String collection, List<int> key) _engineFactory;
 
   final Map<String, Database> _databases = {};
   final Set<PeerId> _connectedPeers = {};
@@ -236,6 +245,7 @@ class Conclave {
       transport: _transport,
       keyStore: _keyStore,
       entryKey: entryKey,
+      engineFor: (collection) => _engineFactory(localId, collection, key),
     );
 
     _databases[localId] = db;
@@ -389,6 +399,9 @@ class Conclave {
     required Cipher Function(List<int> key) cipher,
     required List<String> Function(int words) mnemonicGenerator,
     required bool Function(String) validateMnemonic,
+    required FutureOr<CrdtTable> Function(
+            String databaseId, String collection, List<int> key)
+        engine,
   }) async {
     final nodeId = generateNodeId();
 
@@ -402,6 +415,7 @@ class Conclave {
       cipherFactory: cipher,
       mnemonicGenerator: mnemonicGenerator,
       validateMnemonic: validateMnemonic,
+      engineFactory: engine,
     );
     // Wire listeners BEFORE start so PeerConnected events emitted during
     // registration are not missed.

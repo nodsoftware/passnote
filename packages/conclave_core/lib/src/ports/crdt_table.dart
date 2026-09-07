@@ -127,4 +127,8 @@ abstract interface class CrdtTable {
 
   /// A broadcast stream that emits whenever any record in [table] changes.
   Stream<void> watch(String table);
+
+  /// Releases resources (a disk-backed engine closes its file). The default is
+  /// a no-op. Called by [Collection.dispose].
+  Future<void> close() async {}
 }

@@ -36,12 +36,14 @@ class Collection<T> {
     this._name,
     this._codec, {
     required MergeStrategy merge,
-    CrdtTable? table,
+    FutureOr<CrdtTable> Function()? engine,
     List<String> indexedFields = const [],
     void Function()? onLocalChange,
     void Function(String documentId)? onRemoteConflict,
   })  : _merge = merge,
-        _engine = table ?? MapCrdtTable(_name),
+        // A synchronous placeholder so [length] / [maxHlc] are safe before the
+        // real engine is built in [_ready]. Reads against it just return empty.
+        _engine = MapCrdtTable(_name),
         _onLocalChange = onLocalChange,
         _onRemoteConflict = onRemoteConflict,
         _index = _Index(indexedFields),
@@ -54,6 +56,9 @@ class Collection<T> {
           'DeepMergeStrategy instead.',
         ) {
     _ready = _serialize(() async {
+      if (engine != null) {
+        _engine = await Future.sync(engine);
+      }
       if (_engine.isPersistent) await _engine.init();
       await _rebuildIndex();
     });
@@ -324,17 +329,18 @@ class Collection<T> {
   /// [dispose], [Database.close], or [Database.leave].
   Stream<List<T>> watch() {
     // `_engine.watch` is a broadcast stream that drops events while it has no
-    // listener. Subscribe to it *before* emitting the initial snapshot so a
-    // merge that lands between subscription and the first emit is never lost.
+    // listener. The engine subscription waits for [_ready] so it binds the real
+    // engine (which [_ready] may build asynchronously); the first snapshot is
+    // emitted immediately after, so no change is missed.
     late final StreamController<List<T>> controller;
     StreamSubscription<void>? sub;
     controller = StreamController<List<T>>(
       onListen: () {
-        sub = _engine.watch(_name).listen((_) {
-          all().then((snap) => controller.add(snap));
-        });
-        _watcherSubs[controller] = sub;
         _ready.then((_) {
+          sub = _engine.watch(_name).listen((_) {
+            all().then((snap) => controller.add(snap));
+          });
+          _watcherSubs[controller] = sub;
           all().then((snap) => controller.add(snap));
         });
       },
@@ -358,6 +364,7 @@ class Collection<T> {
     }
     _watchers.clear();
     _watcherSubs.clear();
+    await _engine.close();
   }
 
   /// Permanently removes tombstoned records (deleted documents and removed
@@ -646,13 +653,14 @@ class Collection<T> {
   /// paths for [DeepMergeStrategy], etc.). The index is derived state —
   /// rebuilt on load and updated incrementally. Defaults to no indexes.
   ///
-  /// [table] overrides the default in-memory [MapCrdtTable]. Pass a custom
-  /// [CrdtTable] implementation to back the collection with disk-based storage.
+  /// [engine] builds the backing [CrdtTable]. It runs once, during the initial
+  /// load, and may be async (a disk-backed engine opens a file). When omitted,
+  /// the collection uses an in-memory [MapCrdtTable] and is not persisted.
   static Collection<T> create<T>(
     String name,
     Codec<T> codec, {
     MergeStrategy merge = const ObjectMergeStrategy(),
-    CrdtTable? table,
+    FutureOr<CrdtTable> Function()? engine,
     List<String> indexedFields = const [],
     void Function()? onLocalChange,
     void Function(String documentId)? onRemoteConflict,
@@ -661,7 +669,7 @@ class Collection<T> {
         name,
         codec,
         merge: merge,
-        table: table,
+        engine: engine,
         indexedFields: indexedFields,
         onLocalChange: onLocalChange,
         onRemoteConflict: onRemoteConflict,

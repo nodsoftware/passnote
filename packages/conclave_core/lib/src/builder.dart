@@ -10,6 +10,7 @@ part of 'conclave.dart';
 final class ConclaveDefaults {
   /// Creates a default bundle. Every factory is required.
   const ConclaveDefaults({
+    required this.engine,
     required this.keyStore,
     required this.transport,
     required this.cipher,
@@ -18,6 +19,10 @@ final class ConclaveDefaults {
     required this.mnemonicGenerator,
     required this.validateMnemonic,
   });
+
+  /// Builds the backing [CrdtTable] for a collection in a database.
+  final FutureOr<CrdtTable> Function(
+      String databaseId, String collection, List<int> key) engine;
 
   /// Builds the key store for an app, given the app id.
   final KeyStore Function(String appId) keyStore;
@@ -67,6 +72,7 @@ final class ConclaveBuilder {
   final String _appId;
   final String _salt;
 
+  FutureOr<CrdtTable> Function(String collection)? _engineOverride;
   KeyStore? _keyStore;
   Transport? _transport;
   Cipher Function(List<int> key)? _cipher;
@@ -83,6 +89,16 @@ final class ConclaveBuilder {
   /// `conclave_core` without the umbrella. The last call wins.
   static void installDefaults(ConclaveDefaults defaults) =>
       _defaults = defaults;
+
+  /// Overrides the storage engine. Default: a SQLite-backed disk engine.
+  /// Pass `MapCrdtTable.new` for an in-memory, non-persistent engine.
+  ConclaveBuilder engine(
+    FutureOr<CrdtTable> Function(String collection) factory,
+  ) {
+    _once('engine', _engineOverride != null);
+    _engineOverride = factory;
+    return this;
+  }
 
   /// Overrides the transport. Default: the umbrella's LAN transport.
   ConclaveBuilder transport(Transport Function() factory) {
@@ -148,7 +164,11 @@ final class ConclaveBuilder {
       );
     }
 
+    final override = _engineOverride;
     return Conclave.lowLevel(
+      engine: override != null
+          ? (_, collection, __) => override(collection)
+          : defaults.engine,
       config: ConclaveConfig(
         appId: _appId,
         salt: _salt,

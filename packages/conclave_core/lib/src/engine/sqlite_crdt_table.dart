@@ -15,50 +15,63 @@ import '../ports/crdt_table.dart';
 /// encoding of the record's Hybrid Logical Clock, so `WHERE hlc_key > ?` is a
 /// correct causal comparison.
 ///
-/// Open one with [open]. On native targets pass an
-/// [encryptionKey] to use SQLCipher (the native library must be a SQLCipher
-/// build; the Dart API is unchanged). [isPersistent] is `true`: [Collection]
-/// delegates its whole lifecycle here.
+/// Construct it with a path; the database is opened on the first [init] (which
+/// [Collection] calls, since [isPersistent] is `true`). On native targets pass
+/// an [encryptionKey] to use SQLCipher (the native library must be a SQLCipher
+/// build; the Dart API is unchanged).
 final class SqliteCrdtTable implements CrdtTable {
-  SqliteCrdtTable._(this._db, this._nodeId, this._canonical);
+  /// Creates a table for the database at [path], which is opened on the first
+  /// [init]. Pass `":memory:"` for a transient database; pass an
+  /// [encryptionKey] to use SQLCipher on a SQLCipher build of the native
+  /// library.
+  SqliteCrdtTable(this._path, {List<int>? encryptionKey})
+      : _encryptionKey = encryptionKey;
 
-  /// Opens (creating if needed) a database at [path]. Pass `":memory:"` for a
-  /// transient database. [encryptionKey] enables SQLCipher on a SQLCipher build
-  /// of the native library.
+  /// Convenience for tests: constructs and [init]s in one step.
   static Future<SqliteCrdtTable> open(
     String path, {
     List<int>? encryptionKey,
   }) async {
-    final db = sqlite3.open(path);
-    if (encryptionKey != null) {
-      final hex =
-          encryptionKey.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-      db.execute("PRAGMA key = \"x'$hex'\"");
-    }
-    db.execute('PRAGMA journal_mode = WAL');
-    db.execute('PRAGMA synchronous = NORMAL');
-    db.execute('PRAGMA foreign_keys = ON');
-
-    _migrate(db);
-
-    final nodeId = _readOrCreateNodeId(db);
-    final canonical = _readMaxHlc(db) ?? Hlc.zero(nodeId);
-    return SqliteCrdtTable._(db, nodeId, canonical);
+    final table = SqliteCrdtTable(path, encryptionKey: encryptionKey);
+    await table.init();
+    return table;
   }
 
-  final Database _db;
-  final String _nodeId;
-  Hlc _canonical;
+  final String _path;
+  final List<int>? _encryptionKey;
+
+  Database? _db;
+  late String _nodeId;
+  late Hlc _canonical;
   final _watchers = <String, StreamController<void>>{};
   bool _closed = false;
+
+  Database get _open =>
+      _db ?? (throw StateError('SqliteCrdtTable.init() first'));
 
   @override
   bool get isPersistent => true;
 
   @override
-  Future<void> init() async {}
+  Future<void> init() async {
+    if (_db != null || _closed) return;
+    final db = sqlite3.open(_path);
+    final key = _encryptionKey;
+    if (key != null) {
+      final hex = key.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+      db.execute("PRAGMA key = \"x'$hex'\"");
+    }
+    db.execute('PRAGMA journal_mode = WAL');
+    db.execute('PRAGMA synchronous = NORMAL');
+    db.execute('PRAGMA foreign_keys = ON');
+    _migrate(db);
+    _nodeId = _readOrCreateNodeId(db);
+    _canonical = _readMaxHlc(db) ?? Hlc.zero(_nodeId);
+    _db = db;
+  }
 
   /// Closes the database and every watch stream. Safe to call more than once.
+  @override
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
@@ -66,7 +79,8 @@ final class SqliteCrdtTable implements CrdtTable {
       await c.close();
     }
     _watchers.clear();
-    _db.dispose();
+    _db?.dispose();
+    _db = null;
   }
 
   @override
@@ -77,7 +91,7 @@ final class SqliteCrdtTable implements CrdtTable {
     bool isDeleted = false,
   }) async {
     _canonical = _canonical.increment();
-    _db.execute(
+    _open.execute(
       'INSERT INTO crdt_records (collection, key, value, is_deleted, hlc, '
       'hlc_key) VALUES (?, ?, ?, ?, ?, ?) '
       'ON CONFLICT(collection, key) DO UPDATE SET '
@@ -97,7 +111,7 @@ final class SqliteCrdtTable implements CrdtTable {
 
   @override
   Future<Object?> value(String table, String key) async {
-    final rows = _db.select(
+    final rows = _open.select(
       'SELECT value FROM crdt_records '
       'WHERE collection = ? AND key = ? AND is_deleted = 0',
       [table, key],
@@ -109,12 +123,12 @@ final class SqliteCrdtTable implements CrdtTable {
   @override
   Future<Map<String, Object?>> liveFields(String table, String prefix) async {
     final rows = prefix.isEmpty
-        ? _db.select(
+        ? _open.select(
             'SELECT key, value FROM crdt_records '
             'WHERE collection = ? AND is_deleted = 0',
             [table],
           )
-        : _db.select(
+        : _open.select(
             'SELECT key, value FROM crdt_records '
             'WHERE collection = ? AND is_deleted = 0 '
             'AND substr(key, 1, ?) = ?',
@@ -128,13 +142,14 @@ final class SqliteCrdtTable implements CrdtTable {
 
   @override
   Set<String> liveKeys(String table, String prefix) {
+    if (_db == null) return const {};
     final rows = prefix.isEmpty
-        ? _db.select(
+        ? _open.select(
             'SELECT key FROM crdt_records '
             'WHERE collection = ? AND is_deleted = 0',
             [table],
           )
-        : _db.select(
+        : _open.select(
             'SELECT key FROM crdt_records '
             'WHERE collection = ? AND is_deleted = 0 AND substr(key, 1, ?) = ?',
             [table, prefix.length, prefix],
@@ -146,13 +161,13 @@ final class SqliteCrdtTable implements CrdtTable {
   Future<CrdtChangeset> changeset(String table, {String? sinceHlc}) async {
     final ResultSet rows;
     if (sinceHlc == null || sinceHlc.isEmpty) {
-      rows = _db.select(
+      rows = _open.select(
         'SELECT key, value, is_deleted, hlc FROM crdt_records '
         'WHERE collection = ?',
         [table],
       );
     } else {
-      rows = _db.select(
+      rows = _open.select(
         'SELECT key, value, is_deleted, hlc FROM crdt_records '
         'WHERE collection = ? AND hlc_key > ?',
         [table, _hlcKey(Hlc.parse(sinceHlc))],
@@ -173,7 +188,8 @@ final class SqliteCrdtTable implements CrdtTable {
 
   @override
   String maxHlc(String table) {
-    final rows = _db.select(
+    if (_db == null) return '';
+    final rows = _open.select(
       'SELECT hlc FROM crdt_records WHERE collection = ? '
       'ORDER BY hlc_key DESC LIMIT 1',
       [table],
@@ -186,7 +202,7 @@ final class SqliteCrdtTable implements CrdtTable {
     var changed = false;
     final touchedTables = <String>{};
 
-    _db.execute('BEGIN');
+    _open.execute('BEGIN');
     try {
       for (final entry in changeset.entries) {
         final table = entry.key;
@@ -202,7 +218,7 @@ final class SqliteCrdtTable implements CrdtTable {
             // DuplicateNodeException / drift — leave the clock as is.
           }
 
-          final existing = _db.select(
+          final existing = _open.select(
             'SELECT hlc FROM crdt_records WHERE collection = ? AND key = ?',
             [table, key],
           );
@@ -211,7 +227,7 @@ final class SqliteCrdtTable implements CrdtTable {
             continue;
           }
 
-          _db.execute(
+          _open.execute(
             'INSERT INTO crdt_records (collection, key, value, is_deleted, '
             'hlc, hlc_key) VALUES (?, ?, ?, ?, ?, ?) '
             'ON CONFLICT(collection, key) DO UPDATE SET '
@@ -230,9 +246,9 @@ final class SqliteCrdtTable implements CrdtTable {
           touchedTables.add(table);
         }
       }
-      _db.execute('COMMIT');
-    } catch (e) {
-      _db.execute('ROLLBACK');
+      _open.execute('COMMIT');
+    } catch (_) {
+      _open.execute('ROLLBACK');
       rethrow;
     }
 
@@ -251,12 +267,12 @@ final class SqliteCrdtTable implements CrdtTable {
   @override
   Future<int> compact(String table, {required Duration horizon}) async {
     final cutoff = Hlc(DateTime.now().toUtc().subtract(horizon), 0, _nodeId);
-    _db.execute(
+    _open.execute(
       'DELETE FROM crdt_records '
       'WHERE collection = ? AND is_deleted = 1 AND hlc_key < ?',
       [table, _hlcKey(cutoff)],
     );
-    final removed = _db.updatedRows;
+    final removed = _open.updatedRows;
     if (removed > 0) _emit(table);
     return removed;
   }

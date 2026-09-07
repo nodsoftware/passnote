@@ -1,4 +1,5 @@
 import 'package:conclave_core/conclave_core.dart';
+import 'package:conclave_core/engine.dart';
 import 'package:test/test.dart';
 
 class _RecordingKeyStore implements KeyStore {
@@ -41,6 +42,7 @@ void main() {
 
     ConclaveBuilder.installDefaults(
       ConclaveDefaults(
+        engine: (_, collection, __) => MapCrdtTable(collection),
         keyStore: (_) => defaultKeyStore,
         transport: () => defaultTransport,
         cipher: (key) {
@@ -106,5 +108,40 @@ void main() {
       () => builder.keyStore(() => _RecordingKeyStore('y')),
       throwsStateError,
     );
+  });
+
+  test('the engine slot reaches Collection through the builder', () async {
+    var engineBuilds = 0;
+    ConclaveBuilder.installDefaults(
+      ConclaveDefaults(
+        engine: (_, collection, __) {
+          engineBuilds++;
+          return SqliteCrdtTable(':memory:');
+        },
+        keyStore: (_) => _RecordingKeyStore('d'),
+        transport: () => InMemoryTransport(InMemoryBus()),
+        cipher: (_) => _IdentityCipher(),
+        deriveKey: (_, __) async => List<int>.filled(32, 1),
+        roomTag: (_) => 'room',
+        mnemonicGenerator: (words) => List.filled(words, 'abandon'),
+        validateMnemonic: (_) => true,
+      ),
+    );
+
+    final conclave = await Conclave.builder(appId: 'a', salt: 'a:v1').open();
+    addTearDown(conclave.close);
+    final db = await conclave.openDatabase('home', passphrase: 'x');
+    final notes = db.collection<Map<String, dynamic>>(
+      'notes',
+      JsonCodec(
+        toMap: (m) => m,
+        fromMap: (m) => m,
+        idOf: (m) => m['id'] as String,
+      ),
+    );
+    await notes.put({'id': 'n1', 'text': 'hi'});
+
+    expect(engineBuilds, 1, reason: 'the default engine factory was used');
+    expect((await notes.get('n1'))?['text'], 'hi');
   });
 }

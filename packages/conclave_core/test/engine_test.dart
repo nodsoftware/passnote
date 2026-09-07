@@ -127,6 +127,9 @@ class _CountingTable implements CrdtTable {
   @override
   Set<String> liveKeys(String table, String prefix) =>
       _inner.liveKeys(table, prefix);
+
+  @override
+  Future<void> close() => _inner.close();
 }
 
 /// Multi-field model used to exercise field-granular merge strategies.
@@ -164,6 +167,7 @@ Future<Conclave> _openConclave(InMemoryBus bus, {String appId = 'test'}) =>
       cipher: _XorCipher.new,
       mnemonicGenerator: (words) => List.generate(words, (i) => 'word$i'),
       validateMnemonic: (_) => true,
+      engine: (_, col, __) => MapCrdtTable(col),
     );
 
 // ---------------------------------------------------------------------------
@@ -488,6 +492,7 @@ void main() {
         cipher: _XorCipher.new,
         mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
         validateMnemonic: (_) => true,
+        engine: (_, col, __) => MapCrdtTable(col),
       );
       expect(c.generatePassphrase(), hasLength(12));
       await c.close();
@@ -541,6 +546,7 @@ void main() {
         cipher: _XorCipher.new,
         mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
         validateMnemonic: (_) => false,
+        engine: (_, col, __) => MapCrdtTable(col),
       );
       await expectLater(
         c.openDatabase('notes', passphrase: 'password'),
@@ -567,6 +573,7 @@ void main() {
         cipher: _XorCipher.new,
         mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
         validateMnemonic: (_) => true,
+        engine: (_, col, __) => MapCrdtTable(col),
       );
       const mnemonic =
           'one two three four five six seven eight nine ten eleven twelve';
@@ -592,6 +599,7 @@ void main() {
         cipher: _XorCipher.new,
         mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
         validateMnemonic: (_) => false,
+        engine: (_, col, __) => MapCrdtTable(col),
       );
       await c.openDatabase('notes', passphrase: 'password');
       expect(await keyStore.getKey('lax/notes'), isNotNull);
@@ -618,6 +626,7 @@ void main() {
         cipher: _XorCipher.new,
         mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
         validateMnemonic: (_) => false,
+        engine: (_, col, __) => MapCrdtTable(col),
       );
       await expectLater(
         c.openDatabase('notes', passphrase: 'weak'),
@@ -1009,7 +1018,7 @@ void main() {
         _Note.codec,
         merge: const ShallowMergeStrategy(),
         indexedFields: ['text'],
-        table: table,
+        engine: () => table,
       );
       await col.ready;
 
@@ -1100,6 +1109,7 @@ void main() {
         cipher: _XorCipher.new,
         mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
         validateMnemonic: (_) => true,
+        engine: (_, col, __) => MapCrdtTable(col),
       );
       final nodeA = await _openConclave(bus);
       const pp =
@@ -1157,6 +1167,7 @@ void main() {
         cipher: _XorCipher.new,
         mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
         validateMnemonic: (_) => true,
+        engine: (_, col, __) => MapCrdtTable(col),
       );
       final nodeA = await _openConclave(bus);
       final nodeB = await _openConclave(bus);
@@ -1214,6 +1225,7 @@ void main() {
         cipher: _XorCipher.new,
         mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
         validateMnemonic: (_) => true,
+        engine: (_, col, __) => MapCrdtTable(col),
       );
       final nodeA = await _openConclave(bus);
       const pp =
@@ -1276,6 +1288,7 @@ void main() {
         cipher: _XorCipher.new,
         mnemonicGenerator: (words) => List.generate(words, (i) => 'w$i'),
         validateMnemonic: (_) => true,
+        engine: (_, col, __) => MapCrdtTable(col),
       );
       final nodeB = await _openConclave(bus);
       const pp =

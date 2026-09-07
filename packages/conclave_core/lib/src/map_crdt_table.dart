@@ -3,12 +3,12 @@ import 'package:crdt/map_crdt.dart';
 
 import 'ports/crdt_table.dart';
 
-/// [CrdtTable] adapter backed by [MapCrdt].
+/// In-memory [CrdtTable] backed by the `crdt` package's `MapCrdt`.
 ///
-/// The default table used by [Collection]. Keeps the full dataset in memory,
-/// which is fine for small collections and tests. For large or long-lived
-/// datasets, wire in a disk-backed table via [Collection.create]'s `table`
-/// parameter once a lazy adapter is available (see Task 03 Phase 2).
+/// Keeps the whole dataset in RAM and is **not persisted**. It is meant for
+/// tests and small, ephemeral collections. Select it explicitly with
+/// `Conclave.builder(...).engine(MapCrdtTable.new)`; the default engine is
+/// disk-backed (`SqliteCrdtTable`).
 class MapCrdtTable implements CrdtTable {
   MapCrdtTable(String table) : _crdt = MapCrdt([table]);
 
@@ -82,4 +82,7 @@ class MapCrdtTable implements CrdtTable {
 
   @override
   Stream<void> watch(String table) => _crdt.watch(table).map<void>((_) {});
+
+  @override
+  Future<void> close() async {}
 }
