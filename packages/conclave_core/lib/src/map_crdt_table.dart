@@ -85,4 +85,7 @@ class MapCrdtTable implements CrdtTable {
 
   @override
   Future<void> close() async {}
+
+  @override
+  Stream<CrdtRecovery> get recoveries => const Stream<CrdtRecovery>.empty();
 }

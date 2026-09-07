@@ -9,7 +9,8 @@
 /// with a CHANGELOG note. Application code should not need it.
 library conclave_core.engine;
 
-export 'src/conclave.dart' show Conclave;
+export 'src/conclave.dart'
+    show Conclave, ConclaveEvent, PeerAppeared, PeerDisappeared, StoreRecovered;
 
 export 'src/engine/sqlite_crdt_table.dart';
 export 'src/map_crdt_table.dart';

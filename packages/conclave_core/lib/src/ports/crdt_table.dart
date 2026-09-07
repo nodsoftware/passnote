@@ -131,4 +131,46 @@ abstract interface class CrdtTable {
   /// Releases resources (a disk-backed engine closes its file). The default is
   /// a no-op. Called by [Collection.dispose].
   Future<void> close() async {}
+
+  /// Emits once if [init] found the local store unreadable and rebuilt it
+  /// (from an on-disk snapshot, or empty).
+  ///
+  /// In-memory engines never emit. The default is an empty stream. A broadcast
+  /// stream so a late subscriber is safe; [Conclave] listens on it to surface
+  /// a [StoreRecovered] event and trigger a re-sync.
+  Stream<CrdtRecovery> get recoveries => const Stream<CrdtRecovery>.empty();
+}
+
+/// How a [CrdtTable] rebuilt its local store after finding it unreadable.
+enum CrdtRecoverySource {
+  /// The most recent on-disk snapshot was restored. Records written since that
+  /// snapshot are gone but return on the next sync with a peer.
+  snapshot,
+
+  /// No usable snapshot existed; the store was reset to empty and must
+  /// re-sync from a peer to get its data back.
+  reset,
+}
+
+/// What [CrdtTable.recoveries] reports when [CrdtTable.init] rebuilds an
+/// unreadable local store.
+class CrdtRecovery {
+  const CrdtRecovery({required this.source, required this.quarantinePath});
+
+  /// Whether the store was restored from a snapshot or reset to empty.
+  final CrdtRecoverySource source;
+
+  /// Where the unreadable file was moved, kept for inspection.
+  final String quarantinePath;
+}
+
+/// A [CrdtTable] that keeps periodic on-disk snapshots as a peerless recovery
+/// fallback.
+///
+/// [Conclave] sets [snapshotInterval] from [ConclaveConfig.snapshotInterval]
+/// before it calls [CrdtTable.init].
+abstract interface class SnapshotCapable {
+  /// How often to write a snapshot of the store. [Duration.zero] disables
+  /// snapshots. Set before [CrdtTable.init]; later changes may not take effect.
+  set snapshotInterval(Duration value);
 }

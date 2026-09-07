@@ -23,6 +23,20 @@ void main() {
     expect(const api.ShallowMergeStrategy(), isA<api.MergeStrategy>());
     expect(const api.DeepMergeStrategy(), isA<api.MergeStrategy>());
 
+    // Observable events.
+    expect(api.ConclaveEvent, isNotNull);
+    expect(const api.PeerAppeared('p'), isA<api.ConclaveEvent>());
+    expect(const api.PeerDisappeared('p'), isA<api.ConclaveEvent>());
+    expect(
+      const api.StoreRecovered(
+        databaseId: 'd',
+        collection: 'c',
+        source: api.CrdtRecoverySource.reset,
+        quarantinePath: '/tmp/x',
+      ),
+      isA<api.ConclaveEvent>(),
+    );
+
     // Exceptions.
     expect(const api.WrongPassphraseException().toString(),
         contains('passphrase'));

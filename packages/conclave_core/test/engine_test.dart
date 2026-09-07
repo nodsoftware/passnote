@@ -130,6 +130,9 @@ class _CountingTable implements CrdtTable {
 
   @override
   Future<void> close() => _inner.close();
+
+  @override
+  Stream<CrdtRecovery> get recoveries => _inner.recoveries;
 }
 
 /// Multi-field model used to exercise field-granular merge strategies.

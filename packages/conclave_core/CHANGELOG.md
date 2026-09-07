@@ -32,6 +32,20 @@
   `sqlite3.wasm` module. Web persistence (an OPFS VFS) and web at-rest
   encryption are not implemented yet.
 - Added `runCrdtTableConformance`, the shared `CrdtTable` behavioural contract.
+- `SqliteCrdtTable` now recovers from a corrupt file. `init` runs
+  `PRAGMA quick_check`; a file that will not open or does not pass is moved to
+  `<path>.corrupt-<timestamp>` and the store is rebuilt — from
+  `<path>.snapshot` if a readable one exists, otherwise empty. The schema
+  migration now runs in one transaction, so an interrupted migration reopens
+  at the old version, never half-applied.
+- Added `ConclaveConfig.snapshotInterval` (default 30 minutes; `Duration.zero`
+  disables): how often the disk-backed engine writes `<file>.snapshot` as a
+  peerless recovery fallback.
+- Added `Conclave.events`, a broadcast `Stream<ConclaveEvent>` carrying
+  `PeerAppeared` / `PeerDisappeared` and `StoreRecovered`. A `reset` recovery
+  triggers an automatic re-sync from peers.
+- Added `CrdtTable.recoveries` (default empty) and the `SnapshotCapable`
+  marker interface for engines that keep on-disk snapshots.
 
 ## 0.1.0
 

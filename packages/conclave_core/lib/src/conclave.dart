@@ -82,6 +82,7 @@ class ConclaveConfig {
     this.passphrasePolicy = const PassphrasePolicy(),
     this.compactionHorizon = const Duration(days: 30),
     this.maxInboundFramesPerSecond = 100,
+    this.snapshotInterval = const Duration(minutes: 30),
   });
 
   /// Scopes mDNS discovery and storage namespacing for this app.
@@ -109,6 +110,64 @@ class ConclaveConfig {
   /// boundary, so this is not a security boundary — it prevents a single noisy
   /// peer from starving the inbound event loop.
   final int maxInboundFramesPerSecond;
+
+  /// How often a disk-backed engine writes a recovery snapshot of each
+  /// collection (`<file>.snapshot`).
+  ///
+  /// If a collection's file is found corrupt on open, the engine restores the
+  /// most recent snapshot; failing that it resets to empty and re-syncs from a
+  /// peer. Either way a [StoreRecovered] event is emitted on [Conclave.events].
+  /// Set to [Duration.zero] to disable snapshots (a peer is then the only way
+  /// back). Ignored by the in-memory engine. Defaults to 30 minutes.
+  final Duration snapshotInterval;
+}
+
+/// An observable event from a [Conclave] instance. Listen via [Conclave.events].
+sealed class ConclaveEvent {
+  const ConclaveEvent();
+}
+
+/// A peer became reachable on the transport.
+final class PeerAppeared extends ConclaveEvent {
+  const PeerAppeared(this.peer);
+
+  /// The peer that connected.
+  final PeerId peer;
+}
+
+/// A peer stopped being reachable.
+final class PeerDisappeared extends ConclaveEvent {
+  const PeerDisappeared(this.peer);
+
+  /// The peer that disconnected.
+  final PeerId peer;
+}
+
+/// A collection's local store was found unreadable on open and rebuilt.
+///
+/// With [CrdtRecoverySource.snapshot] the last on-disk snapshot was restored;
+/// with [CrdtRecoverySource.reset] the store was emptied and a full re-sync
+/// from peers was triggered automatically. The unreadable file is kept at
+/// [quarantinePath] for inspection.
+final class StoreRecovered extends ConclaveEvent {
+  const StoreRecovered({
+    required this.databaseId,
+    required this.collection,
+    required this.source,
+    required this.quarantinePath,
+  });
+
+  /// The local id of the database whose store was rebuilt.
+  final String databaseId;
+
+  /// The name of the affected collection.
+  final String collection;
+
+  /// Whether a snapshot was restored or the store was reset to empty.
+  final CrdtRecoverySource source;
+
+  /// Where the unreadable file was moved.
+  final String quarantinePath;
 }
 
 /// The app-level handle for Conclave.
@@ -164,6 +223,7 @@ class Conclave {
 
   final Map<String, Database> _databases = {};
   final Set<PeerId> _connectedPeers = {};
+  final _events = StreamController<ConclaveEvent>.broadcast();
 
   // Per-peer sliding-window timestamps (ms since epoch) for inbound rate
   // limiting. Cleaned up on peer disconnect.
@@ -245,7 +305,7 @@ class Conclave {
       transport: _transport,
       keyStore: _keyStore,
       entryKey: entryKey,
-      engineFor: (collection) => _engineFactory(localId, collection, key),
+      engineFor: (collection) => _buildEngine(localId, collection, key),
     );
 
     _databases[localId] = db;
@@ -257,6 +317,36 @@ class Conclave {
     }
 
     return db;
+  }
+
+  /// Peer-lifecycle ([PeerAppeared] / [PeerDisappeared]) and store-recovery
+  /// ([StoreRecovered]) events. Broadcast; safe to ignore.
+  Stream<ConclaveEvent> get events => _events.stream;
+
+  /// Builds a collection's backing engine, applies the snapshot interval, and
+  /// subscribes to its recovery signal so a rebuilt store surfaces a
+  /// [StoreRecovered] event and re-syncs from peers.
+  Future<CrdtTable> _buildEngine(
+    String localId,
+    String collection,
+    List<int> key,
+  ) async {
+    final CrdtTable table = await _engineFactory(localId, collection, key);
+    if (table is SnapshotCapable) {
+      (table as SnapshotCapable).snapshotInterval = _config.snapshotInterval;
+    }
+    table.recoveries.listen((recovery) {
+      _emit(StoreRecovered(
+        databaseId: localId,
+        collection: collection,
+        source: recovery.source,
+        quarantinePath: recovery.quarantinePath,
+      ));
+      if (recovery.source == CrdtRecoverySource.reset) {
+        unawaited(_databases[localId]?.forceSync() ?? Future<void>.value());
+      }
+    });
+    return table;
   }
 
   /// Generates a BIP39 mnemonic of the length configured in
@@ -289,6 +379,7 @@ class Conclave {
     }
     _databases.clear();
     await _transport.stop();
+    await _events.close();
   }
 
   // ---------------------------------------------------------------------------
@@ -310,13 +401,19 @@ class Conclave {
       for (final db in _databases.values) {
         db.onPeerConnected(event.peer);
       }
+      _emit(PeerAppeared(event.peer));
     } else if (event is PeerLost) {
       _connectedPeers.remove(event.peer);
       _inboundTimestamps.remove(event.peer);
       for (final db in _databases.values) {
         db.onPeerLost(event.peer);
       }
+      _emit(PeerDisappeared(event.peer));
     }
+  }
+
+  void _emit(ConclaveEvent event) {
+    if (!_events.isClosed) _events.add(event);
   }
 
   /// Returns `true` if [peer] has exceeded the inbound rate limit in the

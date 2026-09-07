@@ -21,13 +21,27 @@ import 'sqlite_open_io.dart' if (dart.library.js_interop) 'sqlite_open_web.dart'
 /// [Collection] calls, since [isPersistent] is `true`). On native targets pass
 /// an [encryptionKey] to use SQLCipher (the native library must be a SQLCipher
 /// build; the Dart API is unchanged).
-final class SqliteCrdtTable implements CrdtTable {
+///
+/// ## Corruption recovery
+///
+/// [init] runs `PRAGMA quick_check` on open. If the file will not open or does
+/// not pass, it is moved aside to `<path>.corrupt-<timestamp>` and the store is
+/// rebuilt: from `<path>.snapshot` if a readable one exists, otherwise empty
+/// (and [recoveries] emits so the sync layer can pull the data back from a
+/// peer). Set [snapshotInterval] (or [ConclaveConfig.snapshotInterval]) to keep
+/// those snapshots current.
+final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
   /// Creates a table for the database at [path], which is opened on the first
   /// [init]. Pass `":memory:"` for a transient database; pass an
   /// [encryptionKey] to use SQLCipher on a SQLCipher build of the native
-  /// library.
-  SqliteCrdtTable(this._path, {List<int>? encryptionKey})
-      : _encryptionKey = encryptionKey;
+  /// library. [snapshotInterval] sets how often a recovery snapshot is written
+  /// (`Duration.zero`, the default, disables it).
+  SqliteCrdtTable(
+    this._path, {
+    List<int>? encryptionKey,
+    Duration snapshotInterval = Duration.zero,
+  })  : _encryptionKey = encryptionKey,
+        _snapshotInterval = snapshotInterval;
 
   /// Web-only configuration (a no-op on native): points the engine at the
   /// `sqlite3.wasm` module. Call it once before opening a database.
@@ -53,6 +67,11 @@ final class SqliteCrdtTable implements CrdtTable {
   final _watchers = <String, StreamController<void>>{};
   bool _closed = false;
 
+  Duration _snapshotInterval;
+  Timer? _snapshotTimer;
+  final _recoveries = StreamController<CrdtRecovery>.broadcast();
+  CrdtRecovery? _recovery;
+
   CommonDatabase get _open =>
       _db ?? (throw StateError('SqliteCrdtTable.init() first'));
 
@@ -60,9 +79,23 @@ final class SqliteCrdtTable implements CrdtTable {
   bool get isPersistent => true;
 
   @override
+  set snapshotInterval(Duration value) => _snapshotInterval = value;
+
+  /// Non-null once [init] has run if it had to rebuild an unreadable store.
+  CrdtRecovery? get recovery => _recovery;
+
+  @override
+  Stream<CrdtRecovery> get recoveries => _recoveries.stream;
+
+  @override
   Future<void> init() async {
     if (_db != null || _closed) return;
-    final db = await backend.openSqliteDb(_path, encryptionKey: _encryptionKey);
+    var db = await _openIfHealthy(_path);
+    if (db == null) {
+      final tag = 'corrupt-${DateTime.now().toUtc().millisecondsSinceEpoch}';
+      final quarantine = backend.quarantineDatabase(_path, tag);
+      db = await _restoreOrReset(quarantine);
+    }
     db.execute('PRAGMA journal_mode = WAL');
     db.execute('PRAGMA synchronous = NORMAL');
     db.execute('PRAGMA foreign_keys = ON');
@@ -70,6 +103,56 @@ final class SqliteCrdtTable implements CrdtTable {
     _nodeId = _readOrCreateNodeId(db);
     _canonical = _readMaxHlc(db) ?? Hlc.zero(_nodeId);
     _db = db;
+    _startSnapshots();
+
+    final recovery = _recovery;
+    if (recovery != null) {
+      scheduleMicrotask(() {
+        if (!_recoveries.isClosed) _recoveries.add(recovery);
+      });
+    }
+  }
+
+  /// Opens [path] and returns the handle only if `PRAGMA quick_check` passes;
+  /// otherwise disposes it and returns `null`.
+  Future<CommonDatabase?> _openIfHealthy(String path) async {
+    CommonDatabase db;
+    try {
+      db = await backend.openSqliteDb(path, encryptionKey: _encryptionKey);
+    } catch (_) {
+      return null;
+    }
+    try {
+      final rows = db.select('PRAGMA quick_check');
+      if (rows.isNotEmpty && rows.first.values.first == 'ok') return db;
+    } catch (_) {
+      // Unreadable enough that quick_check itself failed.
+    }
+    db.dispose();
+    return null;
+  }
+
+  /// Rebuilds the store after [_openIfHealthy] rejected it: restores the
+  /// snapshot if there is a readable one, otherwise opens an empty database.
+  Future<CommonDatabase> _restoreOrReset(String quarantinePath) async {
+    final snapshot = '$_path.snapshot';
+    if (backend.databaseFileExists(snapshot)) {
+      backend.restoreDatabase(source: snapshot, path: _path);
+      final restored = await _openIfHealthy(_path);
+      if (restored != null) {
+        _recovery = CrdtRecovery(
+          source: CrdtRecoverySource.snapshot,
+          quarantinePath: quarantinePath,
+        );
+        return restored;
+      }
+      backend.quarantineDatabase(_path, 'corrupt-snapshot');
+    }
+    _recovery = CrdtRecovery(
+      source: CrdtRecoverySource.reset,
+      quarantinePath: quarantinePath,
+    );
+    return backend.openSqliteDb(_path, encryptionKey: _encryptionKey);
   }
 
   /// Closes the database and every watch stream. Safe to call more than once.
@@ -77,12 +160,37 @@ final class SqliteCrdtTable implements CrdtTable {
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
+    _snapshotTimer?.cancel();
     for (final c in _watchers.values) {
       await c.close();
     }
     _watchers.clear();
+    await _recoveries.close();
     _db?.dispose();
     _db = null;
+  }
+
+  /// Writes a consistent copy of the store to `<path>.snapshot`, replacing any
+  /// previous one. Called by the periodic timer; also safe to call directly for
+  /// a manual checkpoint. A no-op for an in-memory database.
+  void snapshotNow() {
+    if (_path == backend.inMemoryPath) return;
+    final target = '$_path.snapshot';
+    backend.deleteFileIfPresent(target);
+    _open.execute('VACUUM INTO ?', [target]);
+  }
+
+  void _startSnapshots() {
+    if (_snapshotInterval <= Duration.zero || _path == backend.inMemoryPath) {
+      return;
+    }
+    _snapshotTimer = Timer.periodic(_snapshotInterval, (_) {
+      try {
+        snapshotNow();
+      } catch (_) {
+        // A failed snapshot is non-fatal; the next tick retries.
+      }
+    });
   }
 
   @override
@@ -113,6 +221,7 @@ final class SqliteCrdtTable implements CrdtTable {
 
   @override
   Future<Object?> value(String table, String key) async {
+    if (_db == null) return null;
     final rows = _open.select(
       'SELECT value FROM crdt_records '
       'WHERE collection = ? AND key = ? AND is_deleted = 0',
@@ -124,6 +233,7 @@ final class SqliteCrdtTable implements CrdtTable {
 
   @override
   Future<Map<String, Object?>> liveFields(String table, String prefix) async {
+    if (_db == null) return {};
     final rows = prefix.isEmpty
         ? _open.select(
             'SELECT key, value FROM crdt_records '
@@ -161,6 +271,7 @@ final class SqliteCrdtTable implements CrdtTable {
 
   @override
   Future<CrdtChangeset> changeset(String table, {String? sinceHlc}) async {
+    if (_db == null) return {table: <CrdtRecord>[]};
     final ResultSet rows;
     if (sinceHlc == null || sinceHlc.isEmpty) {
       rows = _open.select(
@@ -294,10 +405,17 @@ final class SqliteCrdtTable implements CrdtTable {
     return '$micros|$counter|${hlc.nodeId}';
   }
 
+  /// Brings the schema up to date. The whole step runs in one transaction —
+  /// including the `user_version` bump, which is header state and rolls back
+  /// with it — so an interrupted migration reopens at the old version with no
+  /// objects, never half-applied.
   static void _migrate(CommonDatabase db) {
     final version =
         db.select('PRAGMA user_version').first['user_version'] as int;
-    if (version < 1) {
+    if (version >= 1) return;
+
+    db.execute('BEGIN');
+    try {
       db.execute('''
         CREATE TABLE IF NOT EXISTS crdt_records (
           collection TEXT NOT NULL,
@@ -320,6 +438,10 @@ final class SqliteCrdtTable implements CrdtTable {
         )
       ''');
       db.execute('PRAGMA user_version = 1');
+      db.execute('COMMIT');
+    } catch (_) {
+      db.execute('ROLLBACK');
+      rethrow;
     }
   }
 

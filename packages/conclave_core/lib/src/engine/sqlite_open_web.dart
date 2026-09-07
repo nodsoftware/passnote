@@ -24,6 +24,21 @@ Future<CommonDatabase> openSqliteDb(
   return wasm.open(path);
 }
 
+/// The path that means "no file": an in-memory database.
+const inMemoryPath = ':memory:';
+
+/// The in-memory VFS keeps no real files, so there is never one to recover.
+bool databaseFileExists(String path) => false;
+
+/// No-op on the web: the in-memory VFS has no file to move aside.
+String quarantineDatabase(String path, String tag) => '$path.$tag';
+
+/// No-op on the web: there is no snapshot file to restore from.
+void restoreDatabase({required String source, required String path}) {}
+
+/// No-op on the web.
+void deleteFileIfPresent(String path) {}
+
 /// Overrides where `sqlite3.wasm` is fetched from.
 void configureWeb({Uri? wasmUri}) {
   if (wasmUri != null) sqliteWasmUri = wasmUri;
