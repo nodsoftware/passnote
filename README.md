@@ -99,6 +99,11 @@ the version from [`.fvmrc`](.fvmrc). CI pins the same version in
 Melos config lives in [`pubspec.yaml`](pubspec.yaml) under `melos:`, and CI runs
 melos **7.8.2**.
 
+The getting-started walkthrough is compiled as
+[`examples/quickstart/`](examples/quickstart/); edit it and
+[`docs/getting-started.md`](docs/getting-started.md) together. CI analyzes every
+workspace package, so a broken snippet fails the build.
+
 ```sh
 dart pub global activate melos 7.8.2
 melos bootstrap

@@ -63,11 +63,22 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final conclave = await openDefault(
-    appId: 'shopping',   // scopes discovery + storage
+    appId: 'shopping', // scopes discovery + storage
     salt: 'shopping:v1', // stable, app-specific PBKDF2 salt
   );
 
-  runApp(MyApp(conclave: conclave));
+  // On the first device, generate a passphrase to show the user:
+  final words = conclave.generatePassphrase().join(' ');
+
+  // On every device, open the database with that passphrase:
+  final db = await conclave.openDatabase('home', passphrase: words);
+
+  final items = db.collection<Item>('items', itemCodec);
+
+  await seed(items);
+  logChanges(items);
+
+  runApp(ShoppingList(items: items));
 }
 ```
 
@@ -93,17 +104,23 @@ final db = await conclave.openDatabase('home', passphrase: words);
 ## 5. Read and write a collection
 
 ```dart
-final items = db.collection<Item>('items', itemCodec);
+Future<void> seed(Collection<Item> items) async {
+  await items.put(Item(id: newId(), name: 'Milk'));
+  await items.put(Item(id: newId(), name: 'Bread'));
 
-await items.put(Item(id: newId(), name: 'Milk'));
-await items.put(Item(id: newId(), name: 'Bread'));
+  // Soft-delete by id:
+  final someId = itemCodec.idOf((await items.all()).first);
+  await items.delete(someId);
 
-// Soft-delete by id:
-await items.delete(someId);
-
-// Query in memory:
-final remaining = items.where((i) => !i.done);
+  // Query by scanning the decoded documents:
+  final remaining = await items.where((i) => !i.done);
+  debugPrint('${remaining.length} item(s) still to buy');
+}
 ```
+
+`put`, `delete`, `all`, and `where` are all `async`; `await` them. `where`
+decodes and scans every document, so use it for one-off filtering, not a hot
+path.
 
 By default a document merges whole-document last-write-wins. To let concurrent
 edits to *different fields* of the same document both survive, pass a field-level
@@ -125,22 +142,37 @@ See [Collections](concepts/collections.md#merge-strategies) for the trade-offs.
 every local or synced change:
 
 ```dart
-items.watch().listen((all) {
-  print('list now has ${all.length} items');
-});
+void logChanges(Collection<Item> items) {
+  items.watch().listen((all) {
+    debugPrint('list now has ${all.length} items');
+  });
+}
 ```
 
 In Flutter, prefer the ready-made `CollectionNotifier` (a `ChangeNotifier`):
 
 ```dart
-ChangeNotifierProvider(
-  create: (_) => CollectionNotifier<Item>(items),
-  child: Consumer<CollectionNotifier<Item>>(
-    builder: (_, n, __) => ListView(
-      children: [for (final item in n.items) Text(item.name)],
-    ),
-  ),
-);
+class ShoppingList extends StatelessWidget {
+  const ShoppingList({required this.items, super.key});
+
+  final Collection<Item> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        body: ChangeNotifierProvider(
+          create: (_) => CollectionNotifier<Item>(items),
+          child: Consumer<CollectionNotifier<Item>>(
+            builder: (_, n, __) => ListView(
+              children: [for (final item in n.items) Text(item.name)],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 ```
 
 ## 7. Try multi-device sync
