@@ -27,6 +27,10 @@
 - Added `CrdtTable.close()` (default no-op) so a disk-backed engine releases its
   file on `Database.close`.
 - Added `InMemoryBus.paused` for simulating a network outage in tests.
+- `SqliteCrdtTable` now runs on the web via `sqlite3/wasm` behind a
+  conditional import; `SqliteCrdtTable.configureWeb(wasmUri:)` points it at the
+  `sqlite3.wasm` module. Web persistence (an OPFS VFS) and web at-rest
+  encryption are not implemented yet.
 - Added `runCrdtTableConformance`, the shared `CrdtTable` behavioural contract.
 
 ## 0.1.0

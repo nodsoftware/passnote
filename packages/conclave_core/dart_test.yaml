@@ -1,0 +1,5 @@
+# `@TestOn('browser')` tests need Chrome and a served sqlite3.wasm. They are not
+# selected by the default `dart test` (VM) run; run them with `dart test -P web`.
+presets:
+  web:
+    platforms: [chrome]

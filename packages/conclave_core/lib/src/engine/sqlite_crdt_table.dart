@@ -3,9 +3,11 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:crdt/crdt.dart';
-import 'package:sqlite3/sqlite3.dart';
+import 'package:sqlite3/common.dart';
 
 import '../ports/crdt_table.dart';
+import 'sqlite_open_io.dart' if (dart.library.js_interop) 'sqlite_open_web.dart'
+    as backend;
 
 /// A [CrdtTable] backed by SQLite (`package:sqlite3`).
 ///
@@ -27,6 +29,11 @@ final class SqliteCrdtTable implements CrdtTable {
   SqliteCrdtTable(this._path, {List<int>? encryptionKey})
       : _encryptionKey = encryptionKey;
 
+  /// Web-only configuration (a no-op on native): points the engine at the
+  /// `sqlite3.wasm` module. Call it once before opening a database.
+  static void configureWeb({Uri? wasmUri}) =>
+      backend.configureWeb(wasmUri: wasmUri);
+
   /// Convenience for tests: constructs and [init]s in one step.
   static Future<SqliteCrdtTable> open(
     String path, {
@@ -40,13 +47,13 @@ final class SqliteCrdtTable implements CrdtTable {
   final String _path;
   final List<int>? _encryptionKey;
 
-  Database? _db;
+  CommonDatabase? _db;
   late String _nodeId;
   late Hlc _canonical;
   final _watchers = <String, StreamController<void>>{};
   bool _closed = false;
 
-  Database get _open =>
+  CommonDatabase get _open =>
       _db ?? (throw StateError('SqliteCrdtTable.init() first'));
 
   @override
@@ -55,12 +62,7 @@ final class SqliteCrdtTable implements CrdtTable {
   @override
   Future<void> init() async {
     if (_db != null || _closed) return;
-    final db = sqlite3.open(_path);
-    final key = _encryptionKey;
-    if (key != null) {
-      final hex = key.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-      db.execute("PRAGMA key = \"x'$hex'\"");
-    }
+    final db = await backend.openSqliteDb(_path, encryptionKey: _encryptionKey);
     db.execute('PRAGMA journal_mode = WAL');
     db.execute('PRAGMA synchronous = NORMAL');
     db.execute('PRAGMA foreign_keys = ON');
@@ -292,7 +294,7 @@ final class SqliteCrdtTable implements CrdtTable {
     return '$micros|$counter|${hlc.nodeId}';
   }
 
-  static void _migrate(Database db) {
+  static void _migrate(CommonDatabase db) {
     final version =
         db.select('PRAGMA user_version').first['user_version'] as int;
     if (version < 1) {
@@ -321,7 +323,7 @@ final class SqliteCrdtTable implements CrdtTable {
     }
   }
 
-  static String _readOrCreateNodeId(Database db) {
+  static String _readOrCreateNodeId(CommonDatabase db) {
     final rows = db.select("SELECT v FROM crdt_meta WHERE k = 'node_id'");
     if (rows.isNotEmpty) return rows.first['v'] as String;
     final rng = Random.secure();
@@ -332,7 +334,7 @@ final class SqliteCrdtTable implements CrdtTable {
     return id;
   }
 
-  static Hlc? _readMaxHlc(Database db) {
+  static Hlc? _readMaxHlc(CommonDatabase db) {
     final rows = db.select(
       'SELECT hlc FROM crdt_records ORDER BY hlc_key DESC LIMIT 1',
     );

@@ -31,3 +31,4 @@ Thumbs.db
 # Zensical docs site
 /site/
 .venv/
+packages/conclave_core/test/web/sqlite3.wasm

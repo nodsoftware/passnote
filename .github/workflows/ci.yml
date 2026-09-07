@@ -34,3 +34,16 @@ jobs:
       # Runs test:dart, then test:flutter, then a check that every package with
       # a test/ dir was picked up by one of them.
       - run: melos run test
+
+      # Web: prove conclave_core and conclave_crypto compile to JS (no dart:io
+      # leak), then run the CrdtTable conformance suite against the wasm engine
+      # in headless Chrome.
+      - name: Web build check
+        run: |
+          dart compile js -o /tmp/core.js packages/conclave_core/tool/web_compile_check.dart
+          dart compile js -o /tmp/crypto.js packages/conclave_crypto/tool/web_compile_check.dart
+      - name: Fetch sqlite3.wasm
+        run: curl -sSL -o packages/conclave_core/test/web/sqlite3.wasm https://github.com/simolus3/sqlite3.dart/releases/download/sqlite3-2.9.4/sqlite3.wasm
+      - name: Web conformance (headless Chrome)
+        run: dart test -P web
+        working-directory: packages/conclave_core

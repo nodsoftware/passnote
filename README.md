@@ -104,6 +104,11 @@ The getting-started walkthrough is compiled as
 [`docs/getting-started.md`](docs/getting-started.md) together. CI analyzes every
 workspace package, so a broken snippet fails the build.
 
+On the web the SQLite engine runs via `sqlite3/wasm`. Serve a `sqlite3.wasm`
+build matching the `sqlite3` package version (from its GitHub releases) and call
+`SqliteCrdtTable.configureWeb(wasmUri: ...)` before opening. Browser tests
+(`dart test -P web` in `packages/conclave_core`) fetch it into `test/web/`.
+
 ```sh
 dart pub global activate melos 7.8.2
 melos bootstrap
