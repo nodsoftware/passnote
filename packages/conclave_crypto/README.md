@@ -9,13 +9,14 @@ umbrella's `conclaveBuilder`.
 
 ## What's inside
 
-- **`AesGcmCipher`** — `Cipher` implementation using AES-256-GCM. Frame layout is
-  `nonce (12) ‖ ciphertext ‖ tag (16)`, with a fresh random nonce per message.
-  Authentication failures surface as `CipherAuthError`.
+- **`XChaChaPoly1305Cipher`** — the default `Cipher`, using XChaCha20-Poly1305.
+  Frame layout is `nonce (24) ‖ ciphertext ‖ tag (16)`, with a fresh random
+  192-bit nonce per message. Authentication failures surface as `CipherAuthError`.
+  `AesGcmCipher` remains available for callers who need AES.
 - **`generateMnemonic` / `validateMnemonic`** — BIP39 passphrases at 12, 15, 18,
   21, or 24 words (128–256 bits of entropy).
-- **`deriveKey`** — BIP39 seed → PBKDF2-HMAC-SHA256 (600 000 iterations) → 32-byte
-  key.
+- **`deriveKey`** — BIP39 seed → Argon2id (19 MiB, 2 passes, 1 lane) → 32-byte
+  key. `deriveKeyPbkdf2` keeps the PBKDF2-HMAC-SHA256 pipeline for FIPS callers.
 - **`roomTag`** — a one-way, truncated SHA-256 of the key for mDNS discovery that
   reveals nothing about the key or data.
 

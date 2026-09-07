@@ -11,12 +11,12 @@ defends against, what it does not, and the limits you must respect when shipping
 ## What Conclave protects
 
 - **Confidentiality at rest and in transit.** Every document is encrypted with
-  **AES-256-GCM** before it is written to disk or sent over the network. Keys are
-  derived from a passphrase via BIP39 → PBKDF2-HMAC-SHA256 and never leave the
+  **XChaCha20-Poly1305** before it is written to disk or sent over the network.
+  Keys are derived from a passphrase via BIP39 → Argon2id and never leave the
   device. On Flutter, keys are stored in the OS keychain
   (`flutter_secure_storage`).
-- **Integrity and authenticity of data.** AES-GCM is authenticated encryption: a
-  tampered or truncated frame fails authentication and is dropped
+- **Integrity and authenticity of data.** XChaCha20-Poly1305 is authenticated
+  encryption: a tampered or truncated frame fails authentication and is dropped
   (`CipherAuthError`). A peer cannot forge or silently alter records without the
   key.
 - **Membership by key possession.** Devices join a "room" only by deriving the
@@ -33,8 +33,8 @@ defends against, what it does not, and the limits you must respect when shipping
 - **Custom passphrases weaken the model.** Conclave's security assumes a
   high-entropy passphrase. The generated BIP39 mnemonic (default 24 words,
   256-bit) provides this. If you supply your own passphrase string, its entropy —
-  not the KDF iteration count — sets the security ceiling. A human-memorable
-  phrase can be brute-forced regardless of PBKDF2 work factor. Prefer the
+  not the KDF work factor — sets the security ceiling. A human-memorable
+  phrase can be brute-forced regardless of the Argon2id cost. Prefer the
   generated mnemonic; if you must accept user input, require a BIP39 mnemonic or
   a long random string.
 - **LAN-only, by design.** Discovery and sync happen over the local network
@@ -63,18 +63,18 @@ defends against, what it does not, and the limits you must respect when shipping
 
 | Aspect | Choice |
 | --- | --- |
-| Symmetric cipher | AES-256-GCM (12-byte random nonce, 16-byte tag) |
+| Symmetric cipher | XChaCha20-Poly1305 (24-byte random nonce, 16-byte tag) |
 | Frame layout | `nonce ‖ ciphertext ‖ tag` |
-| Key derivation | BIP39 seed → PBKDF2-HMAC-SHA256, 600 000 iterations |
+| Key derivation | BIP39 seed → Argon2id (19 MiB, 2 passes, 1 lane); PBKDF2-HMAC-SHA256 available for FIPS |
 | Passphrase | BIP39 mnemonic, 128–256 bits of entropy (12–24 words) |
 | Room tag | truncated SHA-256 of the key with a domain-separation label |
-| Nonce policy | a fresh random nonce per message |
+| Nonce policy | a fresh random 192-bit nonce per message |
 
 ## At-rest storage layout
 
 With per-document persistence (the default), the storage layout is:
 
-- **Blob values** are AES-256-GCM ciphertext.
+- **Blob values** are XChaCha20-Poly1305 ciphertext.
 - **Collection names** appear as plaintext storage keys (`"<collection>/d/<blinded-id>"`).
 - **Document ids and field paths** are **blinded** via keyed HMAC-SHA256 so they do
   not appear in plaintext on disk.

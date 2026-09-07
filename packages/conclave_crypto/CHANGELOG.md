@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **The default cipher is now `XChaChaPoly1305Cipher`** (XChaCha20-Poly1305),
+  frame layout `nonce(24) ‖ ciphertext ‖ tag(16)`. The 192-bit nonce removes any
+  practical random-nonce collision concern. `AesGcmCipher` stays available.
+- **`deriveKey` now uses Argon2id** (19 MiB, 2 passes, 1 lane — the OWASP 2023
+  interactive minimum) instead of PBKDF2. `deriveKeyPbkdf2` keeps the old
+  PBKDF2-HMAC-SHA256 pipeline for FIPS callers. BIP39 phrase encoding is
+  unchanged.
 - Added `Spake2`, an implementation of SPAKE2 (RFC 9382,
   `P256-SHA256-HKDF-HMAC`) on `package:pointycastle`, pinned to the RFC's
   published test vectors. `Spake2Pake` adapts it to the `conclave_core` `Pake`

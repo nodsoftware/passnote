@@ -169,6 +169,27 @@ void main() {
     });
   });
 
+  group('deriveKeyPbkdf2 (FIPS fallback)', () {
+    const phrase =
+        'abandon abandon abandon abandon abandon abandon abandon abandon '
+        'abandon abandon abandon about';
+
+    test('returns a 32-byte key, deterministic and salt-dependent', () async {
+      final a = await deriveKeyPbkdf2(phrase, 'app:v1');
+      final b = await deriveKeyPbkdf2(phrase, 'app:v1');
+      final c = await deriveKeyPbkdf2(phrase, 'app:v2');
+      expect(a, hasLength(32));
+      expect(a, equals(b));
+      expect(a, isNot(equals(c)));
+    });
+
+    test('is a different pipeline from the Argon2id default', () async {
+      final argon = await deriveKey(phrase, 'app:v1');
+      final pbkdf2 = await deriveKeyPbkdf2(phrase, 'app:v1');
+      expect(argon, isNot(equals(pbkdf2)));
+    });
+  });
+
   group('roomTag', () {
     test('is 16 base32 characters', () async {
       final key = await deriveKey(

@@ -29,7 +29,7 @@ the data, and there is no server-side revocation or recovery.
 
 **Conclave protects:**
 
-- Confidentiality of data at rest and in transit (AES-256-GCM).
+- Confidentiality of data at rest and in transit (XChaCha20-Poly1305).
 - Integrity and authenticity of synced records (authenticated encryption;
   tampered frames are rejected).
 - Room membership by key possession — peers without the key cannot read or

@@ -62,7 +62,7 @@ void _ensureDefaults() {
       },
       keyStore: (appId) => KeychainKeyStore(namespace: appId),
       transport: LanTransport.new,
-      cipher: AesGcmCipher.new,
+      cipher: XChaChaPoly1305Cipher.new,
       deriveKey: deriveKey,
       roomTag: roomTag,
       mnemonicGenerator: (words) => generateMnemonic(words: words),

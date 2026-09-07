@@ -23,6 +23,8 @@
 - Added device pairing: `Conclave.startPairing` shows a nine-digit code,
   `Conclave.pairWith` joins with it. A SPAKE2 (RFC 9382) exchange over the
   transport authenticates both sides; the sponsor rate-limits wrong codes.
+- The default cipher is now XChaCha20-Poly1305 and the passphrase stretch is
+  Argon2id, replacing AES-256-GCM and PBKDF2.
 
 ## 0.1.0
 
