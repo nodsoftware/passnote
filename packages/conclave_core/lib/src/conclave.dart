@@ -38,7 +38,7 @@ class WeakPassphraseException implements Exception {
       'WeakPassphraseException: passphrase is not a valid BIP39 mnemonic';
 }
 
-/// How [Conclave.open] treats a passphrase that is not a recognised BIP39
+/// How [Conclave.openDatabase] treats a passphrase that is not a recognised BIP39
 /// mnemonic.
 enum PassphraseStrictness {
   /// Accept any string. The app is responsible for vetting entropy.
@@ -113,21 +113,18 @@ class ConclaveConfig {
 
 /// The app-level handle for Conclave.
 ///
-/// Constructed once via [Conclave.open] and shared across the app. Owns
+/// Build one with [Conclave.builder] and share it across the app. It owns
 /// exactly one [Transport] and any number of open [Database] instances.
 ///
 /// ```dart
-/// final conclave = await Conclave.open(
-///   config:    ConclaveConfig(appId: 'notes', salt: 'notes:v1'),
-///   store:     (id) => SembastStore(namespace: 'notes/$id'),
-///   keyStore:  KeychainKeyStore(namespace: 'notes'),
-///   transport: LanTransport(),
-///   deriveKey: deriveKey,
-///   roomTag:   roomTag,
-///   cipher:    AesGcmCipher.new,
-///   mnemonicGenerator: (words) => generateMnemonic(words: words),
-/// );
+/// final conclave = await Conclave.builder(
+///   appId: 'notes',
+///   salt: 'notes:v1',
+/// ).open();
 /// ```
+///
+/// [Conclave.lowLevel] is the same wiring with every dependency passed
+/// explicitly, for custom adapters or tests.
 class Conclave {
   Conclave._({
     required ConclaveConfig config,
@@ -519,7 +516,7 @@ class Conclave {
   /// Generates a BIP39 mnemonic of the length configured in
   /// [ConclaveConfig.passphrasePolicy].
   ///
-  /// Delegates to the [mnemonicGenerator] injected via [Conclave.open].
+  /// Delegates to the [mnemonicGenerator] injected at construction.
   List<String> generatePassphrase() =>
       _mnemonicGenerator(_config.passphrasePolicy.words);
 
@@ -646,7 +643,7 @@ class Conclave {
   /// All dependencies are explicit: pass adapters from the other packages or
   /// supply custom implementations that satisfy the port interfaces. Prefer
   /// [builder] unless you need this level of control.
-  static Future<Conclave> open({
+  static Future<Conclave> lowLevel({
     required ConclaveConfig config,
     required BlobStore Function(String databaseId) store,
     required KeyStore keyStore,

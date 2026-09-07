@@ -3,7 +3,7 @@
 [Sembast](https://pub.dev/packages/sembast)-backed `BlobStore` for
 [Conclave](https://github.com/nodsoftware/conclave). This is the default storage
 backend used by the [`conclave`](https://pub.dev/packages/conclave) umbrella's
-`openDefault`.
+`conclaveBuilder`.
 
 Pure Dart, works on all platforms. Conclave wraps it in an `EncryptedStore`, so
 values are AES-256-GCM ciphertext at rest — the store itself never sees
@@ -29,7 +29,7 @@ final store = SembastStore(namespace: 'shopping/home');
 - Pass `factory: databaseFactoryMemory` (from `package:sembast/sembast_memory.dart`)
   for in-memory tests.
 
-With the umbrella you don't construct it directly — `openDefault` builds a
+With the umbrella you don't construct it directly — `conclaveBuilder` builds a
 `SembastStore` per database. Pass a custom factory to `Conclave.open` if you need
 different storage:
 

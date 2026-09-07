@@ -13,7 +13,7 @@ import 'ports/merge_strategy.dart';
 /// A function that transforms a document id into an opaque storage-key token.
 ///
 /// Used by [Collection] to hide document ids from plaintext blob-store keys.
-/// See [Conclave.open] and [createIdMasker] for wiring.
+/// See [Conclave.lowLevel] and [createIdMasker] for wiring.
 typedef IdMasker = String Function(String id);
 
 /// A typed, queryable set of documents backed by a per-collection [CrdtTable].

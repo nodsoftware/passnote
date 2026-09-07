@@ -55,17 +55,18 @@ final itemCodec = JsonCodec<Item>(
 
 ## 3. Open Conclave
 
-`openDefault` wires the production adapters and starts the LAN transport. Call
-it once and share the handle across your app.
+`conclaveBuilder` returns a builder wired with the production adapters (Sembast
+storage, OS keychain, LAN transport, AES-GCM); `.open()` starts it. Call it once
+and share the handle across your app.
 
 ```dart
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final conclave = await openDefault(
+  final conclave = await conclaveBuilder(
     appId: 'shopping', // scopes discovery + storage
     salt: 'shopping:v1', // stable, app-specific PBKDF2 salt
-  );
+  ).open();
 
   // On the first device, generate a passphrase to show the user:
   final words = conclave.generatePassphrase().join(' ');

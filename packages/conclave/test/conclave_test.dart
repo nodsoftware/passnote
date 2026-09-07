@@ -19,8 +19,9 @@ void main() {
       expect(LanTransport(), isA<Transport>());
     });
 
-    test('openDefault is available as a top-level function', () {
-      expect(openDefault, isA<Function>());
+    test('conclaveBuilder returns a builder with defaults installed', () {
+      final builder = conclaveBuilder(appId: 'demo', salt: 'demo:v1');
+      expect(builder, isA<ConclaveBuilder>());
     });
   });
 }

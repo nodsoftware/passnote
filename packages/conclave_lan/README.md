@@ -3,7 +3,7 @@
 LAN transport for [Conclave](https://github.com/nodsoftware/conclave): mDNS service
 discovery plus WebSocket data connections, in pure Dart. This is the default
 transport used by the [`conclave`](https://pub.dev/packages/conclave) umbrella's
-`openDefault`.
+`conclaveBuilder`.
 
 It implements the `Transport` port from `conclave_core`, discovering same-app
 peers on the local network and exchanging already-encrypted frames between them.
@@ -29,7 +29,7 @@ dependencies:
 import 'package:conclave_lan/conclave_lan.dart';
 
 final transport = LanTransport();
-// Pass to Conclave.open(transport: transport, ...), or rely on openDefault.
+// Pass to Conclave.lowLevel(transport: transport, ...), or rely on conclaveBuilder.
 ```
 
 ## Scope and limits

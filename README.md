@@ -10,7 +10,7 @@ Pairing is a passphrase; everything else is automatic.
 ```dart
 import 'package:conclave/conclave.dart';
 
-final conclave = await openDefault(appId: 'shopping', salt: 'shopping:v1');
+final conclave = await conclaveBuilder(appId: 'shopping', salt: 'shopping:v1').open();
 final list = await conclave.openDatabase('home', passphrase: words);
 final items = list.collection<Item>('items', itemCodec);
 
@@ -37,7 +37,7 @@ This is a [Melos](https://melos.invertase.dev/) monorepo.
 
 | Package | Description |
 | --- | --- |
-| [`conclave`](packages/conclave) | Umbrella + `openDefault` batteries-included wiring |
+| [`conclave`](packages/conclave) | Umbrella + `conclaveBuilder` batteries-included wiring |
 | [`conclave_core`](packages/conclave_core) | Pure-Dart engine, CRDT collections, ports, protocol |
 | [`conclave_crypto`](packages/conclave_crypto) | AES-256-GCM cipher, BIP39 passphrases, PBKDF2 |
 | [`conclave_sembast`](packages/conclave_sembast) | Sembast-backed `BlobStore` |

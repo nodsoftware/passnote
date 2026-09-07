@@ -1,7 +1,7 @@
 /// Convenience umbrella package for Conclave.
 ///
 /// Re-exports the public surface of every Conclave package and provides
-/// [openDefault] for batteries-included setup: Sembast storage, OS-keychain
+/// [conclaveBuilder] for batteries-included setup: Sembast storage, OS-keychain
 /// key storage, LAN (mDNS + WebSocket) transport, and AES-GCM encryption.
 library conclave;
 
@@ -17,33 +17,47 @@ import 'package:conclave_flutter/conclave_flutter.dart';
 import 'package:conclave_lan/conclave_lan.dart';
 import 'package:conclave_sembast/conclave_sembast.dart';
 
-/// Opens a fully-wired [Conclave] using the default production adapters:
+/// Returns a [ConclaveBuilder] with the production adapters installed as its
+/// defaults:
 ///
-/// - storage: [SembastStore], namespaced `'<appId>/<databaseId>'`
+/// - storage: [SembastStore], namespaced `"<appId>/<databaseId>"`
 /// - keys: [KeychainKeyStore] backed by the OS keychain
 /// - transport: [LanTransport] (mDNS discovery + WebSocket frames)
-/// - crypto: AES-GCM cipher with PBKDF2/BIP39 key derivation
+/// - crypto: AES-256-GCM cipher with PBKDF2 / BIP39 key derivation
+///
+/// Override any of them with the builder's methods, then `await` [ConclaveBuilder.open].
 ///
 /// ```dart
-/// final conclave = await openDefault(appId: 'shopping', salt: 'shopping:v1');
-/// final list = await conclave.openDatabase('home', passphrase: words);
+/// final conclave = await conclaveBuilder(
+///   appId: 'shopping',
+///   salt: 'shopping:v1',
+/// ).open();
 /// ```
-Future<Conclave> openDefault({
-  required String appId,
-  required String salt,
-  PassphrasePolicy passphrasePolicy = const PassphrasePolicy(),
-}) {
-  return Conclave.open(
-    config: ConclaveConfig(
-        appId: appId, salt: salt, passphrasePolicy: passphrasePolicy),
-    store: (databaseId) => SembastStore(namespace: '$appId/$databaseId'),
-    keyStore: KeychainKeyStore(namespace: appId),
-    transport: LanTransport(),
-    deriveKey: deriveKey,
-    roomTag: roomTag,
-    cipher: AesGcmCipher.new,
-    mnemonicGenerator: (words) => generateMnemonic(words: words),
-    idMaskerFactory: createIdMasker,
-    validateMnemonic: isValidMnemonic,
+///
+/// This is [Conclave.builder] with [ConclaveDefaults] pre-installed. Calling it
+/// more than once is harmless; the defaults install exactly once.
+ConclaveBuilder conclaveBuilder({required String appId, required String salt}) {
+  _ensureDefaults();
+  return Conclave.builder(appId: appId, salt: salt);
+}
+
+var _defaultsInstalled = false;
+
+void _ensureDefaults() {
+  if (_defaultsInstalled) return;
+  _defaultsInstalled = true;
+  ConclaveBuilder.installDefaults(
+    ConclaveDefaults(
+      store: (appId, databaseId) =>
+          SembastStore(namespace: '$appId/$databaseId'),
+      keyStore: (appId) => KeychainKeyStore(namespace: appId),
+      transport: LanTransport.new,
+      cipher: AesGcmCipher.new,
+      deriveKey: deriveKey,
+      roomTag: roomTag,
+      mnemonicGenerator: (words) => generateMnemonic(words: words),
+      idMasker: createIdMasker,
+      validateMnemonic: isValidMnemonic,
+    ),
   );
 }

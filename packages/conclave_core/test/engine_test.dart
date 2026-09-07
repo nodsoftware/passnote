@@ -178,7 +178,7 @@ class _Card {
 
 /// Builds a minimal [Conclave] for tests.
 Future<Conclave> _openConclave(InMemoryBus bus, {String appId = 'test'}) =>
-    Conclave.open(
+    Conclave.lowLevel(
       config: ConclaveConfig(appId: appId, salt: '$appId:v1'),
       store: (_) => _MemStore(),
       keyStore: _MemKeyStore(),
@@ -202,7 +202,7 @@ Future<Conclave> _openPersistentConclave(
   _MemKeyStore keyStore, {
   String appId = 'test',
 }) =>
-    Conclave.open(
+    Conclave.lowLevel(
       config: ConclaveConfig(appId: appId, salt: '$appId:v1'),
       store: (id) => stores.putIfAbsent(id, _MemStore.new),
       keyStore: keyStore,
@@ -531,7 +531,7 @@ void main() {
 
     test('respects configured word count', () async {
       final bus = InMemoryBus();
-      final c = await Conclave.open(
+      final c = await Conclave.lowLevel(
         config: ConclaveConfig(
           appId: 'test',
           salt: 'test:v1',
@@ -646,7 +646,7 @@ void main() {
     test('reject policy throws WeakPassphraseException for weak passphrase',
         () async {
       final bus = InMemoryBus();
-      final c = await Conclave.open(
+      final c = await Conclave.lowLevel(
         config: ConclaveConfig(
           appId: 'strict',
           salt: 'strict:v1',
@@ -674,7 +674,7 @@ void main() {
     test('reject policy accepts a valid mnemonic', () async {
       final bus = InMemoryBus();
       final keyStore = _MemKeyStore();
-      final c = await Conclave.open(
+      final c = await Conclave.lowLevel(
         config: ConclaveConfig(
           appId: 'strict',
           salt: 'strict:v1',
@@ -703,7 +703,7 @@ void main() {
         () async {
       final bus = InMemoryBus();
       final keyStore = _MemKeyStore();
-      final c = await Conclave.open(
+      final c = await Conclave.lowLevel(
         config: ConclaveConfig(
           appId: 'lax',
           salt: 'lax:v1',
@@ -729,7 +729,7 @@ void main() {
         () async {
       final bus = InMemoryBus();
       final keyStore = _MemKeyStore();
-      final c = await Conclave.open(
+      final c = await Conclave.lowLevel(
         config: ConclaveConfig(
           appId: 'strict',
           salt: 'strict:v1',
@@ -1829,7 +1829,7 @@ void main() {
     test('excessive inbound frames from a peer are silently dropped', () async {
       final bus = InMemoryBus();
       final transportB = InMemoryTransport(bus);
-      final nodeB = await Conclave.open(
+      final nodeB = await Conclave.lowLevel(
         config: ConclaveConfig(
           appId: 'test',
           salt: 'test:v1',
@@ -1888,7 +1888,7 @@ void main() {
     test('a noisy peer does not starve other peers', () async {
       final bus = InMemoryBus();
       final transportC = InMemoryTransport(bus);
-      final nodeC = await Conclave.open(
+      final nodeC = await Conclave.lowLevel(
         config: ConclaveConfig(
           appId: 'test',
           salt: 'test:v1',
@@ -1947,7 +1947,7 @@ void main() {
     test('recovers data lost during rate limiting', () async {
       final bus = InMemoryBus();
       final transportB = InMemoryTransport(bus);
-      final nodeB = await Conclave.open(
+      final nodeB = await Conclave.lowLevel(
         config: ConclaveConfig(
           appId: 'test',
           salt: 'test:v1',
@@ -2011,7 +2011,7 @@ void main() {
       // A then calls forceSync and receives the missing data via SyncRequest.
       final bus = InMemoryBus();
       final transportA = InMemoryTransport(bus);
-      final nodeA = await Conclave.open(
+      final nodeA = await Conclave.lowLevel(
         config: ConclaveConfig(
           appId: 'test',
           salt: 'test:v1',

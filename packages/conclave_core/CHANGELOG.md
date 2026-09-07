@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Added `Conclave.builder(appId:, salt:)`, a staged configuration API, and
+  `ConclaveDefaults` / `ConclaveBuilder.installDefaults` for supplying its
+  defaults. Prefer it over the low-level entry.
+- **Breaking:** `Conclave.open(...)` is renamed `Conclave.lowLevel(...)` and now
+  lives in the new `package:conclave_core/engine.dart` advanced library. The
+  builder is the supported path.
+
 ## 0.1.0
 
 First public version of the pure-Dart core.

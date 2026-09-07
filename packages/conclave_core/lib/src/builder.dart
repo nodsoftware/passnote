@@ -165,7 +165,7 @@ final class ConclaveBuilder {
       );
     }
 
-    return Conclave.open(
+    return Conclave.lowLevel(
       config: ConclaveConfig(
         appId: _appId,
         salt: _salt,

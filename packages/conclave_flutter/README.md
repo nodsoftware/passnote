@@ -38,7 +38,7 @@ ChangeNotifierProvider(
 ```
 
 `KeychainKeyStore` is wired automatically by the
-[`conclave`](https://pub.dev/packages/conclave) umbrella's `openDefault`; pass it
+[`conclave`](https://pub.dev/packages/conclave) umbrella's `conclaveBuilder`; pass it
 to `Conclave.open` if you wire adapters yourself.
 
 ## Examples

@@ -5,7 +5,7 @@ end-to-end encrypted, server-less, local-first CRDT sync engine for Dart and
 Flutter.
 
 This package re-exports the entire Conclave public surface and provides
-`openDefault`, a batteries-included setup that wires the production adapters:
+`conclaveBuilder`, a batteries-included setup that wires the production adapters:
 
 - **Storage** — `SembastStore`
 - **Keys** — `KeychainKeyStore` (OS keychain)
@@ -24,7 +24,7 @@ dependencies:
 ```dart
 import 'package:conclave/conclave.dart';
 
-final conclave = await openDefault(appId: 'shopping', salt: 'shopping:v1');
+final conclave = await conclaveBuilder(appId: 'shopping', salt: 'shopping:v1').open();
 
 // Pair devices with a passphrase:
 final words = conclave.generatePassphrase().join(' ');

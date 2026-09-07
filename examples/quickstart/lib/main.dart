@@ -37,10 +37,10 @@ final itemCodec = JsonCodec<Item>(
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final conclave = await openDefault(
+  final conclave = await conclaveBuilder(
     appId: 'shopping', // scopes discovery + storage
     salt: 'shopping:v1', // stable, app-specific PBKDF2 salt
-  );
+  ).open();
 
   // On the first device, generate a passphrase to show the user:
   final words = conclave.generatePassphrase().join(' ');

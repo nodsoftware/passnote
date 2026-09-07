@@ -14,7 +14,8 @@ final _codec = JsonCodec<Item>(
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final conclave = await openDefault(appId: 'shopping', salt: 'shopping:v1');
+  final conclave =
+      await conclaveBuilder(appId: 'shopping', salt: 'shopping:v1').open();
   // For the demo we use a fixed passphrase so a second device can pair by
   // entering the same words. A real app would generate one and let the user
   // share it: `final words = conclave.generatePassphrase().join(' ');`
