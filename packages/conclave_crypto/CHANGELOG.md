@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added `Spake2`, an implementation of SPAKE2 (RFC 9382,
+  `P256-SHA256-HKDF-HMAC`) on `package:pointycastle`, pinned to the RFC's
+  published test vectors. `Spake2Pake` adapts it to the `conclave_core` `Pake`
+  port for device pairing.
 - Added `DeviceIdentity`, the default `Identity` implementation: an X25519
   key-exchange keypair and an Ed25519 signing keypair generated once and kept
   in the injected `KeyStore`. `wrapFor` / `unwrap` seal a symmetric key with

@@ -48,6 +48,13 @@ void main() {
       isA<api.DeviceRosterEntry>(),
     );
 
+    // Device pairing.
+    expect(api.Pake, isNotNull);
+    expect(api.PairingCode.generate().digits, hasLength(9));
+    expect(
+        const api.PairingRejected('x').toString(), contains('PairingRejected'));
+    expect(const api.PairingTimeout().toString(), contains('PairingTimeout'));
+
     expect(api.newId(), isNotEmpty);
     expect(const api.ObjectMergeStrategy(), isA<api.MergeStrategy>());
     expect(const api.ShallowMergeStrategy(), isA<api.MergeStrategy>());

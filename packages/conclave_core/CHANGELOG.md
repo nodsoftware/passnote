@@ -68,6 +68,16 @@
     roster rows for a peer.
   - No `Identity` configured: unchanged — the passphrase-derived key encrypts
     everything and there is no roster.
+- Added device pairing. `Conclave.startPairing(localId)` on the sponsor returns
+  a nine-digit `PairingCode`; `Conclave.pairWith(localId, code)` on the new
+  device runs a PAKE over the transport, receives the roster key, and returns a
+  `DeviceState.ready` database. Wrong codes are rejected (`PairingRejected`) and
+  the sponsor disarms the code after three failed tries.
+  - Added the `Pake` port (`PakeSession`, `PakeResult`) and
+    `ConclaveBuilder.pake(...)` / `ConclaveDefaults.pake`; the umbrella installs
+    SPAKE2.
+  - `PairingCode`, `PairingBundle`, `PairingRejected`, `PairingTimeout` are
+    exported. `Conclave.cancelPairing()` drops an armed session.
 
 ## 0.1.0
 

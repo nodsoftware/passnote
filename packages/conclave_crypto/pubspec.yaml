@@ -13,6 +13,7 @@ dependencies:
   conclave_core: ^0.1.0
   crypto: ^3.0.6
   cryptography: ^2.7.0
+  pointycastle: ^3.9.1
 
 dev_dependencies:
   lints: ^4.0.0

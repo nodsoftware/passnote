@@ -20,6 +20,7 @@ final class ConclaveDefaults {
     required this.mnemonicGenerator,
     required this.validateMnemonic,
     this.identity,
+    this.pake,
   });
 
   /// Builds the backing [CrdtTable] for a collection in a database.
@@ -51,6 +52,11 @@ final class ConclaveDefaults {
   /// key store. `null` when the host does not provide one; [Conclave.identity]
   /// then throws until an identity is configured.
   final Future<Identity> Function(KeyStore keyStore)? identity;
+
+  /// Builds the PAKE used to authenticate device pairing. `null` when the host
+  /// does not provide one; [Conclave.startPairing] / [Conclave.pairWith] then
+  /// throw. Default (umbrella): SPAKE2.
+  final Pake Function()? pake;
 }
 
 /// Staged configuration for a [Conclave] instance.
@@ -84,6 +90,7 @@ final class ConclaveBuilder {
   Transport? _transport;
   Cipher Function(List<int> key)? _cipher;
   Future<Identity> Function(KeyStore keyStore)? _identity;
+  Pake Function()? _pake;
   int _words = 24;
   PassphraseStrictness _strictness = PassphraseStrictness.warn;
   bool _passphraseSet = false;
@@ -137,6 +144,13 @@ final class ConclaveBuilder {
   ) {
     _once('identity', _identity != null);
     _identity = factory;
+    return this;
+  }
+
+  /// Overrides the pairing PAKE. Default: the umbrella's SPAKE2.
+  ConclaveBuilder pake(Pake Function() factory) {
+    _once('pake', _pake != null);
+    _pake = factory;
     return this;
   }
 
@@ -210,6 +224,7 @@ final class ConclaveBuilder {
       mnemonicGenerator: defaults.mnemonicGenerator,
       validateMnemonic: defaults.validateMnemonic,
       identity: identity,
+      pake: (_pake ?? defaults.pake)?.call(),
     );
   }
 

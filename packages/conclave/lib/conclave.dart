@@ -68,6 +68,7 @@ void _ensureDefaults() {
       mnemonicGenerator: (words) => generateMnemonic(words: words),
       validateMnemonic: isValidMnemonic,
       identity: (keyStore) => DeviceIdentity.load(keyStore: keyStore),
+      pake: Spake2Pake.new,
     ),
   );
 }

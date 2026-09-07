@@ -3,11 +3,17 @@ import 'dart:async';
 import 'package:crdt/crdt.dart';
 
 import 'database.dart';
+import 'identity/device_roster.dart';
+import 'identity/pairing.dart';
 import 'ports/crdt_table.dart';
 import 'ports/cipher.dart';
 import 'ports/identity.dart';
 import 'ports/key_store.dart';
+import 'ports/pake.dart';
 import 'ports/transport.dart';
+
+export 'identity/pairing.dart'
+    show PairingCode, PairingBundle, PairingRejected, PairingTimeout;
 
 part 'builder.dart';
 
@@ -200,9 +206,11 @@ class Conclave {
             String databaseId, String collection, List<int> key)
         engineFactory,
     Identity? identity,
+    Pake? pake,
   })  : _config = config,
         _engineFactory = engineFactory,
         _identity = identity,
+        _pake = pake,
         _keyStore = keyStore,
         _transport = transport,
         _nodeId = nodeId,
@@ -224,10 +232,17 @@ class Conclave {
   final FutureOr<CrdtTable> Function(
       String databaseId, String collection, List<int> key) _engineFactory;
   final Identity? _identity;
+  final Pake? _pake;
 
   final Map<String, Database> _databases = {};
+  // The key each open database's user data is derived from (group key when an
+  // identity is configured, else passphrase-derived). Needed by pairing to
+  // share the roster key with a joining device.
+  final Map<String, List<int>> _databaseKeys = {};
   final Set<PeerId> _connectedPeers = {};
   final _events = StreamController<ConclaveEvent>.broadcast();
+
+  PairingCoordinator? _pairing;
 
   // Per-peer sliding-window timestamps (ms since epoch) for inbound rate
   // limiting. Cleaned up on peer disconnect.
@@ -288,6 +303,7 @@ class Conclave {
   /// Permanently forgets [localId]: removes it from the open set and deletes its
   /// encryption key from the [KeyStore].
   Future<void> forget(String localId) async {
+    _databaseKeys.remove(localId);
     final db = _databases.remove(localId);
     if (db == null) return;
     await db.leave();
@@ -316,6 +332,7 @@ class Conclave {
     );
 
     _databases[localId] = db;
+    _databaseKeys[localId] = key;
 
     // Announce to peers that were already connected before this database
     // was opened (common when openDatabase is called after transport start).
@@ -351,6 +368,92 @@ class Conclave {
         'No Identity configured. Use Conclave.builder with an umbrella that '
         'installs one, or pass identity: to Conclave.lowLevel.',
       ));
+
+  // ---------------------------------------------------------------------------
+  // Device pairing
+
+  /// Starts sponsoring a device join for the already-open database [localId].
+  ///
+  /// Returns a one-time [PairingCode] to show the user. The other device calls
+  /// [pairWith] with it; a PAKE over the transport authenticates the exchange,
+  /// and this device seals the group key to the new one. If [localId] has no
+  /// group key yet (a brand-new database), this founds it first.
+  ///
+  /// Requires a configured [Identity] and PAKE. The armed session is single-use
+  /// and replaced by the next [startPairing] call; [cancelPairing] drops it.
+  Future<PairingCode> startPairing(
+    String localId, {
+    String joinerLabel = 'paired device',
+  }) async {
+    final coordinator = _requirePairing();
+    final db = _databases[localId];
+    final rosterKey = _databaseKeys[localId];
+    if (db == null || rosterKey == null) {
+      throw StateError('Open database "$localId" before starting pairing.');
+    }
+    if (db.deviceState != DeviceState.ready) {
+      await db.foundGroup();
+    }
+    return coordinator.arm(
+      rosterKey: rosterKey,
+      onAdmit: (joiner) => db.admitDevice(joiner, label: joinerLabel),
+    );
+  }
+
+  /// Drops an armed pairing session started with [startPairing].
+  void cancelPairing() => _pairing?.disarm();
+
+  /// Joins the database sponsored under [code], opening it locally as [localId].
+  ///
+  /// Runs the PAKE with the sponsor, receives the roster key, opens the
+  /// database, and waits for this device's wrapped group key to arrive by sync
+  /// so the returned [Database] is [DeviceState.ready].
+  ///
+  /// Throws [PairingRejected] (wrong code, too many tries, or the code was
+  /// already used) or [PairingTimeout].
+  Future<Database> pairWith(String localId, PairingCode code) async {
+    final coordinator = _requirePairing();
+    if (_databases.containsKey(localId)) {
+      throw StateError('Database "$localId" is already open.');
+    }
+    final joinerKey = await identity.publicKey;
+    final bundle = await coordinator.join(code, joinerPublicKey: joinerKey);
+
+    final entryKey = '${_config.appId}/$localId';
+    await _keyStore.setKey(entryKey, bundle.rosterKey);
+    final db = await _finishOpen(
+      localId,
+      entryKey,
+      bundle.rosterKey,
+      _cipherFactory(bundle.rosterKey),
+    );
+
+    for (var i = 0; i < 100 && db.deviceState != DeviceState.ready; i++) {
+      await db.forceSync();
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      await db.refreshDeviceState();
+    }
+    return db;
+  }
+
+  PairingCoordinator _requirePairing() {
+    final pake = _pake;
+    if (pake == null) {
+      throw StateError(
+        'No PAKE configured; pairing is unavailable. Use Conclave.builder with '
+        'an umbrella that installs one, or pass pake: to Conclave.lowLevel.',
+      );
+    }
+    return _pairing ??= PairingCoordinator(
+      appId: _config.appId,
+      pake: pake,
+      deriveKey: _deriveKey,
+      cipherFactory: _cipherFactory,
+      roomTag: _roomTag,
+      send: _transport.send,
+      peers: () => _connectedPeers,
+    );
+  }
 
   /// Builds a collection's backing engine, applies the snapshot interval, and
   /// subscribes to its recovery signal so a rebuilt store surfaces a
@@ -403,10 +506,12 @@ class Conclave {
   ///
   /// Use [forget] to additionally delete a database's key from the [KeyStore].
   Future<void> close() async {
+    _pairing?.disarm();
     for (final db in _databases.values) {
       await db.close();
     }
     _databases.clear();
+    _databaseKeys.clear();
     await _transport.stop();
     await _events.close();
   }
@@ -463,6 +568,15 @@ class Conclave {
 
   Future<void> _onInbound(InboundFrame inbound) async {
     if (_isRateLimited(inbound.from)) return;
+
+    // A pairing exchange in progress has its own rendezvous room.
+    final pairing = _pairing;
+    if (pairing != null &&
+        pairing.rendezvousRoom == inbound.frame.room &&
+        await pairing.handleFrame(inbound.from, inbound.frame.bytes)) {
+      return;
+    }
+
     for (final db in _databases.values) {
       if (db.room != inbound.frame.room) continue;
       List<int> plaintext;
@@ -529,6 +643,7 @@ class Conclave {
             String databaseId, String collection, List<int> key)
         engine,
     Identity? identity,
+    Pake? pake,
   }) async {
     final nodeId = generateNodeId();
 
@@ -543,6 +658,7 @@ class Conclave {
       mnemonicGenerator: mnemonicGenerator,
       validateMnemonic: validateMnemonic,
       engineFactory: engine,
+      pake: pake,
       identity: identity,
     );
     // Wire listeners BEFORE start so PeerConnected events emitted during

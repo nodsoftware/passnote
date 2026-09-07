@@ -20,6 +20,9 @@
   the group key on open; further devices open in a "needs pairing" state until
   admitted (`Database.deviceState`, `listDevices`, `admitDevice`, `revokeDevice`).
   The synced device roster lives in a reserved collection.
+- Added device pairing: `Conclave.startPairing` shows a nine-digit code,
+  `Conclave.pairWith` joins with it. A SPAKE2 (RFC 9382) exchange over the
+  transport authenticates both sides; the sponsor rate-limits wrong codes.
 
 ## 0.1.0
 
