@@ -1,7 +1,6 @@
 import 'codec.dart';
 import 'collection.dart';
 import 'merge_strategies.dart';
-import 'ports/blob_store.dart';
 import 'ports/cipher.dart';
 import 'ports/key_store.dart';
 import 'ports/merge_strategy.dart';
@@ -18,32 +17,26 @@ class Database {
   Database._({
     required String id,
     required String room,
-    required BlobStore store,
     required Cipher cipher,
     required NodeId nodeId,
     required Transport transport,
     required KeyStore keyStore,
     required String entryKey,
-    required IdMasker idMasker,
   })  : _id = id,
         _room = room,
-        _store = store,
         _cipher = cipher,
         _nodeId = nodeId,
         _transport = transport,
         _keyStore = keyStore,
-        _entryKey = entryKey,
-        _idMasker = idMasker;
+        _entryKey = entryKey;
 
   final String _id;
   final String _room;
-  final BlobStore _store;
   final Cipher _cipher;
   final NodeId _nodeId;
   final Transport _transport;
   final KeyStore _keyStore;
   final String _entryKey;
-  final IdMasker _idMasker;
 
   // Type-erased collection registry. Values are always Collection<T> for the
   // T supplied by the caller; cast back at retrieval time.
@@ -104,12 +97,10 @@ class Database {
     col = Collection.create<T>(
       name,
       codec,
-      _store,
       merge: merge,
       indexedFields: indexedFields,
       onLocalChange: () => _broadcastCollection(col),
       onRemoteConflict: onRemoteConflict,
-      idMasker: _idMasker,
     );
     _collections[name] = col;
     return col;
@@ -122,20 +113,16 @@ class Database {
     for (final col in _collections.values) {
       await (col as Collection<dynamic>).dispose();
     }
-    await _store.close();
   }
 
   /// Permanently forgets this database: removes its encryption key from the
-  /// [KeyStore] and then closes the store. After [leave] the data can only be
-  /// reopened by re-supplying the original passphrase.
+  /// [KeyStore]. After [leave] the data can only be reopened by re-supplying
+  /// the original passphrase.
   Future<void> leave() async {
     for (final col in _collections.values) {
       await (col as Collection<dynamic>).dispose();
     }
     await _keyStore.clear(_entryKey);
-    await _keyStore.clear('$_entryKey.rotate_backup');
-    await _keyStore.clear('$_entryKey.rotate_new');
-    await _store.close();
   }
 
   /// Permanently removes tombstoned records older than [horizon] from every
@@ -300,30 +287,25 @@ class Database {
   // ---------------------------------------------------------------------------
   // Factory
 
-  /// Builds a database around an **already-opened** [store]. The caller
-  /// ([Conclave]) opens the store first so it can validate the key against
-  /// existing data before this point.
+  /// Builds a database handle. Called by [Conclave] once the key has been
+  /// derived and stored.
   static Future<Database> open({
     required String id,
     required String room,
-    required BlobStore store,
     required Cipher cipher,
     required NodeId nodeId,
     required Transport transport,
     required KeyStore keyStore,
     required String entryKey,
-    required IdMasker idMasker,
   }) async {
     return Database._(
       id: id,
       room: room,
-      store: store,
       cipher: cipher,
       nodeId: nodeId,
       transport: transport,
       keyStore: keyStore,
       entryKey: entryKey,
-      idMasker: idMasker,
     );
   }
 }

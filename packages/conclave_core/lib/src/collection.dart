@@ -6,15 +6,8 @@ import 'package:crdt/crdt.dart';
 import 'codec.dart';
 import 'map_crdt_table.dart';
 import 'merge_strategies.dart';
-import 'ports/blob_store.dart';
 import 'ports/crdt_table.dart';
 import 'ports/merge_strategy.dart';
-
-/// A function that transforms a document id into an opaque storage-key token.
-///
-/// Used by [Collection] to hide document ids from plaintext blob-store keys.
-/// See [Conclave.lowLevel] and [createIdMasker] for wiring.
-typedef IdMasker = String Function(String id);
 
 /// A typed, queryable set of documents backed by a per-collection [CrdtTable].
 ///
@@ -33,24 +26,21 @@ typedef IdMasker = String Function(String id);
 /// left untouched, which guarantees that a revived document still carries its
 /// full field set; they are harmless until overwritten or compacted.
 ///
-/// Document ids and field paths must not contain the ASCII Unit Separator (`\x1F`, U+001F),
-/// which is reserved as the id/field separator.
+/// Document ids and field paths must not contain the ASCII Unit Separator
+/// (`\x1F`, U+001F), which is reserved as the id/field separator.
 ///
-/// Storage loading is asynchronous. [put], [delete], [get], [all], [where], and
-/// [findBy] await the initial load before returning meaningful results.
+/// The initial load is asynchronous. [put], [delete], [get], [all], [where],
+/// and [findBy] await it before returning meaningful results.
 class Collection<T> {
   Collection._(
     this._name,
-    this._codec,
-    this._store, {
+    this._codec, {
     required MergeStrategy merge,
-    IdMasker? idMasker,
     CrdtTable? table,
     List<String> indexedFields = const [],
     void Function()? onLocalChange,
     void Function(String documentId)? onRemoteConflict,
   })  : _merge = merge,
-        _idMasker = idMasker,
         _engine = table ?? MapCrdtTable(_name),
         _onLocalChange = onLocalChange,
         _onRemoteConflict = onRemoteConflict,
@@ -63,34 +53,23 @@ class Collection<T> {
           'in the index. Use ShallowMergeStrategy or '
           'DeepMergeStrategy instead.',
         ) {
-    if (_engine.isPersistent) {
-      _ready = _serialize(() async {
-        await _engine.init();
-        await _rebuildIndex();
-      });
-    } else {
-      _ready = _serialize(_restore);
-    }
+    _ready = _serialize(() async {
+      if (_engine.isPersistent) await _engine.init();
+      await _rebuildIndex();
+    });
   }
 
   /// Reserved separator between a document id and a field path in CRDT keys.
-  /// NUL never appears in JSON object keys or in well-formed document ids.
+  /// The unit separator never appears in well-formed document ids or field
+  /// names.
   static const String _sep = '\x1F';
 
   final String _name;
   final Codec<T> _codec;
-  final BlobStore _store;
   final MergeStrategy _merge;
   CrdtTable _engine;
   final void Function()? _onLocalChange;
   final void Function(String documentId)? _onRemoteConflict;
-
-  /// Optional function that masks a document id before it appears in a
-  /// storage key. When set, on-disk blob keys under `"<name>/d/"` carry the
-  /// masked id rather than the raw id, so document ids are never visible as
-  /// plaintext storage keys. When null, raw ids are used (fine for in-memory
-  /// test stores or unencrypted adapters).
-  final IdMasker? _idMasker;
 
   /// Secondary index for equality lookups on declared indexed fields.
   /// Only active when [indexedFields] was non-empty at creation time.
@@ -317,7 +296,6 @@ class Collection<T> {
           await _engine.put(_name, '$prefix$path', null, isDeleted: true);
         }
       }
-      if (!_engine.isPersistent) await _persistDocuments({id});
       if (_index.isActive) _index.reindex(id, fields);
     });
     _onLocalChange?.call();
@@ -334,7 +312,6 @@ class Collection<T> {
     await _ready;
     await _serialize(() async {
       await _engine.put(_name, documentId, null, isDeleted: true);
-      if (!_engine.isPersistent) await _persistDocuments({documentId});
       if (_index.isActive) _index.removeDoc(documentId);
     });
     _onLocalChange?.call();
@@ -427,21 +404,15 @@ class Collection<T> {
 
       // Phase 1 — identify tombstoned existence registers beyond the horizon.
       final deadDocs = <String>{};
-      final liveExistence = <String>{};
       for (final r in allRows) {
         final key = r['key'] as String;
         final sep = key.indexOf(_sep);
-        if (sep < 0) {
-          // Existence register.
-          if (r['is_deleted'] as bool) {
-            final hlc = r['hlc'] as Hlc;
-            if (hlc.dateTime.isBefore(cutoff)) {
-              deadDocs.add(key);
-              reclaimed++;
-              continue;
-            }
+        if (sep < 0 && (r['is_deleted'] as bool)) {
+          final hlc = r['hlc'] as Hlc;
+          if (hlc.dateTime.isBefore(cutoff)) {
+            deadDocs.add(key);
+            reclaimed++;
           }
-          liveExistence.add(key);
         }
       }
 
@@ -494,12 +465,6 @@ class Collection<T> {
       // Swap engine.
       _engine = newEngine;
 
-      // Re-persist: rewrite affected document blobs.
-      final affectedDocs = <String>{};
-      affectedDocs.addAll(deadDocs);
-      affectedDocs.addAll(liveExistence);
-      await _persistDocuments(affectedDocs);
-
       // Emit fresh snapshot so watchers see the post-compact state.
       final snapshot = await all();
       for (final c in _watchers) {
@@ -549,7 +514,6 @@ class Collection<T> {
         }
       }
       await _engine.merge(changeset);
-      if (!_engine.isPersistent) await _persistDocuments(touched);
       if (_index.isActive) {
         for (final docId in touched) {
           if (await _engine.value(_name, docId) != null) {
@@ -618,85 +582,7 @@ class Collection<T> {
   }
 
   // ---------------------------------------------------------------------------
-  // Persistence helpers
-
-  /// Returns the blob key for [id]'s per-document blob.
-  ///
-  /// When [_idMasker] is set the raw id is transformed before embedding in the key
-  /// so that document ids are not visible as plaintext storage keys.
-  String _docBlobKey(String id) => '$_name/d/${_idMasker?.call(id) ?? id}';
-
-  /// Persists exactly the documents whose ids are in [docIds].
-  ///
-  /// A document with no records is removed from storage. Persisting multiple
-  /// blobs in one call is not atomic — a crash between writes leaves some docs
-  /// persisted and others not — but a CRDT converges this safely on the next
-  /// sync without data loss.
-  Future<void> _persistDocuments(Set<String> docIds) async {
-    final cs = await _engine.changeset(_name);
-    final rows = cs[_name] ?? const [];
-
-    // Group all rows by their document id.
-    final byDoc = <String, List<Map<String, Object?>>>{};
-    for (final r in rows) {
-      final key = r['key'] as String;
-      final sep = key.indexOf(_sep);
-      final id = sep < 0 ? key : key.substring(0, sep);
-      if (docIds.contains(id)) {
-        (byDoc[id] ??= []).add(r);
-      }
-    }
-
-    for (final id in docIds) {
-      final docRows = byDoc[id];
-      final blobKey = _docBlobKey(id);
-      if (docRows == null || docRows.isEmpty) {
-        await _store.delete(blobKey);
-      } else {
-        final payload = <String, Map<String, dynamic>>{
-          for (final r in docRows)
-            (r['key'] as String): {
-              'v': r['value'],
-              'd': r['is_deleted'] as bool,
-              'h': (r['hlc'] as Hlc).toString(),
-            },
-        };
-        await _store.write(blobKey, utf8.encode(jsonEncode(payload)));
-      }
-    }
-  }
-
-  /// Restores all documents from per-document blobs under `"<name>/d/"`.
-  Future<void> _restore() async {
-    final keys = await _store.keys(prefix: '$_name/d/');
-    final rows = <Map<String, Object?>>[];
-    for (final k in keys) {
-      List<int>? bytes;
-      try {
-        bytes = await _store.read(k);
-      } catch (_) {
-        // Corrupt or tampered blob (e.g. CipherAuthError after a partial
-        // re-encryption). Skip it — the CRDT will re-converge on next sync.
-        continue;
-      }
-      if (bytes == null) continue;
-      final raw = jsonDecode(utf8.decode(bytes));
-      if (raw is! Map) continue;
-      for (final e in (raw as Map<String, dynamic>).entries) {
-        final data = e.value as Map<String, dynamic>;
-        rows.add({
-          'key': e.key,
-          'value': data['v'],
-          'is_deleted': data['d'] as bool,
-          'hlc': Hlc.parse(data['h'] as String),
-        });
-      }
-    }
-    if (rows.isNotEmpty) {
-      await _engine.merge({_name: rows});
-    }
-    await _rebuildIndex();
-  }
+  // Index helpers
 
   Future<void> _rebuildIndex() async {
     if (!_index.isActive) return;
@@ -738,16 +624,12 @@ class Collection<T> {
   // ---------------------------------------------------------------------------
   // Factory — used by Database
 
-  /// Creates a collection named [name] backed by [store], starting an
-  /// asynchronous load from storage in the background.
+  /// Creates a collection named [name], starting an asynchronous load in the
+  /// background.
   ///
   /// [merge] controls how documents are decomposed into CRDT records and
   /// therefore how concurrent edits merge; it defaults to whole-document
   /// last-write-wins via [ObjectMergeStrategy].
-  ///
-  /// [masker] is an optional function that hides document ids from plaintext
-  /// storage keys. When provided it is applied to every document id before
-  /// constructing the blob key; the raw id stays inside the encrypted payload.
   ///
   /// [onLocalChange] is called after every [put] or [delete] so that [Database]
   /// can push deltas to connected peers. It is intentionally NOT called by
@@ -764,15 +646,12 @@ class Collection<T> {
   /// paths for [DeepMergeStrategy], etc.). The index is derived state —
   /// rebuilt on load and updated incrementally. Defaults to no indexes.
   ///
-  /// [table] overrides the default [MapCrdtTable]. Pass a custom
-  /// [CrdtTable] implementation to back the collection with disk-based or
-  /// otherwise lazy storage.
+  /// [table] overrides the default in-memory [MapCrdtTable]. Pass a custom
+  /// [CrdtTable] implementation to back the collection with disk-based storage.
   static Collection<T> create<T>(
     String name,
-    Codec<T> codec,
-    BlobStore store, {
+    Codec<T> codec, {
     MergeStrategy merge = const ObjectMergeStrategy(),
-    IdMasker? idMasker,
     CrdtTable? table,
     List<String> indexedFields = const [],
     void Function()? onLocalChange,
@@ -781,9 +660,7 @@ class Collection<T> {
       Collection._(
         name,
         codec,
-        store,
         merge: merge,
-        idMasker: idMasker,
         table: table,
         indexedFields: indexedFields,
         onLocalChange: onLocalChange,

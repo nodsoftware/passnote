@@ -8,6 +8,14 @@
 - **Breaking:** `Conclave.open(...)` is renamed `Conclave.lowLevel(...)` and now
   lives in the new `package:conclave_core/engine.dart` advanced library. The
   builder is the supported path.
+- **Breaking:** the `BlobStore` port, the `EncryptedStore` decorator, and the
+  `IdMasker` type are removed. Persistence and at-rest encryption move into the
+  storage engine (a disk-backed `CrdtTable`); the `conclave_sembast` and
+  `conclave_hive` adapter packages are removed with them. The default engine is
+  now in-memory only until the disk-backed engine lands.
+- **Breaking:** `Conclave.rotatePassphrase` and `Conclave.hasPendingRotation`
+  are removed. Key rotation returns with the disk-backed engine and the
+  device-pairing model.
 
 ## 0.1.0
 

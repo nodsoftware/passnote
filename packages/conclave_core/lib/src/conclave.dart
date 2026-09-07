@@ -1,21 +1,18 @@
 import 'package:crdt/crdt.dart';
 
-import 'collection.dart';
 import 'database.dart';
-import 'encrypted_store.dart';
-import 'ports/blob_store.dart';
 import 'ports/cipher.dart';
 import 'ports/key_store.dart';
 import 'ports/transport.dart';
 
 part 'builder.dart';
 
-/// Thrown by [Conclave.openDatabase] when the supplied passphrase does not
-/// decrypt the database's existing local data.
+/// Thrown when a supplied passphrase does not decrypt a database's existing
+/// local data.
 ///
-/// The previously stored key is left untouched, so reopening with the correct
-/// passphrase still works. This guards against a typo silently replacing a
-/// valid key with a wrong one (which would orphan the data).
+/// Reserved for the disk-backed engine, which fails to open with the wrong
+/// key. The in-memory engine has nothing to validate against, so it does not
+/// currently throw this.
 class WrongPassphraseException implements Exception {
   const WrongPassphraseException();
 
@@ -128,7 +125,6 @@ class ConclaveConfig {
 class Conclave {
   Conclave._({
     required ConclaveConfig config,
-    required BlobStore Function(String) storeFactory,
     required KeyStore keyStore,
     required Transport transport,
     required NodeId nodeId,
@@ -136,10 +132,8 @@ class Conclave {
     required String Function(List<int>) roomTag,
     required Cipher Function(List<int>) cipherFactory,
     required List<String> Function(int words) mnemonicGenerator,
-    required IdMasker Function(List<int>) idMaskerFactory,
     required bool Function(String) validateMnemonic,
   })  : _config = config,
-        _storeFactory = storeFactory,
         _keyStore = keyStore,
         _transport = transport,
         _nodeId = nodeId,
@@ -147,11 +141,9 @@ class Conclave {
         _roomTag = roomTag,
         _cipherFactory = cipherFactory,
         _mnemonicGenerator = mnemonicGenerator,
-        _idMaskerFactory = idMaskerFactory,
         _validateMnemonic = validateMnemonic;
 
   final ConclaveConfig _config;
-  final BlobStore Function(String) _storeFactory;
   final KeyStore _keyStore;
   final Transport _transport;
   final NodeId _nodeId;
@@ -159,7 +151,6 @@ class Conclave {
   final String Function(List<int>) _roomTag;
   final Cipher Function(List<int>) _cipherFactory;
   final List<String> Function(int words) _mnemonicGenerator;
-  final IdMasker Function(List<int>) _idMaskerFactory;
   final bool Function(String) _validateMnemonic;
 
   final Map<String, Database> _databases = {};
@@ -175,12 +166,11 @@ class Conclave {
   /// Opens the database identified by [localId] using [passphrase] to derive
   /// its encryption key and room tag.
   ///
-  /// If the database already has local data, the derived key is validated
-  /// against it before anything is stored: a passphrase that does not decrypt
-  /// the existing data throws [WrongPassphraseException] and leaves the
-  /// previously stored key intact. On success the key is (re)written to the
-  /// [KeyStore] so the database can later be reopened via [reopenDatabase]
-  /// without the passphrase.
+  /// The key is written to the [KeyStore] so the database can later be reopened
+  /// via [reopenDatabase] without the passphrase.
+  ///
+  /// A wrong passphrase is currently not detected here; that check returns with
+  /// the disk-backed engine, which fails to open with the wrong key.
   Future<Database> openDatabase(
     String localId, {
     required String passphrase,
@@ -194,22 +184,10 @@ class Conclave {
 
     final entryKey = '${_config.appId}/$localId';
     final key = await _deriveKey(passphrase, _config.salt);
-
-    // Detect and resolve any interrupted rotation — senses whether the caller
-    // supplied the old or new passphrase and either reverses or completes the
-    // rotation accordingly.
-    await _recoverInterruptedRotation(entryKey, localId, key: key);
-
     final cipher = _cipherFactory(key);
-    final store = EncryptedStore(_storeFactory(localId), cipher);
-    await store.open();
-
-    // Validate before overwriting the stored key (Bug #2): a wrong passphrase
-    // must never clobber a good key.
-    await _validateKey(store);
     await _keyStore.setKey(entryKey, key);
 
-    return _finishOpen(localId, entryKey, key, cipher, store);
+    return _finishOpen(localId, entryKey, key, cipher);
   }
 
   /// Reopens a database previously opened with [openDatabase], reusing the key
@@ -222,11 +200,6 @@ class Conclave {
 
     final entryKey = '${_config.appId}/$localId';
 
-    // Complete any interrupted rotation forward before opening the store so
-    // the rotation eventually isolates this peer (security rotations must not
-    // silently revert on restart).
-    await _recoverInterruptedRotation(entryKey, localId);
-
     final key = await _keyStore.getKey(entryKey);
     if (key == null) {
       throw StateError(
@@ -235,250 +208,16 @@ class Conclave {
       );
     }
     final cipher = _cipherFactory(key);
-    final store = EncryptedStore(_storeFactory(localId), cipher);
-    await store.open();
 
-    return _finishOpen(localId, entryKey, key, cipher, store);
+    return _finishOpen(localId, entryKey, key, cipher);
   }
 
   /// Permanently forgets [localId]: removes it from the open set and deletes its
-  /// encryption key from the [KeyStore]. The on-disk data becomes unreadable
-  /// until reopened with the original passphrase.
+  /// encryption key from the [KeyStore].
   Future<void> forget(String localId) async {
     final db = _databases.remove(localId);
     if (db == null) return;
     await db.leave();
-  }
-
-  /// Returns `true` if [rotatePassphrase] was interrupted for [localId] and a
-  /// crash-recovery pass has not yet resolved it.
-  ///
-  /// Use this to detect that a previous rotation attempt crashed. After a
-  /// successful [openDatabase] or [reopenDatabase] call the pending state is
-  /// always resolved, so this will return `false`.
-  Future<bool> hasPendingRotation(String localId) async {
-    final entryKey = '${_config.appId}/$localId';
-    return await _keyStore.getKey('$entryKey.rotate_new') != null;
-  }
-
-  /// Re-encrypts the local data of [localId] with a key derived from
-  /// [newPassphrase] instead of [oldPassphrase].
-  ///
-  /// Derives both keys, validates [oldPassphrase] against the stored data,
-  /// decrypts every blob with the old key and re-encrypts it with the new key,
-  /// then stores the new key in the [KeyStore]. If the database is currently
-  /// open it is closed first — call [openDatabase] or [reopenDatabase] with
-  /// the new passphrase to resume.
-  ///
-  /// Throws [WrongPassphraseException] if the [oldPassphrase] does not match
-  /// the existing data.
-  ///
-  /// ## Crash safety
-  ///
-  /// Both keys are stored in the [KeyStore] before re-encryption starts
-  /// (`"<entryKey>.rotate_backup"` and `"<entryKey>.rotate_new"`). If the
-  /// process is interrupted:
-  ///
-  /// - Call [openDatabase] with **either** the old or the new passphrase — the
-  ///   recovery path senses which key was supplied and either reverses the
-  ///   partial rotation (old passphrase) or completes it (new passphrase).
-  /// - Call [reopenDatabase] without a passphrase — the rotation is always
-  ///   **completed forward** so that security rotations are never silently
-  ///   reverted on restart.
-  /// - Use [hasPendingRotation] to detect whether a rotation was interrupted
-  ///   before opening.
-  ///
-  /// No data is lost and no passphrase is forgotten.
-  Future<void> rotatePassphrase(
-    String localId, {
-    required String oldPassphrase,
-    required String newPassphrase,
-  }) async {
-    final entryKey = '${_config.appId}/$localId';
-
-    // Close the database if it is open so the store is not in use.
-    final db = _databases.remove(localId);
-    if (db != null) {
-      await db.close();
-    }
-
-    // Derive both keys.
-    final oldKey = await _deriveKey(oldPassphrase, _config.salt);
-    final newKey = await _deriveKey(newPassphrase, _config.salt);
-
-    final oldCipher = _cipherFactory(oldKey);
-    final newCipher = _cipherFactory(newKey);
-
-    // Open the raw store and re-encrypt every blob.
-    final store = _storeFactory(localId);
-    await store.open();
-    try {
-      final blobKeys = await store.keys();
-      if (blobKeys.isNotEmpty) {
-        // Validate: try old key, then new key (handles interrupted rotation).
-        final first = await store.read(blobKeys.first);
-        if (first != null) {
-          final oldWorks = await _tryDecrypt(oldCipher, first);
-          final newWorks = await _tryDecrypt(newCipher, first);
-          if (!oldWorks && !newWorks) {
-            throw const WrongPassphraseException();
-          }
-          // Even when validation passes via the new key (interrupted state),
-          // verify the caller knows the current primary key so a wrong old
-          // passphrase is never stored as the recovery anchor.
-          final storedKey = await _keyStore.getKey(entryKey);
-          if (storedKey != null && !_keysEqual(oldKey, storedKey)) {
-            throw const WrongPassphraseException();
-          }
-        }
-      }
-
-      // Store both keys before touching data so recovery can reverse a
-      // partial re-encryption after a crash.
-      await _keyStore.setKey('$entryKey.rotate_backup', oldKey);
-      await _keyStore.setKey('$entryKey.rotate_new', newKey);
-
-      await _rekeyStore(store, oldCipher, newCipher);
-
-      // Atomically flip: new key becomes primary, temp keys removed.
-      // rotate_new is cleared before rotate_backup so a crash between the
-      // two clears never orphans rotate_new (which would make
-      // hasPendingRotation permanently lie).
-      await _keyStore.setKey(entryKey, newKey);
-      await _keyStore.clear('$entryKey.rotate_new');
-      await _keyStore.clear('$entryKey.rotate_backup');
-    } finally {
-      await store.close();
-    }
-  }
-
-  /// Compares two key byte-lists for equality.
-  bool _keysEqual(List<int> a, List<int> b) {
-    if (identical(a, b)) return true;
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (a[i] != b[i]) return false;
-    }
-    return true;
-  }
-
-  /// Returns `true` if [cipher] can successfully decrypt [encrypted].
-  Future<bool> _tryDecrypt(Cipher cipher, List<int> encrypted) async {
-    try {
-      await cipher.decrypt(encrypted);
-      return true;
-    } on CipherAuthError {
-      return false;
-    }
-  }
-
-  /// Re-encrypts every blob in [store] from [fromCipher] to [toCipher].
-  ///
-  /// For each blob, tries [fromCipher] first; if that fails falls back to
-  /// [toCipher] (the blob was already re-encrypted on a prior attempt). If
-  /// both fail the blob is corrupt or encrypted with an unknown key — it is
-  /// silently skipped so a single bad entry does not permanently brick the
-  /// database.
-  Future<void> _rekeyStore(
-    BlobStore store,
-    Cipher fromCipher,
-    Cipher toCipher,
-  ) async {
-    final blobKeys = await store.keys();
-    for (final bk in blobKeys) {
-      final encrypted = await store.read(bk);
-      if (encrypted == null) continue;
-      List<int> plaintext;
-      try {
-        plaintext = await fromCipher.decrypt(encrypted);
-      } on CipherAuthError {
-        try {
-          plaintext = await toCipher.decrypt(encrypted);
-        } on CipherAuthError {
-          continue;
-        }
-      }
-      await store.write(bk, await toCipher.encrypt(plaintext));
-    }
-  }
-
-  /// Decrypts one existing blob to confirm [store]'s cipher key is correct.
-  /// No-ops on a fresh database (nothing stored yet).
-  Future<void> _validateKey(EncryptedStore store) async {
-    final keys = await store.keys();
-    if (keys.isEmpty) return;
-    try {
-      // EncryptedStore.read decrypts; a wrong key throws CipherAuthError.
-      await store.read(keys.first);
-    } on CipherAuthError {
-      throw const WrongPassphraseException();
-    }
-  }
-
-  /// If [rotatePassphrase] was interrupted, re-encrypts every blob to match
-  /// whichever key best serves the caller.
-  ///
-  /// When [key] is `null` (i.e. the caller is [reopenDatabase]), the rotation
-  /// is always **completed forward** — security rotations must not silently
-  /// revert. When [key] is provided the method senses which passphrase was
-  /// supplied and either reverses (old passphrase) or completes (new
-  /// passphrase) the rotation accordingly.
-  ///
-  /// The re-encryption loop is idempotent: blobs already encrypted with the
-  /// target key are decrypted with that same key and re-encrypted (a no-op).
-  ///
-  /// Returns `true` when recovery was performed, `false` when no interrupted
-  /// rotation was detected.
-  Future<bool> _recoverInterruptedRotation(
-    String entryKey,
-    String localId, {
-    List<int>? key,
-  }) async {
-    final rotateNewKey = await _keyStore.getKey('$entryKey.rotate_new');
-    if (rotateNewKey == null) return false;
-
-    final rotateBackupKey = await _keyStore.getKey('$entryKey.rotate_backup');
-    if (rotateBackupKey == null) return false;
-
-    final bool continueForward;
-    if (key == null) {
-      // reopenDatabase — no passphrase; always complete forward so that
-      // security rotations eventually isolate this peer.
-      continueForward = true;
-    } else if (_keysEqual(key, rotateNewKey)) {
-      continueForward = true;
-    } else if (_keysEqual(key, rotateBackupKey)) {
-      continueForward = false;
-    } else {
-      // Key matches neither stored key — nothing to recover.
-      return false;
-    }
-
-    final fromCipher = continueForward
-        ? _cipherFactory(rotateBackupKey)
-        : _cipherFactory(rotateNewKey);
-    final toCipher = continueForward
-        ? _cipherFactory(rotateNewKey)
-        : _cipherFactory(rotateBackupKey);
-
-    final store = _storeFactory(localId);
-    await store.open();
-    try {
-      await _rekeyStore(store, fromCipher, toCipher);
-
-      if (continueForward) {
-        await _keyStore.setKey(entryKey, rotateNewKey);
-      } else {
-        await _keyStore.setKey(entryKey, rotateBackupKey);
-      }
-      // Clear rotate_new first so a crash between the two clears never
-      // orphans rotate_new (which would make hasPendingRotation lie).
-      await _keyStore.clear('$entryKey.rotate_new');
-      await _keyStore.clear('$entryKey.rotate_backup');
-    } finally {
-      await store.close();
-    }
-    return true;
   }
 
   /// Shared tail of [openDatabase] / [reopenDatabase]: builds the [Database],
@@ -488,18 +227,15 @@ class Conclave {
     String entryKey,
     List<int> key,
     Cipher cipher,
-    EncryptedStore store,
   ) async {
     final db = await Database.open(
       id: localId,
       room: _roomTag(key),
-      store: store,
       cipher: cipher,
       nodeId: _nodeId,
       transport: _transport,
       keyStore: _keyStore,
       entryKey: entryKey,
-      idMasker: _idMaskerFactory(key),
     );
 
     _databases[localId] = db;
@@ -645,7 +381,6 @@ class Conclave {
   /// [builder] unless you need this level of control.
   static Future<Conclave> lowLevel({
     required ConclaveConfig config,
-    required BlobStore Function(String databaseId) store,
     required KeyStore keyStore,
     required Transport transport,
     required Future<List<int>> Function(String passphrase, String salt)
@@ -653,14 +388,12 @@ class Conclave {
     required String Function(List<int> key) roomTag,
     required Cipher Function(List<int> key) cipher,
     required List<String> Function(int words) mnemonicGenerator,
-    required IdMasker Function(List<int>) idMaskerFactory,
     required bool Function(String) validateMnemonic,
   }) async {
     final nodeId = generateNodeId();
 
     final instance = Conclave._(
       config: config,
-      storeFactory: store,
       keyStore: keyStore,
       transport: transport,
       nodeId: nodeId,
@@ -668,7 +401,6 @@ class Conclave {
       roomTag: roomTag,
       cipherFactory: cipher,
       mnemonicGenerator: mnemonicGenerator,
-      idMaskerFactory: idMaskerFactory,
       validateMnemonic: validateMnemonic,
     );
     // Wire listeners BEFORE start so PeerConnected events emitted during

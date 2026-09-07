@@ -37,8 +37,8 @@ void main() {
     expect(engine.InMemoryTransport(engine.InMemoryBus()),
         isA<engine.Transport>());
     // Port types resolve.
-    expect(engine.BlobStore, isNotNull);
     expect(engine.Cipher, isNotNull);
     expect(engine.KeyStore, isNotNull);
+    expect(engine.MergeStrategy, isNotNull);
   });
 }

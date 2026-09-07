@@ -14,7 +14,6 @@ dependencies:
   conclave_crypto: ^0.1.0
   conclave_flutter: ^0.1.0
   conclave_lan: ^0.1.0
-  conclave_sembast: ^0.1.0
   flutter:
     sdk: flutter
 

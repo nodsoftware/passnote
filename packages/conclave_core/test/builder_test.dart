@@ -1,31 +1,10 @@
 import 'package:conclave_core/conclave_core.dart';
 import 'package:test/test.dart';
 
-class _RecordingBlobStore implements BlobStore {
-  bool opened = false;
-  final _data = <String, List<int>>{};
-
-  @override
-  Future<void> open() async => opened = true;
-
-  @override
-  Future<List<int>?> read(String key) async => _data[key];
-
-  @override
-  Future<void> write(String key, List<int> bytes) async => _data[key] = bytes;
-
-  @override
-  Future<void> delete(String key) async => _data.remove(key);
-
-  @override
-  Future<List<String>> keys({String? prefix}) async =>
-      _data.keys.where((k) => prefix == null || k.startsWith(prefix)).toList();
-
-  @override
-  Future<void> close() async {}
-}
-
 class _RecordingKeyStore implements KeyStore {
+  _RecordingKeyStore(this.label);
+
+  final String label;
   final _keys = <String, List<int>>{};
   final setCalls = <String>[];
 
@@ -51,20 +30,17 @@ class _IdentityCipher implements Cipher {
 }
 
 void main() {
-  late _RecordingBlobStore defaultStore;
   late _RecordingKeyStore defaultKeyStore;
   late InMemoryTransport defaultTransport;
   List<int>? cipherKey;
 
   setUp(() {
-    defaultStore = _RecordingBlobStore();
-    defaultKeyStore = _RecordingKeyStore();
+    defaultKeyStore = _RecordingKeyStore('default');
     defaultTransport = InMemoryTransport(InMemoryBus());
     cipherKey = null;
 
     ConclaveBuilder.installDefaults(
       ConclaveDefaults(
-        store: (_, __) => defaultStore,
         keyStore: (_) => defaultKeyStore,
         transport: () => defaultTransport,
         cipher: (key) {
@@ -74,7 +50,6 @@ void main() {
         deriveKey: (passphrase, salt) async => List<int>.filled(32, 7),
         roomTag: (key) => 'room-${key.length}',
         mnemonicGenerator: (words) => List.filled(words, 'abandon'),
-        idMasker: (key) => (id) => id,
         validateMnemonic: (phrase) => true,
       ),
     );
@@ -92,7 +67,6 @@ void main() {
     addTearDown(conclave.close);
     await conclave.openDatabase('home', passphrase: 'ignored');
 
-    expect(defaultStore.opened, isTrue);
     expect(defaultKeyStore.setCalls, contains('a/home'));
     expect(cipherKey, equals(List<int>.filled(32, 7)));
   });
@@ -107,27 +81,29 @@ void main() {
   });
 
   test('overrides reach their slot and are order-independent', () async {
-    final customStore = _RecordingBlobStore();
+    final customKeyStore = _RecordingKeyStore('custom');
 
     final conclave = await Conclave.builder(appId: 'a', salt: 'a:v1')
         .maxInboundFramesPerSecond(5)
-        .store((_) => customStore)
+        .keyStore(() => customKeyStore)
         .passphrase(words: 15)
         .open();
     addTearDown(conclave.close);
     await conclave.openDatabase('home', passphrase: 'ignored');
 
-    expect(customStore.opened, isTrue, reason: 'override store used');
-    expect(defaultStore.opened, isFalse, reason: 'default store not used');
+    expect(customKeyStore.setCalls, contains('a/home'),
+        reason: 'override key store used');
+    expect(defaultKeyStore.setCalls, isEmpty,
+        reason: 'default key store not used');
     expect(conclave.generatePassphrase().length, 15);
   });
 
   test('setting the same slot twice throws StateError', () {
     final builder = Conclave.builder(appId: 'a', salt: 'a:v1');
-    builder.store((_) => _RecordingBlobStore());
+    builder.keyStore(() => _RecordingKeyStore('x'));
 
     expect(
-      () => builder.store((_) => _RecordingBlobStore()),
+      () => builder.keyStore(() => _RecordingKeyStore('y')),
       throwsStateError,
     );
   });

@@ -80,12 +80,10 @@ void main() {
   });
 
   group('CollectionNotifier', () {
-    late _MemStore store;
     late Collection<_Item> collection;
 
     setUp(() {
-      store = _MemStore();
-      collection = Collection.create<_Item>('items', _Item.codec, store);
+      collection = Collection.create<_Item>('items', _Item.codec);
     });
 
     test('exposes the initial contents', () async {
@@ -142,29 +140,4 @@ class _Item {
     fromMap: (j) => _Item(j['id'] as String, j['name'] as String),
     idOf: (i) => i.id,
   );
-}
-
-class _MemStore implements BlobStore {
-  final Map<String, List<int>> _data = {};
-
-  @override
-  Future<void> open() async {}
-
-  @override
-  Future<List<int>?> read(String key) async => _data[key];
-
-  @override
-  Future<void> write(String key, List<int> bytes) async =>
-      _data[key] = List.of(bytes);
-
-  @override
-  Future<void> delete(String key) async => _data.remove(key);
-
-  @override
-  Future<List<String>> keys({String? prefix}) async => prefix == null
-      ? _data.keys.toList()
-      : _data.keys.where((k) => k.startsWith(prefix)).toList();
-
-  @override
-  Future<void> close() async {}
 }

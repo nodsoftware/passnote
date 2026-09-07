@@ -7,8 +7,6 @@ dev_dependencies:
 workspace:
   - packages/conclave_core
   - packages/conclave_crypto
-  - packages/conclave_sembast
-  - packages/conclave_hive
   - packages/conclave_lan
   - packages/conclave_flutter
   - packages/conclave

@@ -3,26 +3,21 @@ part of 'conclave.dart';
 /// The platform factories [ConclaveBuilder] fills in for any slot the caller
 /// does not override.
 ///
-/// The `conclave` umbrella package installs a production bundle (Sembast
-/// storage, OS keychain, LAN transport, AES-GCM) when it is imported. Code that
+/// The `conclave` umbrella package installs a production bundle (OS keychain,
+/// LAN transport, AES-GCM) when its `conclaveBuilder` is first used. Code that
 /// depends on `conclave_core` directly installs its own with
 /// [ConclaveBuilder.installDefaults].
 final class ConclaveDefaults {
   /// Creates a default bundle. Every factory is required.
   const ConclaveDefaults({
-    required this.store,
     required this.keyStore,
     required this.transport,
     required this.cipher,
     required this.deriveKey,
     required this.roomTag,
     required this.mnemonicGenerator,
-    required this.idMasker,
     required this.validateMnemonic,
   });
-
-  /// Builds the blob store for a database, given the app id and the database id.
-  final BlobStore Function(String appId, String databaseId) store;
 
   /// Builds the key store for an app, given the app id.
   final KeyStore Function(String appId) keyStore;
@@ -41,9 +36,6 @@ final class ConclaveDefaults {
 
   /// Generates a mnemonic passphrase of the given word count.
   final List<String> Function(int words) mnemonicGenerator;
-
-  /// Builds a document-id masker bound to a key.
-  final IdMasker Function(List<int> key) idMasker;
 
   /// Returns whether a passphrase is a recognised mnemonic.
   final bool Function(String phrase) validateMnemonic;
@@ -75,7 +67,6 @@ final class ConclaveBuilder {
   final String _appId;
   final String _salt;
 
-  BlobStore Function(String databaseId)? _store;
   KeyStore? _keyStore;
   Transport? _transport;
   Cipher Function(List<int> key)? _cipher;
@@ -92,14 +83,6 @@ final class ConclaveBuilder {
   /// `conclave_core` without the umbrella. The last call wins.
   static void installDefaults(ConclaveDefaults defaults) =>
       _defaults = defaults;
-
-  /// Overrides the blob store. Default: the umbrella's Sembast store, namespaced
-  /// `"<appId>/<databaseId>"`.
-  ConclaveBuilder store(BlobStore Function(String databaseId) factory) {
-    _once('store', _store != null);
-    _store = factory;
-    return this;
-  }
 
   /// Overrides the transport. Default: the umbrella's LAN transport.
   ConclaveBuilder transport(Transport Function() factory) {
@@ -176,14 +159,12 @@ final class ConclaveBuilder {
         compactionHorizon: _compactionHorizon ?? const Duration(days: 30),
         maxInboundFramesPerSecond: _maxInboundFramesPerSecond ?? 100,
       ),
-      store: _store ?? (databaseId) => defaults.store(_appId, databaseId),
       keyStore: _keyStore ?? defaults.keyStore(_appId),
       transport: _transport ?? defaults.transport(),
       cipher: _cipher ?? defaults.cipher,
       deriveKey: defaults.deriveKey,
       roomTag: defaults.roomTag,
       mnemonicGenerator: defaults.mnemonicGenerator,
-      idMaskerFactory: defaults.idMasker,
       validateMnemonic: defaults.validateMnemonic,
     );
   }

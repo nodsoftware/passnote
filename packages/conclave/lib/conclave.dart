@@ -1,26 +1,23 @@
 /// Convenience umbrella package for Conclave.
 ///
 /// Re-exports the public surface of every Conclave package and provides
-/// [conclaveBuilder] for batteries-included setup: Sembast storage, OS-keychain
-/// key storage, LAN (mDNS + WebSocket) transport, and AES-GCM encryption.
+/// [conclaveBuilder] for batteries-included setup: OS-keychain key storage,
+/// LAN (mDNS + WebSocket) transport, and AES-GCM encryption.
 library conclave;
 
 export 'package:conclave_core/conclave_core.dart';
 export 'package:conclave_crypto/conclave_crypto.dart';
 export 'package:conclave_flutter/conclave_flutter.dart';
 export 'package:conclave_lan/conclave_lan.dart';
-export 'package:conclave_sembast/conclave_sembast.dart';
 
 import 'package:conclave_core/conclave_core.dart';
 import 'package:conclave_crypto/conclave_crypto.dart';
 import 'package:conclave_flutter/conclave_flutter.dart';
 import 'package:conclave_lan/conclave_lan.dart';
-import 'package:conclave_sembast/conclave_sembast.dart';
 
 /// Returns a [ConclaveBuilder] with the production adapters installed as its
 /// defaults:
 ///
-/// - storage: [SembastStore], namespaced `"<appId>/<databaseId>"`
 /// - keys: [KeychainKeyStore] backed by the OS keychain
 /// - transport: [LanTransport] (mDNS discovery + WebSocket frames)
 /// - crypto: AES-256-GCM cipher with PBKDF2 / BIP39 key derivation
@@ -48,15 +45,12 @@ void _ensureDefaults() {
   _defaultsInstalled = true;
   ConclaveBuilder.installDefaults(
     ConclaveDefaults(
-      store: (appId, databaseId) =>
-          SembastStore(namespace: '$appId/$databaseId'),
       keyStore: (appId) => KeychainKeyStore(namespace: appId),
       transport: LanTransport.new,
       cipher: AesGcmCipher.new,
       deriveKey: deriveKey,
       roomTag: roomTag,
       mnemonicGenerator: (words) => generateMnemonic(words: words),
-      idMasker: createIdMasker,
       validateMnemonic: isValidMnemonic,
     ),
   );
