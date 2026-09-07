@@ -11,6 +11,7 @@ library conclave_core.engine;
 
 export 'src/conclave.dart' show Conclave;
 
+export 'src/engine/sqlite_crdt_table.dart';
 export 'src/map_crdt_table.dart';
 export 'src/ports/cipher.dart';
 export 'src/ports/crdt_table.dart';

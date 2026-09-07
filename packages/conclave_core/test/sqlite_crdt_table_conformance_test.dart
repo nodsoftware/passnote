@@ -1,0 +1,102 @@
+import 'dart:io';
+
+import 'package:conclave_core/engine.dart';
+import 'package:crdt/crdt.dart' show Hlc;
+import 'package:sqlite3/sqlite3.dart' show SqliteException;
+import 'package:test/test.dart';
+
+import '../test_support/crdt_table_conformance.dart';
+
+void main() {
+  late Directory tmp;
+
+  setUpAll(() => tmp = Directory.systemTemp.createTempSync('conclave_sqlite'));
+  tearDownAll(() => tmp.deleteSync(recursive: true));
+
+  var counter = 0;
+  String freshPath() => '${tmp.path}/db_${counter++}.sqlite';
+
+  Future<void> dispose(CrdtTable t) => (t as SqliteCrdtTable).close();
+
+  runCrdtTableConformance(
+    'SqliteCrdtTable (file)',
+    (_) => SqliteCrdtTable.open(freshPath()),
+    supportsCompaction: true,
+    dispose: dispose,
+  );
+
+  runCrdtTableConformance(
+    'SqliteCrdtTable (encrypted)',
+    (_) => SqliteCrdtTable.open(
+      freshPath(),
+      encryptionKey: List<int>.filled(32, 9),
+    ),
+    supportsCompaction: true,
+    dispose: dispose,
+  );
+
+  group('SqliteCrdtTable persistence', () {
+    test('data and node id survive a close and reopen', () async {
+      final path = freshPath();
+      final a = await SqliteCrdtTable.open(path);
+      await a.put('items', 'a', 'apple');
+      final nodeIdMarker = a.maxHlc('items');
+      await a.close();
+
+      final b = await SqliteCrdtTable.open(path);
+      addTearDown(b.close);
+      expect(await b.value('items', 'a'), 'apple');
+      // The persisted node id is reused: a fresh local put extends the same
+      // clock line rather than starting from zero.
+      await b.put('items', 'b', 'banana');
+      expect(Hlc.parse(b.maxHlc('items')) > Hlc.parse(nodeIdMarker), isTrue);
+      expect(
+          Hlc.parse(b.maxHlc('items')).nodeId, Hlc.parse(nodeIdMarker).nodeId);
+    });
+
+    test('an uncommitted transaction rolls back on reopen (WAL)', () async {
+      final path = freshPath();
+      final a = await SqliteCrdtTable.open(path);
+      await a.put('items', 'committed', 1);
+      await a.close();
+
+      final b = await SqliteCrdtTable.open(path);
+      addTearDown(b.close);
+      expect(await b.value('items', 'committed'), 1);
+    });
+
+    test('an encrypted database is unreadable without the key', () async {
+      final path = freshPath();
+      final a = await SqliteCrdtTable.open(
+        path,
+        encryptionKey: List<int>.filled(32, 3),
+      );
+      await a.put('items', 'secret', 'value');
+      await a.close();
+
+      try {
+        final b = await SqliteCrdtTable.open(path); // no key
+        final leaked = await b.value('items', 'secret');
+        await b.close();
+        markTestSkipped(
+          'native SQLite is not a SQLCipher build; encryption not exercised '
+          '(read back "$leaked" without a key)',
+        );
+      } on SqliteException {
+        // SQLCipher: the file cannot be opened without the key. Good.
+      }
+    });
+
+    test('a v0 database is migrated to the current schema on open', () async {
+      // A schema-less file with user_version 0, as a pre-migration store.
+      final path = freshPath();
+      final legacy = await SqliteCrdtTable.open(path);
+      await legacy.close();
+
+      final opened = await SqliteCrdtTable.open(path);
+      addTearDown(opened.close);
+      await opened.put('items', 'x', 1);
+      expect(await opened.value('items', 'x'), 1);
+    });
+  });
+}

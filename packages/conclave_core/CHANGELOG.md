@@ -16,6 +16,11 @@
 - **Breaking:** `Conclave.rotatePassphrase` and `Conclave.hasPendingRotation`
   are removed. Key rotation returns with the disk-backed engine and the
   device-pairing model.
+- Added `SqliteCrdtTable` (in `package:conclave_core/engine.dart`): a
+  disk-backed `CrdtTable` on `package:sqlite3`, with WAL mode, a `user_version`
+  migration, a persisted node id, and optional SQLCipher at-rest encryption.
+  It is not yet the default; the builder still uses `MapCrdtTable`.
+- Added `runCrdtTableConformance`, the shared `CrdtTable` behavioural contract.
 
 ## 0.1.0
 

@@ -15,6 +15,9 @@ import 'package:test/test.dart';
 /// [make] returns a fresh, empty table for the given table name; it may be
 /// sync or async. [init] is called on it before every test.
 ///
+/// [dispose], if given, is called on every table a test created, in `tearDown`
+/// (e.g. to close a disk-backed engine's file handle).
+///
 /// Pass `supportsCompaction: true` for an engine whose [CrdtTable.compact]
 /// works in place; the compaction cases are skipped otherwise (the in-memory
 /// [MapCrdtTable] rebuilds via `Collection.compact` instead).
@@ -22,14 +25,27 @@ void runCrdtTableConformance(
   String description,
   FutureOr<CrdtTable> Function(String table) make, {
   bool supportsCompaction = false,
+  FutureOr<void> Function(CrdtTable table)? dispose,
 }) {
   const t = 'items';
+
+  final created = <CrdtTable>[];
 
   Future<CrdtTable> fresh() async {
     final table = await Future.sync(() => make(t));
     await table.init();
+    created.add(table);
     return table;
   }
+
+  tearDown(() async {
+    if (dispose != null) {
+      for (final table in created) {
+        await dispose(table);
+      }
+    }
+    created.clear();
+  });
 
   group('$description conformance', () {
     test('put then value returns the value', () async {
