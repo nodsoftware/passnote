@@ -10,8 +10,6 @@ environment:
 
 dependencies:
   conclave: ^0.1.0
-  conclave_flutter: ^0.1.0
-  conclave_lan: ^0.1.0
   flutter:
     sdk: flutter
   provider: ^6.1.4

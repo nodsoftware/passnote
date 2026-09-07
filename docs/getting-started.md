@@ -66,7 +66,10 @@ Future<void> main() async {
   final conclave = await conclaveBuilder(
     appId: 'shopping', // scopes discovery + storage
     salt: 'shopping:v1', // stable, app-specific PBKDF2 salt
-  ).open();
+  )
+      // Override any default before open(). This one is optional.
+      .compactionHorizon(const Duration(days: 60))
+      .open();
 
   // On the first device, generate a passphrase to show the user:
   final words = conclave.generatePassphrase().join(' ');

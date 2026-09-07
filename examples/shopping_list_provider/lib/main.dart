@@ -13,8 +13,11 @@ final _codec = JsonCodec<Item>(
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final conclave =
-      await conclaveBuilder(appId: 'shopping', salt: 'shopping:v1').open();
+  final conclave = await conclaveBuilder(appId: 'shopping', salt: 'shopping:v1')
+      // Override any default before open(); here, keep deleted items
+      // recoverable for 60 days instead of the default 30.
+      .compactionHorizon(const Duration(days: 60))
+      .open();
   // For the demo we use a fixed passphrase so a second device can pair by
   // entering the same words. A real app would generate one and let the user
   // share it: `final words = conclave.generatePassphrase().join(' ');`
