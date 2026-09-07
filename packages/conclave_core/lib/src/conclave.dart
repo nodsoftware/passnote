@@ -8,6 +8,8 @@ import 'ports/cipher.dart';
 import 'ports/key_store.dart';
 import 'ports/transport.dart';
 
+part 'builder.dart';
+
 /// Thrown by [Conclave.openDatabase] when the supplied passphrase does not
 /// decrypt the database's existing local data.
 ///
@@ -621,10 +623,29 @@ class Conclave {
   // ---------------------------------------------------------------------------
   // Factory
 
+  /// Starts a staged configuration for a [Conclave] instance.
+  ///
+  /// Set overrides on the returned [ConclaveBuilder], then `await`
+  /// [ConclaveBuilder.open]. Any slot left unset comes from the [ConclaveDefaults]
+  /// the `conclave` umbrella installs on import.
+  ///
+  /// ```dart
+  /// final conclave = await Conclave.builder(
+  ///   appId: 'shopping',
+  ///   salt: 'shopping:v1',
+  /// ).open();
+  /// ```
+  static ConclaveBuilder builder({
+    required String appId,
+    required String salt,
+  }) =>
+      ConclaveBuilder._(appId, salt);
+
   /// Constructs and wires a [Conclave] instance.
   ///
   /// All dependencies are explicit: pass adapters from the other packages or
-  /// supply custom implementations that satisfy the port interfaces.
+  /// supply custom implementations that satisfy the port interfaces. Prefer
+  /// [builder] unless you need this level of control.
   static Future<Conclave> open({
     required ConclaveConfig config,
     required BlobStore Function(String databaseId) store,
