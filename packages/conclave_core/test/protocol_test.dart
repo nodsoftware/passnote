@@ -47,5 +47,14 @@ void main() {
         isA<StateMessage>(),
       );
     });
+
+    test('round-trips a ratchet-hello with its nonce', () {
+      final decoded = decodeMessage(encodeMessage(
+        RatchetHelloMessage(node: 'n1', nonce: List<int>.generate(16, (i) => i)),
+      ));
+      expect(decoded, isA<RatchetHelloMessage>());
+      expect((decoded as RatchetHelloMessage).node, 'n1');
+      expect(decoded.nonce, List<int>.generate(16, (i) => i));
+    });
   });
 }

@@ -52,6 +52,20 @@ final class PokeMessage extends ProtocolMessage {
   const PokeMessage();
 }
 
+/// Carries a random per-session nonce so both peers can derive the same
+/// forward-secret ratchet root. Sent on connect (and after a group-key
+/// rotation), always under the roster/control cipher — it bootstraps the
+/// ratchet, so it is never itself ratcheted.
+final class RatchetHelloMessage extends ProtocolMessage {
+  const RatchetHelloMessage({required this.node, required this.nonce});
+
+  /// [NodeId] of the sending instance.
+  final String node;
+
+  /// The sender's 16-byte session nonce.
+  final List<int> nonce;
+}
+
 // ---------------------------------------------------------------------------
 // Serialisation helpers
 
@@ -77,6 +91,12 @@ List<int> encodeMessage(ProtocolMessage msg) {
     PokeMessage() => {
         'v': _wireVersion,
         'type': 'poke',
+      },
+    RatchetHelloMessage(:final node, :final nonce) => {
+        'v': _wireVersion,
+        'type': 'ratchet-hello',
+        'node': node,
+        'nonce': base64.encode(nonce),
       },
   };
   return utf8.encode(jsonEncode(json));
@@ -105,6 +125,10 @@ ProtocolMessage? decodeMessage(List<int> bytes) {
               .toList(),
         ),
       'poke' => const PokeMessage(),
+      'ratchet-hello' => RatchetHelloMessage(
+          node: json['node'] as String,
+          nonce: base64.decode(json['nonce'] as String),
+        ),
       _ => null,
     };
   } catch (_) {

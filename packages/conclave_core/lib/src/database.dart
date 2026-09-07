@@ -1,8 +1,11 @@
 import 'dart:async';
 
+import 'dart:math';
+
 import 'codec.dart';
 import 'collection.dart';
 import 'identity/device_roster.dart';
+import 'identity/ratchet.dart';
 import 'merge_strategies.dart';
 import 'ports/cipher.dart';
 import 'ports/crdt_table.dart';
@@ -76,6 +79,20 @@ class Database {
 
   /// The group key [_dataCipher] was built from, to detect rotation.
   List<int>? _dataKey;
+
+  /// Per-peer forward-secret transport sessions, keyed by [PeerId]. Present
+  /// only with an [Identity] and after the ratchet-nonce exchange. Frames to a
+  /// peer with a session are wrapped in an outer ratchet layer.
+  final Map<PeerId, RatchetSession> _sessions = {};
+  final Map<PeerId, List<int>> _myNonce = {};
+  final Map<PeerId, List<int>> _peerNonce = {};
+
+  static final Random _nonceRng = Random.secure();
+
+  /// Frame prefix (only when an [Identity] is configured): `0x01` = the payload
+  /// is ratchet-wrapped, `0x00` = plain (control / bootstrap).
+  static const int _framePlain = 0x00;
+  static const int _frameRatcheted = 0x01;
 
   /// Builds the backing [CrdtTable] for a collection, given the key that
   /// collection's data is encrypted with.
@@ -200,6 +217,7 @@ class Database {
   /// in the [KeyStore] so the database can later be reopened without the
   /// passphrase via [Conclave.reopenDatabase]. Used on normal shutdown.
   Future<void> close() async {
+    _tearDownSessions();
     for (final col in _collections.values) {
       await (col as Collection<dynamic>).dispose();
     }
@@ -328,12 +346,14 @@ class Database {
   }
 
   /// Rebuilds [_dataCipher] and re-keys every user-collection engine whenever
-  /// the resolved group key has changed. Safe to call repeatedly.
+  /// the resolved group key has changed, and re-runs the ratchet handshake so
+  /// sessions no longer derive from the old key. Safe to call repeatedly.
   Future<void> _applyGroupKey() async {
     final key = _roster?.groupKey;
     if (key == null) {
       _dataCipher = null;
       _dataKey = null;
+      _tearDownSessions();
       return;
     }
     if (_dataKey != null && _listEquals(_dataKey!, key)) return;
@@ -343,6 +363,19 @@ class Database {
       if (entry.key == kDeviceCollection) continue;
       await (entry.value as Collection<dynamic>).rekeyEngine(key);
     }
+    _tearDownSessions();
+    for (final peer in _peers) {
+      await _kickRatchet(peer);
+    }
+  }
+
+  void _tearDownSessions() {
+    for (final session in _sessions.values) {
+      session.dispose();
+    }
+    _sessions.clear();
+    _myNonce.clear();
+    _peerNonce.clear();
   }
 
   static bool _listEquals(List<int> a, List<int> b) {
@@ -397,23 +430,81 @@ class Database {
   /// discovers already-connected peers).
   Future<void> onPeerConnected(PeerId peer) async {
     _peers.add(peer);
+    // Only a device that holds the current group key can derive a ratchet root;
+    // a not-yet-paired device syncs the roster in the clear first.
+    if (_identity != null && _dataKey != null) await _kickRatchet(peer);
     await _sendHello(peer);
   }
 
-  /// Called when a peer has disconnected.
-  void onPeerLost(PeerId peer) => _peers.remove(peer);
+  /// Called when a peer has disconnected. Drops the transport session so a
+  /// reconnect derives a fresh ratchet chain.
+  void onPeerLost(PeerId peer) {
+    _peers.remove(peer);
+    _sessions.remove(peer)?.dispose();
+    _myNonce.remove(peer);
+    _peerNonce.remove(peer);
+  }
+
+  /// Kicks off the ratchet handshake with [peer]: sends our nonce if no session
+  /// exists yet and this device holds the group key.
+  Future<void> _kickRatchet(PeerId peer) async {
+    if (_sessions.containsKey(peer) || _dataKey == null) return;
+    await _sendRatchetNonce(peer);
+    _tryEstablishSession(peer);
+  }
+
+  /// Sends this side's stable nonce for [peer].
+  Future<void> _sendRatchetNonce(PeerId peer) async {
+    final nonce = _myNonce.putIfAbsent(
+      peer,
+      () => List<int>.generate(16, (_) => _nonceRng.nextInt(256)),
+    );
+    await _sendPlain(peer, RatchetHelloMessage(node: _nodeId, nonce: nonce));
+  }
+
+  void _tryEstablishSession(PeerId peer) {
+    if (_sessions.containsKey(peer)) return;
+    final mine = _myNonce[peer];
+    final theirs = _peerNonce[peer];
+    final groupKey = _dataKey;
+    if (mine == null || theirs == null || groupKey == null) return;
+    final root = deriveRatchetRoot(
+      groupKey: groupKey,
+      nonceA: mine,
+      nonceB: theirs,
+      nodeA: _nodeId,
+      nodeB: peer,
+    );
+    _sessions[peer] = RatchetSession.establish(
+      root: root,
+      thisNodeIsLow: _nodeId.compareTo(peer) < 0,
+      cipherFactory: _cipherFactory,
+    );
+  }
 
   /// Called by [Conclave] for an inbound frame on this database's room.
   ///
   /// Tries the roster/control cipher, then the data cipher; a frame that
   /// decrypts with neither (a revoked device's traffic after rotation) is
   /// dropped. Returns `true` if the frame was handled.
-  Future<bool> handleFrame(PeerId from, List<int> ciphertext) async {
+  Future<bool> handleFrame(PeerId from, List<int> frame) async {
+    var payload = frame;
+    if (_identity != null) {
+      if (payload.isEmpty) return false;
+      final kind = payload[0];
+      payload = payload.sublist(1);
+      if (kind == _frameRatcheted) {
+        final inner = await _sessions[from]?.open(payload);
+        if (inner == null) return false; // no session yet, or ratcheted past
+        payload = inner;
+      }
+    }
+
     List<int>? plaintext;
     for (final cipher in [_cipher, _dataCipher]) {
       if (cipher == null) continue;
       try {
-        plaintext = await cipher.decrypt(ciphertext);
+        plaintext = await cipher.decrypt(payload);
         break;
       } catch (_) {
         // Try the next cipher.
@@ -437,6 +528,13 @@ class Database {
         await _handleDelta(col, records);
       case PokeMessage():
         await _sendHello(from);
+      case RatchetHelloMessage(:final nonce):
+        // Ignore until we hold the group key; once a session exists, stop the
+        // nonce ping-pong.
+        if (_dataKey == null || _sessions.containsKey(from)) break;
+        _peerNonce[from] = nonce;
+        _tryEstablishSession(from);
+        await _sendRatchetNonce(from);
     }
   }
 
@@ -513,8 +611,25 @@ class Database {
   Future<void> _sendEncrypted(PeerId peer, ProtocolMessage msg) async {
     final cipher = _cipherForMessage(msg);
     if (cipher == null) return; // user data, but no group key yet
-    final encrypted = await cipher.encrypt(encodeMessage(msg));
-    await _transport.send(peer, Frame(_room, encrypted));
+    final inner = await cipher.encrypt(encodeMessage(msg));
+
+    if (_identity == null) {
+      await _transport.send(peer, Frame(_room, inner));
+      return;
+    }
+    final session = _sessions[peer];
+    final payload = session == null
+        ? [_framePlain, ...inner]
+        : [_frameRatcheted, ...await session.seal(inner)];
+    await _transport.send(peer, Frame(_room, payload));
+  }
+
+  /// Sends [msg] under the roster/control cipher only, never ratcheted — used
+  /// for the ratchet nonce exchange, which bootstraps the session.
+  Future<void> _sendPlain(PeerId peer, ProtocolMessage msg) async {
+    final inner = await _cipher.encrypt(encodeMessage(msg));
+    final payload = _identity == null ? inner : <int>[_framePlain, ...inner];
+    await _transport.send(peer, Frame(_room, payload));
   }
 
   /// With the group-key model active, user-collection deltas travel under the

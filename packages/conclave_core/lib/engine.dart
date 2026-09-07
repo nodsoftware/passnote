@@ -29,6 +29,8 @@ export 'src/identity/device_roster.dart'
         KeyRotation,
         WrappedGroupKey,
         kDeviceCollection;
+export 'src/identity/ratchet.dart'
+    show RatchetSession, deriveRatchetRoot, newRatchetNonce;
 export 'src/ports/pake.dart';
 
 export 'src/engine/sqlite_crdt_table.dart';

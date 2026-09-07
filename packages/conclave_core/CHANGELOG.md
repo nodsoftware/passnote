@@ -92,6 +92,17 @@
     cannot read new data even though it can still see the roster.
   - Added `CrdtTable.rekey(newKey)` (default no-op); `SqliteCrdtTable.rekey`
     runs `PRAGMA rekey`.
+- Added a forward-secrecy ratchet on each peer-to-peer transport session. Two
+  peers derive a session root from the group key plus a random nonce each, then
+  every frame is encrypted with a fresh message key from a hash chain and the
+  previous chain key is wiped — a key captured later cannot decrypt earlier
+  frames. A reconnect exchanges new nonces and starts a fresh chain; a group-key
+  rotation tears every session down and re-handshakes. Control and roster
+  bootstrap frames stay outside the ratchet. `RatchetSession` /
+  `deriveRatchetRoot` / `newRatchetNonce` are on the advanced library. (Hash
+  ratchet only — post-compromise security via a DH re-key is a later addition
+  behind the same seam.)
+  - `conclave_core` now depends on `package:crypto` for the ratchet's HKDF.
 
 ## 0.1.0
 

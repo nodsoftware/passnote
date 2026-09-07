@@ -29,6 +29,9 @@
   `renameDevice` relabels, and `revokeDevice` removes a device by rotating the
   group key and re-keying the local database. A revoked device can no longer
   read new data.
+- Traffic between two connected devices now runs through a forward-secrecy
+  ratchet: each session derives fresh per-frame keys, so a key captured later
+  cannot decrypt earlier frames. Reconnecting starts a new chain.
 
 ## 0.1.0
 
