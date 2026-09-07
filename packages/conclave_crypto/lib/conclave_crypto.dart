@@ -3,5 +3,6 @@
 library conclave_crypto;
 
 export 'src/aes_gcm_cipher.dart';
+export 'src/device_identity.dart';
 export 'src/key_derivation.dart';
 export 'src/mnemonic.dart';

@@ -12,6 +12,9 @@
   (every 30 minutes by default) and rebuilds a corrupt file automatically —
   from the snapshot, or by re-syncing from a peer. Watch `Conclave.events` for
   `StoreRecovered`.
+- `conclaveBuilder` now installs a default device `Identity` (`DeviceIdentity`,
+  X25519 + Ed25519) backed by the OS keychain, reachable via
+  `Conclave.identity`.
 
 ## 0.1.0
 

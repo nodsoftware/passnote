@@ -46,6 +46,11 @@
   triggers an automatic re-sync from peers.
 - Added `CrdtTable.recoveries` (default empty) and the `SnapshotCapable`
   marker interface for engines that keep on-disk snapshots.
+- Added the `Identity` port (`DevicePublicKey`, `WrappedKey`) — a per-device
+  keypair for pairing, key wrap, and signed control messages.
+  `Conclave.builder(...).identity(...)` overrides it; `Conclave.identity`
+  exposes the resolved one (throws until one is configured). Not yet used by
+  `openDatabase`; pairing and key wrap land next.
 
 ## 0.1.0
 

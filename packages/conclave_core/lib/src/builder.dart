@@ -8,7 +8,8 @@ part of 'conclave.dart';
 /// depends on `conclave_core` directly installs its own with
 /// [ConclaveBuilder.installDefaults].
 final class ConclaveDefaults {
-  /// Creates a default bundle. Every factory is required.
+  /// Creates a default bundle. Every factory is required except [identity],
+  /// which only the device-pairing paths need.
   const ConclaveDefaults({
     required this.engine,
     required this.keyStore,
@@ -18,6 +19,7 @@ final class ConclaveDefaults {
     required this.roomTag,
     required this.mnemonicGenerator,
     required this.validateMnemonic,
+    this.identity,
   });
 
   /// Builds the backing [CrdtTable] for a collection in a database.
@@ -44,6 +46,11 @@ final class ConclaveDefaults {
 
   /// Returns whether a passphrase is a recognised mnemonic.
   final bool Function(String phrase) validateMnemonic;
+
+  /// Loads (generating on first use) this device's [Identity], given the app's
+  /// key store. `null` when the host does not provide one; [Conclave.identity]
+  /// then throws until an identity is configured.
+  final Future<Identity> Function(KeyStore keyStore)? identity;
 }
 
 /// Staged configuration for a [Conclave] instance.
@@ -76,6 +83,7 @@ final class ConclaveBuilder {
   KeyStore? _keyStore;
   Transport? _transport;
   Cipher Function(List<int> key)? _cipher;
+  Future<Identity> Function(KeyStore keyStore)? _identity;
   int _words = 24;
   PassphraseStrictness _strictness = PassphraseStrictness.warn;
   bool _passphraseSet = false;
@@ -122,6 +130,16 @@ final class ConclaveBuilder {
     return this;
   }
 
+  /// Overrides this device's [Identity]. The factory is handed the resolved key
+  /// store. Default: the umbrella's X25519 + Ed25519 device identity.
+  ConclaveBuilder identity(
+    Future<Identity> Function(KeyStore keyStore) factory,
+  ) {
+    _once('identity', _identity != null);
+    _identity = factory;
+    return this;
+  }
+
   /// Sets the generated-passphrase word count (12, 15, 18, 21, or 24; default
   /// 24) and how a non-mnemonic passphrase is treated (default
   /// [PassphraseStrictness.warn]).
@@ -154,7 +172,7 @@ final class ConclaveBuilder {
   ///
   /// Throws [StateError] if a slot is unset and no [ConclaveDefaults] has been
   /// installed (depend on `package:conclave`, or call [installDefaults]).
-  Future<Conclave> open() {
+  Future<Conclave> open() async {
     final defaults = _defaults;
     if (defaults == null) {
       throw StateError(
@@ -163,6 +181,11 @@ final class ConclaveBuilder {
         'ConclaveBuilder.installDefaults(...).',
       );
     }
+
+    final keyStore = _keyStore ?? defaults.keyStore(_appId);
+    final identityFactory = _identity ?? defaults.identity;
+    final identity =
+        identityFactory == null ? null : await identityFactory(keyStore);
 
     final override = _engineOverride;
     return Conclave.lowLevel(
@@ -179,13 +202,14 @@ final class ConclaveBuilder {
         compactionHorizon: _compactionHorizon ?? const Duration(days: 30),
         maxInboundFramesPerSecond: _maxInboundFramesPerSecond ?? 100,
       ),
-      keyStore: _keyStore ?? defaults.keyStore(_appId),
+      keyStore: keyStore,
       transport: _transport ?? defaults.transport(),
       cipher: _cipher ?? defaults.cipher,
       deriveKey: defaults.deriveKey,
       roomTag: defaults.roomTag,
       mnemonicGenerator: defaults.mnemonicGenerator,
       validateMnemonic: defaults.validateMnemonic,
+      identity: identity,
     );
   }
 

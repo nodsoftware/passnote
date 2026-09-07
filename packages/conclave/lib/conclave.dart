@@ -67,6 +67,7 @@ void _ensureDefaults() {
       roomTag: roomTag,
       mnemonicGenerator: (words) => generateMnemonic(words: words),
       validateMnemonic: isValidMnemonic,
+      identity: (keyStore) => DeviceIdentity.load(keyStore: keyStore),
     ),
   );
 }

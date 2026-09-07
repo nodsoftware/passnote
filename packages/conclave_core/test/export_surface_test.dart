@@ -18,6 +18,14 @@ void main() {
     // Data model.
     expect(api.Database, isNotNull);
     expect(api.Collection, isNotNull);
+
+    // Identity port.
+    expect(api.Identity, isNotNull);
+    expect(
+      const api.DevicePublicKey(keyExchange: [], signing: []),
+      isNotNull,
+    );
+    expect(api.WrappedKey, isNotNull);
     expect(api.newId(), isNotEmpty);
     expect(const api.ObjectMergeStrategy(), isA<api.MergeStrategy>());
     expect(const api.ShallowMergeStrategy(), isA<api.MergeStrategy>());

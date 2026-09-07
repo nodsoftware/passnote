@@ -5,6 +5,7 @@ import 'package:crdt/crdt.dart';
 import 'database.dart';
 import 'ports/crdt_table.dart';
 import 'ports/cipher.dart';
+import 'ports/identity.dart';
 import 'ports/key_store.dart';
 import 'ports/transport.dart';
 
@@ -198,8 +199,10 @@ class Conclave {
     required FutureOr<CrdtTable> Function(
             String databaseId, String collection, List<int> key)
         engineFactory,
+    Identity? identity,
   })  : _config = config,
         _engineFactory = engineFactory,
+        _identity = identity,
         _keyStore = keyStore,
         _transport = transport,
         _nodeId = nodeId,
@@ -220,6 +223,7 @@ class Conclave {
   final bool Function(String) _validateMnemonic;
   final FutureOr<CrdtTable> Function(
       String databaseId, String collection, List<int> key) _engineFactory;
+  final Identity? _identity;
 
   final Map<String, Database> _databases = {};
   final Set<PeerId> _connectedPeers = {};
@@ -322,6 +326,18 @@ class Conclave {
   /// Peer-lifecycle ([PeerAppeared] / [PeerDisappeared]) and store-recovery
   /// ([StoreRecovered]) events. Broadcast; safe to ignore.
   Stream<ConclaveEvent> get events => _events.stream;
+
+  /// This device's cryptographic [Identity].
+  ///
+  /// Throws [StateError] when none was configured — install a
+  /// [ConclaveDefaults.identity] (the `conclave` umbrella does) or pass
+  /// `identity:` to [Conclave.lowLevel].
+  Identity get identity =>
+      _identity ??
+      (throw StateError(
+        'No Identity configured. Use Conclave.builder with an umbrella that '
+        'installs one, or pass identity: to Conclave.lowLevel.',
+      ));
 
   /// Builds a collection's backing engine, applies the snapshot interval, and
   /// subscribes to its recovery signal so a rebuilt store surfaces a
@@ -499,6 +515,7 @@ class Conclave {
     required FutureOr<CrdtTable> Function(
             String databaseId, String collection, List<int> key)
         engine,
+    Identity? identity,
   }) async {
     final nodeId = generateNodeId();
 
@@ -513,6 +530,7 @@ class Conclave {
       mnemonicGenerator: mnemonicGenerator,
       validateMnemonic: validateMnemonic,
       engineFactory: engine,
+      identity: identity,
     );
     // Wire listeners BEFORE start so PeerConnected events emitted during
     // registration are not missed.

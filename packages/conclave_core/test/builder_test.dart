@@ -30,6 +30,28 @@ class _IdentityCipher implements Cipher {
   Future<List<int>> decrypt(List<int> ciphertext) async => ciphertext;
 }
 
+class _StubIdentity implements Identity {
+  _StubIdentity(this.deviceId);
+
+  @override
+  final String deviceId;
+
+  @override
+  Future<DevicePublicKey> get publicKey async =>
+      const DevicePublicKey(keyExchange: [], signing: []);
+
+  @override
+  Future<List<int>> sign(List<int> message) async => message;
+
+  @override
+  Future<WrappedKey> wrapFor(DevicePublicKey peer, List<int> key) async =>
+      WrappedKey(
+          ephemeralPublicKey: const [], nonce: const [], ciphertext: key);
+
+  @override
+  Future<List<int>> unwrap(WrappedKey wrapped) async => wrapped.ciphertext;
+}
+
 void main() {
   late _RecordingKeyStore defaultKeyStore;
   late InMemoryTransport defaultTransport;
@@ -53,6 +75,7 @@ void main() {
         roomTag: (key) => 'room-${key.length}',
         mnemonicGenerator: (words) => List.filled(words, 'abandon'),
         validateMnemonic: (phrase) => true,
+        identity: (_) async => _StubIdentity('default-device'),
       ),
     );
   });
@@ -98,6 +121,27 @@ void main() {
     expect(defaultKeyStore.setCalls, isEmpty,
         reason: 'default key store not used');
     expect(conclave.generatePassphrase().length, 15);
+  });
+
+  test('the default identity factory reaches conclave.identity', () async {
+    final conclave = await Conclave.builder(appId: 'a', salt: 'a:v1').open();
+    addTearDown(conclave.close);
+
+    expect(conclave.identity.deviceId, 'default-device');
+  });
+
+  test('.identity(...) overrides the default and is handed the key store',
+      () async {
+    KeyStore? seen;
+    final conclave = await Conclave.builder(appId: 'a', salt: 'a:v1')
+        .identity((keyStore) async {
+      seen = keyStore;
+      return _StubIdentity('custom-device');
+    }).open();
+    addTearDown(conclave.close);
+
+    expect(conclave.identity.deviceId, 'custom-device');
+    expect(seen, same(defaultKeyStore));
   });
 
   test('setting the same slot twice throws StateError', () {
