@@ -47,6 +47,25 @@ void main() {
       ),
       isA<api.DeviceRosterEntry>(),
     );
+    expect(
+      const api.KeyRotation(
+        keyEpoch: 1,
+        byDeviceId: 'a',
+        revokedDeviceId: 'c',
+        keyDigest: [],
+      ),
+      isA<api.DeviceRosterEntry>(),
+    );
+    expect(
+      api.DeviceInfo(
+        id: 'd',
+        label: 'l',
+        pairedAt: DateTime.utc(2026),
+        revoked: false,
+        isThisDevice: true,
+      ).isThisDevice,
+      isTrue,
+    );
 
     // Device pairing.
     expect(api.Pake, isNotNull);

@@ -356,6 +356,14 @@ class Collection<T> {
     return controller.stream;
   }
 
+  /// Re-encrypts the backing engine at rest under [newKey] (a no-op for the
+  /// in-memory engine). Called by [Database] when the group key rotates. Awaits
+  /// the initial load so the engine exists first.
+  Future<void> rekeyEngine(List<int> newKey) async {
+    await _ready;
+    await _engine.rekey(newKey);
+  }
+
   /// Closes any open [watch] streams and releases resources. Called by
   /// [Database.close] and [Database.leave]. Safe to call more than once.
   Future<void> dispose() async {

@@ -132,6 +132,13 @@ abstract interface class CrdtTable {
   /// a no-op. Called by [Collection.dispose].
   Future<void> close() async {}
 
+  /// Re-encrypts the store at rest under [newKey], keeping all data.
+  ///
+  /// Called when the group key rotates (device revocation). In-memory engines
+  /// hold no at-rest key, so the default is a no-op; a SQLCipher-backed engine
+  /// runs `PRAGMA rekey`.
+  Future<void> rekey(List<int> newKey) async {}
+
   /// Emits once if [init] found the local store unreadable and rebuilt it
   /// (from an on-disk snapshot, or empty).
   ///

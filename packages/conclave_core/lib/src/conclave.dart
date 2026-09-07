@@ -327,6 +327,7 @@ class Conclave {
       entryKey: entryKey,
       baseKey: key,
       identity: _identity,
+      cipherFactory: _cipherFactory,
       engineFor: (collection, engineKey) =>
           _buildEngine(localId, collection, engineKey),
     );
@@ -402,6 +403,29 @@ class Conclave {
 
   /// Drops an armed pairing session started with [startPairing].
   void cancelPairing() => _pairing?.disarm();
+
+  /// The device roster for the open database [localId] (id, label, paired-at,
+  /// revoked, is-this-device). Empty when no [Identity] is configured.
+  Future<List<DeviceInfo>> devices(String localId) async =>
+      _database(localId).devices();
+
+  /// Renames device [deviceId] in [localId]'s roster.
+  Future<void> renameDevice(String localId, String deviceId, String label) =>
+      _database(localId).renameDevice(deviceId, label);
+
+  /// Revokes device [deviceId] from [localId]: rotates the group key, re-wraps
+  /// it to every other device, and re-keys this database. Peers adopt the new
+  /// key on sync; the revoked device can no longer read or write.
+  Future<void> revokeDevice(String localId, String deviceId) =>
+      _database(localId).revokeDevice(deviceId);
+
+  Database _database(String localId) {
+    final db = _databases[localId];
+    if (db == null) {
+      throw StateError('Database "$localId" is not open.');
+    }
+    return db;
+  }
 
   /// Joins the database sponsored under [code], opening it locally as [localId].
   ///
@@ -579,28 +603,12 @@ class Conclave {
 
     for (final db in _databases.values) {
       if (db.room != inbound.frame.room) continue;
-      List<int> plaintext;
-      try {
-        // Each database has its own cipher; decrypt and dispatch.
-        // We re-derive the cipher from the stored key at open time, so
-        // here we call through the database which holds the cipher reference.
-        plaintext = await _decryptForDatabase(db, inbound.frame.bytes);
-      } catch (_) {
-        // Wrong key or tampered frame — silently drop.
-        return;
-      }
-      await db.handlePlaintext(inbound.from, plaintext);
+      // The database tries its roster/control cipher and its data cipher; a
+      // frame that authenticates with neither (a revoked device after a key
+      // rotation) is dropped.
+      await db.handleFrame(inbound.from, inbound.frame.bytes);
       return;
     }
-  }
-
-  Future<List<int>> _decryptForDatabase(
-    Database db,
-    List<int> ciphertext,
-  ) async {
-    // The cipher is owned by the Database; expose decryption via a package-
-    // internal indirection to avoid making Database.cipher public.
-    return db.decryptFrame(ciphertext);
   }
 
   // ---------------------------------------------------------------------------

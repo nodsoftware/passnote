@@ -9,9 +9,11 @@ export 'src/conclave.dart';
 export 'src/database.dart';
 export 'src/identity/device_roster.dart'
     show
+        DeviceInfo,
         DeviceRecord,
         DeviceRosterEntry,
         DeviceState,
+        KeyRotation,
         WrappedGroupKey,
         kDeviceCollection;
 export 'src/merge_strategies.dart';

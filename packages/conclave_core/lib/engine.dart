@@ -22,9 +22,11 @@ export 'src/conclave.dart'
         StoreRecovered;
 export 'src/identity/device_roster.dart'
     show
+        DeviceInfo,
         DeviceRecord,
         DeviceRosterEntry,
         DeviceState,
+        KeyRotation,
         WrappedGroupKey,
         kDeviceCollection;
 export 'src/ports/pake.dart';

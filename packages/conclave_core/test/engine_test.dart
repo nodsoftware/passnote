@@ -132,6 +132,9 @@ class _CountingTable implements CrdtTable {
   Future<void> close() => _inner.close();
 
   @override
+  Future<void> rekey(List<int> newKey) => _inner.rekey(newKey);
+
+  @override
   Stream<CrdtRecovery> get recoveries => _inner.recoveries;
 }
 

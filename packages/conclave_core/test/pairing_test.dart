@@ -61,18 +61,22 @@ class _FakeSession implements PakeSession {
   }
 }
 
-/// XOR cipher over a 32-byte key. Deterministic and reversible; the pairing box
-/// only needs those two properties here.
+/// Authenticating XOR cipher over a key: a two-byte keyed marker lets `decrypt`
+/// fail closed when the wrong key is tried, which is what lets [Database] pick
+/// between its roster and data ciphers.
 class _XorCipher implements Cipher {
-  _XorCipher(List<int> key) : _k = key.isEmpty ? 0x5A : key[0];
+  _XorCipher(List<int> key)
+      : _k = key.isEmpty ? 0x5A : key.fold(0, (a, b) => (a + b) & 0xff);
   final int _k;
   @override
   Future<List<int>> encrypt(List<int> p) async =>
-      [0xC0, ...p.map((b) => b ^ _k)];
+      [0xAC ^ _k, 0xED ^ _k, ...p.map((b) => b ^ _k)];
   @override
   Future<List<int>> decrypt(List<int> c) async {
-    if (c.isEmpty || c.first != 0xC0) throw const CipherAuthError();
-    return c.skip(1).map((b) => b ^ _k).toList();
+    if (c.length < 2 || (c[0] ^ _k) != 0xAC || (c[1] ^ _k) != 0xED) {
+      throw const CipherAuthError();
+    }
+    return c.skip(2).map((b) => b ^ _k).toList();
   }
 }
 

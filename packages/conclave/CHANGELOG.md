@@ -25,6 +25,10 @@
   transport authenticates both sides; the sponsor rate-limits wrong codes.
 - The default cipher is now XChaCha20-Poly1305 and the passphrase stretch is
   Argon2id, replacing AES-256-GCM and PBKDF2.
+- Added device management: `Conclave.devices(localId)` lists the roster,
+  `renameDevice` relabels, and `revokeDevice` removes a device by rotating the
+  group key and re-keying the local database. A revoked device can no longer
+  read new data.
 
 ## 0.1.0
 

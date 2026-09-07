@@ -75,7 +75,9 @@ void main() {
         keyStore: (_) => defaultKeyStore,
         transport: () => defaultTransport,
         cipher: (key) {
-          cipherKey = key;
+          // Record the first cipher key — the passphrase-derived roster/control
+          // key. A later call builds the data cipher from the group key.
+          cipherKey ??= key;
           return _IdentityCipher();
         },
         deriveKey: (passphrase, salt) async => List<int>.filled(32, 7),

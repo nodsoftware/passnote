@@ -29,6 +29,7 @@ class Database {
     required String entryKey,
     required List<int> baseKey,
     required Identity? identity,
+    required Cipher Function(List<int> key) cipherFactory,
     required FutureOr<CrdtTable> Function(String collection, List<int> key)
         engineFor,
   })  : _id = id,
@@ -40,6 +41,7 @@ class Database {
         _entryKey = entryKey,
         _baseKey = baseKey,
         _identity = identity,
+        _cipherFactory = cipherFactory,
         _engineFor = engineFor;
 
   final String _id;
@@ -59,8 +61,21 @@ class Database {
   /// and there is no roster.
   final Identity? _identity;
 
+  /// Builds a [Cipher] for a key. Used to rebuild the data cipher when the
+  /// group key rotates.
+  final Cipher Function(List<int> key) _cipherFactory;
+
   /// The reserved device roster, present iff [_identity] is set.
   DeviceRoster? _roster;
+
+  /// Cipher for user-collection frames on the wire: the group-key cipher once
+  /// this device is [DeviceState.ready], else `null`. Roster and control frames
+  /// always use [_cipher] (the passphrase / roster key), which every device in
+  /// the room holds.
+  Cipher? _dataCipher;
+
+  /// The group key [_dataCipher] was built from, to detect rotation.
+  List<int>? _dataKey;
 
   /// Builds the backing [CrdtTable] for a collection, given the key that
   /// collection's data is encrypted with.
@@ -248,13 +263,23 @@ class Database {
   Future<List<DeviceRecord>> listDevices() async =>
       _roster?.listDevices() ?? const [];
 
+  /// The roster as [DeviceInfo] (id, label, paired-at, revoked, is-this-device),
+  /// oldest first. Empty when no [Identity] is configured.
+  Future<List<DeviceInfo>> devices() async => _roster?.devices() ?? const [];
+
   /// Re-resolves [deviceState] from the roster after sync has delivered new
-  /// rows from a peer. Returns the new state.
+  /// rows from a peer, adopting a rotated group key if one arrived. Returns the
+  /// new state.
   ///
   /// Drive sync first (`await conclave.forceSync()` then let the event loop
-  /// settle) so a freshly synced wrap is visible.
-  Future<DeviceState> refreshDeviceState() async =>
-      _roster?.resolve() ?? DeviceState.needsPairing;
+  /// settle) so freshly synced rows are visible.
+  Future<DeviceState> refreshDeviceState() async {
+    final roster = _roster;
+    if (roster == null) return DeviceState.needsPairing;
+    await roster.reconcile();
+    await _applyGroupKey();
+    return roster.state;
+  }
 
   /// Founds a brand-new database: generates the random group key and seals it to
   /// this device at epoch 0.
@@ -265,6 +290,7 @@ class Database {
   Future<void> foundGroup({String label = 'this device'}) async {
     final roster = _requireRoster();
     await roster.found(label: label);
+    await _applyGroupKey();
   }
 
   /// Adds [peer] to the roster and seals the current group key to it.
@@ -279,13 +305,52 @@ class Database {
     await roster.admit(peer, label: label);
   }
 
-  /// Marks [deviceId] revoked in the roster.
+  /// Revokes [deviceId]: rotates the group key to the next epoch, re-wraps it to
+  /// every other non-revoked device, re-keys this database, and marks the device
+  /// revoked. Peers adopt the new epoch on sync; the revoked device drops to
+  /// [DeviceState.revoked] and its frames no longer authenticate.
   ///
-  /// The flag propagates to every device on the next sync. Cryptographic
-  /// exclusion (rotating the group key) is a separate, later step.
+  /// Requires [deviceState] of [DeviceState.ready].
   Future<void> revokeDevice(String deviceId) async {
     final roster = _requireRoster();
     await roster.revoke(deviceId);
+    await _applyGroupKey();
+    _broadcastCollection(
+        _collections[kDeviceCollection] as Collection<dynamic>);
+  }
+
+  /// Changes the label shown for [deviceId] in the roster.
+  Future<void> renameDevice(String deviceId, String label) async {
+    final roster = _requireRoster();
+    await roster.rename(deviceId, label);
+    _broadcastCollection(
+        _collections[kDeviceCollection] as Collection<dynamic>);
+  }
+
+  /// Rebuilds [_dataCipher] and re-keys every user-collection engine whenever
+  /// the resolved group key has changed. Safe to call repeatedly.
+  Future<void> _applyGroupKey() async {
+    final key = _roster?.groupKey;
+    if (key == null) {
+      _dataCipher = null;
+      _dataKey = null;
+      return;
+    }
+    if (_dataKey != null && _listEquals(_dataKey!, key)) return;
+    _dataKey = List<int>.unmodifiable(key);
+    _dataCipher = _cipherFactory(key);
+    for (final entry in _collections.entries) {
+      if (entry.key == kDeviceCollection) continue;
+      await (entry.value as Collection<dynamic>).rekeyEngine(key);
+    }
+  }
+
+  static bool _listEquals(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   DeviceRoster _requireRoster() {
@@ -316,13 +381,13 @@ class Database {
     _roster = roster;
     await roster.ready;
 
-    var state = await roster.resolve();
+    final state = await roster.resolve();
     if (state == DeviceState.needsPairing &&
         autoFound &&
         await roster.isUnfounded) {
       await roster.found(label: 'this device');
-      state = roster.state;
     }
+    await _applyGroupKey();
   }
 
   // ---------------------------------------------------------------------------
@@ -338,9 +403,28 @@ class Database {
   /// Called when a peer has disconnected.
   void onPeerLost(PeerId peer) => _peers.remove(peer);
 
-  /// Called by [Conclave] when an inbound frame matches this database's room.
+  /// Called by [Conclave] for an inbound frame on this database's room.
   ///
-  /// [plaintext] has already been decrypted by [Conclave] before dispatch.
+  /// Tries the roster/control cipher, then the data cipher; a frame that
+  /// decrypts with neither (a revoked device's traffic after rotation) is
+  /// dropped. Returns `true` if the frame was handled.
+  Future<bool> handleFrame(PeerId from, List<int> ciphertext) async {
+    List<int>? plaintext;
+    for (final cipher in [_cipher, _dataCipher]) {
+      if (cipher == null) continue;
+      try {
+        plaintext = await cipher.decrypt(ciphertext);
+        break;
+      } catch (_) {
+        // Try the next cipher.
+      }
+    }
+    if (plaintext == null) return false;
+    await handlePlaintext(from, plaintext);
+    return true;
+  }
+
+  /// Dispatches an already-decrypted protocol message.
   Future<void> handlePlaintext(PeerId from, List<int> plaintext) async {
     final msg = decodeMessage(plaintext);
     if (msg == null) return;
@@ -402,6 +486,19 @@ class Database {
     if (col == null) return;
     final changeset = parseDeltaChangeset(colName, rawRecords);
     await col.mergeChangeset(changeset);
+
+    // A roster delta may carry a key rotation — adopt it, re-key, and if two
+    // revocations raced, re-rotate.
+    if (colName == kDeviceCollection && _roster != null) {
+      final before = _dataKey;
+      await _roster!.reconcile();
+      await _applyGroupKey();
+      if (before != null &&
+          _dataKey != null &&
+          !_listEquals(before, _dataKey!)) {
+        _broadcastCollection(col);
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -414,8 +511,22 @@ class Database {
       _sendEncrypted(peer, const PokeMessage());
 
   Future<void> _sendEncrypted(PeerId peer, ProtocolMessage msg) async {
-    final encrypted = await _cipher.encrypt(encodeMessage(msg));
+    final cipher = _cipherForMessage(msg);
+    if (cipher == null) return; // user data, but no group key yet
+    final encrypted = await cipher.encrypt(encodeMessage(msg));
     await _transport.send(peer, Frame(_room, encrypted));
+  }
+
+  /// With the group-key model active, user-collection deltas travel under the
+  /// group-key cipher so a revoked device cannot read them; control frames and
+  /// roster deltas use [_cipher], which every device in the room holds. Without
+  /// an [Identity], [_cipher] carries everything.
+  Cipher? _cipherForMessage(ProtocolMessage msg) {
+    if (_identity == null) return _cipher;
+    if (msg is DeltaMessage && msg.col != kDeviceCollection) {
+      return _dataCipher;
+    }
+    return _cipher;
   }
 
   /// Broadcasts [col]'s newly-changed records to all currently-connected peers.
@@ -445,16 +556,6 @@ class Database {
   }
 
   // ---------------------------------------------------------------------------
-  // Engine-internal: cipher access for Conclave frame routing
-
-  /// Decrypts a raw frame payload using this database's cipher.
-  ///
-  /// Called by [Conclave] before dispatching an inbound frame. Throws
-  /// [CipherAuthError] if the frame was not encrypted with this key.
-  Future<List<int>> decryptFrame(List<int> ciphertext) =>
-      _cipher.decrypt(ciphertext);
-
-  // ---------------------------------------------------------------------------
   // Factory
 
   /// Builds a database handle. Called by [Conclave] once the key has been
@@ -469,6 +570,7 @@ class Database {
     required String entryKey,
     required List<int> baseKey,
     required Identity? identity,
+    required Cipher Function(List<int> key) cipherFactory,
     required FutureOr<CrdtTable> Function(String collection, List<int> key)
         engineFor,
   }) async {
@@ -482,6 +584,7 @@ class Database {
       entryKey: entryKey,
       baseKey: baseKey,
       identity: identity,
+      cipherFactory: cipherFactory,
       engineFor: engineFor,
     );
   }

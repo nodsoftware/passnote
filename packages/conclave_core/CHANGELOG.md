@@ -78,6 +78,20 @@
     SPAKE2.
   - `PairingCode`, `PairingBundle`, `PairingRejected`, `PairingTimeout` are
     exported. `Conclave.cancelPairing()` drops an armed session.
+- Added group-key rotation and device revocation. `Conclave.revokeDevice(localId,
+  deviceId)` (also `Database.revokeDevice`) generates a fresh group key at the
+  next epoch, re-wraps it to every other non-revoked device, re-keys this
+  database, and marks the device revoked. Peers adopt the new epoch on sync; the
+  revoked device drops to `DeviceState.revoked` and its user-data frames no
+  longer authenticate. Concurrent revocations of different devices converge —
+  the lowest-id survivor performs a final rotation excluding both.
+  - `Conclave.devices(localId)` / `Database.devices()` return `DeviceInfo`
+    (id, label, paired-at, revoked, is-this-device). `renameDevice` relabels.
+  - User-collection frames now travel under the group-key cipher (control and
+    roster frames stay on the passphrase/roster key), so a revoked device
+    cannot read new data even though it can still see the roster.
+  - Added `CrdtTable.rekey(newKey)` (default no-op); `SqliteCrdtTable.rekey`
+    runs `PRAGMA rekey`.
 
 ## 0.1.0
 

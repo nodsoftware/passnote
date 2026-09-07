@@ -87,5 +87,8 @@ class MapCrdtTable implements CrdtTable {
   Future<void> close() async {}
 
   @override
+  Future<void> rekey(List<int> newKey) async {}
+
+  @override
   Stream<CrdtRecovery> get recoveries => const Stream<CrdtRecovery>.empty();
 }

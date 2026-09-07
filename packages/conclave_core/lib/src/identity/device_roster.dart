@@ -28,8 +28,39 @@ enum DeviceState {
   revoked,
 }
 
-/// One row of the device roster. Every row is a [DeviceRecord] or a
-/// [WrappedGroupKey].
+/// A device in a database's roster, as reported by `Database.devices()`.
+class DeviceInfo {
+  const DeviceInfo({
+    required this.id,
+    required this.label,
+    required this.pairedAt,
+    required this.revoked,
+    required this.isThisDevice,
+    this.lastSeen,
+  });
+
+  /// The device fingerprint.
+  final String id;
+
+  /// The human-readable label.
+  final String label;
+
+  /// When the device joined the roster.
+  final DateTime pairedAt;
+
+  /// Whether the device has been revoked.
+  final bool revoked;
+
+  /// Whether this record is the device asking.
+  final bool isThisDevice;
+
+  /// When the device was last seen on the transport, or `null` if not tracked
+  /// yet (the handshake does not carry the device id until a later step).
+  final DateTime? lastSeen;
+}
+
+/// One row of the device roster. Every row is a [DeviceRecord], a
+/// [WrappedGroupKey], or a [KeyRotation].
 sealed class DeviceRosterEntry {
   const DeviceRosterEntry();
 
@@ -96,6 +127,36 @@ final class WrappedGroupKey extends DeviceRosterEntry {
   String get documentId => 'wrap:$deviceId:$keyEpoch';
 }
 
+/// A record that the group key was rotated to [keyEpoch], excluding
+/// [revokedDeviceId] (empty for the initial founding).
+///
+/// One per epoch; concurrent rotations to the same epoch converge to a single
+/// record by last-write-wins, and [DeviceRoster.reconcile] re-rotates if that
+/// leaves a revoked device holding a usable wrap.
+final class KeyRotation extends DeviceRosterEntry {
+  const KeyRotation({
+    required this.keyEpoch,
+    required this.byDeviceId,
+    required this.revokedDeviceId,
+    required this.keyDigest,
+  });
+
+  /// The epoch this rotation produced.
+  final int keyEpoch;
+
+  /// The device that performed the rotation.
+  final String byDeviceId;
+
+  /// The device excluded by this rotation (`''` for founding).
+  final String revokedDeviceId;
+
+  /// A short non-secret digest of the new key, to spot competing rotations.
+  final List<int> keyDigest;
+
+  @override
+  String get documentId => 'rotation:$keyEpoch';
+}
+
 /// Codec for the reserved [kDeviceCollection]. Rows are discriminated by a
 /// `kind` field; byte fields are base64.
 final Codec<DeviceRosterEntry> deviceRosterCodec = JsonCodec<DeviceRosterEntry>(
@@ -117,6 +178,14 @@ final Codec<DeviceRosterEntry> deviceRosterCodec = JsonCodec<DeviceRosterEntry>(
         'keyEpoch': e.keyEpoch,
         'wrappedBytes': base64.encode(e.wrappedBytes),
       },
+    KeyRotation() => {
+        'id': e.documentId,
+        'kind': 'rotation',
+        'keyEpoch': e.keyEpoch,
+        'byDeviceId': e.byDeviceId,
+        'revokedDeviceId': e.revokedDeviceId,
+        'keyDigest': base64.encode(e.keyDigest),
+      },
   },
   fromMap: (m) => switch (m['kind']) {
     'device' => DeviceRecord(
@@ -130,6 +199,12 @@ final Codec<DeviceRosterEntry> deviceRosterCodec = JsonCodec<DeviceRosterEntry>(
         deviceId: m['deviceId'] as String,
         keyEpoch: (m['keyEpoch'] as num).toInt(),
         wrappedBytes: base64.decode(m['wrappedBytes'] as String),
+      ),
+    'rotation' => KeyRotation(
+        keyEpoch: (m['keyEpoch'] as num).toInt(),
+        byDeviceId: m['byDeviceId'] as String,
+        revokedDeviceId: m['revokedDeviceId'] as String,
+        keyDigest: base64.decode(m['keyDigest'] as String),
       ),
     final other =>
       throw FormatException('unknown device roster row kind: $other'),
@@ -169,6 +244,26 @@ class DeviceRoster {
       ..sort((a, b) => a.pairedAt.compareTo(b.pairedAt));
   }
 
+  /// The roster as [DeviceInfo], oldest first, with revocation resolved from
+  /// both rotation records and record flags.
+  Future<List<DeviceInfo>> devices() async {
+    final rows = await _collection.all();
+    final revoked = _revokedIds(rows);
+    final myId = _identity.deviceId;
+    return [
+      for (final d
+          in rows.whereType<DeviceRecord>().toList()
+            ..sort((a, b) => a.pairedAt.compareTo(b.pairedAt)))
+        DeviceInfo(
+          id: d.deviceId,
+          label: d.label,
+          pairedAt: d.pairedAt,
+          revoked: d.revoked || revoked.contains(d.deviceId),
+          isThisDevice: d.deviceId == myId,
+        ),
+    ];
+  }
+
   /// `true` while no device has founded the group key yet.
   Future<bool> get isUnfounded async {
     final rows = await _collection.all();
@@ -182,11 +277,7 @@ class DeviceRoster {
     final rows = await _collection.all();
     final myId = _identity.deviceId;
 
-    DeviceRecord? myRecord;
-    for (final r in rows.whereType<DeviceRecord>()) {
-      if (r.deviceId == myId) myRecord = r;
-    }
-    if (myRecord != null && myRecord.revoked) {
+    if (_revokedIds(rows).contains(myId)) {
       _groupKey = null;
       return _state = DeviceState.revoked;
     }
@@ -206,6 +297,34 @@ class DeviceRoster {
         await _identity.unwrap(WrappedKey.fromBytes(latest.wrappedBytes));
     _epoch = latest.keyEpoch;
     return _state = DeviceState.ready;
+  }
+
+  /// After a roster merge, adopt a newer group key this device now has a wrap
+  /// for, and — if a revoked device still holds a usable wrap at the live epoch
+  /// (which happens when two revocations raced) — perform one more rotation to
+  /// close that gap. Only the lowest-id non-revoked device re-rotates, so the
+  /// process is deterministic and terminates.
+  ///
+  /// Returns the new group key when it changed, else `null`.
+  Future<List<int>?> reconcile() async {
+    if (_state == DeviceState.revoked) return null;
+    final before = _groupKey;
+    await resolve();
+    if (_state != DeviceState.ready) {
+      return _sameKey(before, _groupKey) ? null : _groupKey;
+    }
+
+    final rows = await _collection.all();
+    final revoked = _revokedIds(rows);
+    final leakers = rows
+        .whereType<WrappedGroupKey>()
+        .where((w) => w.keyEpoch == _epoch && revoked.contains(w.deviceId))
+        .map((w) => w.deviceId)
+        .toSet();
+    if (leakers.isNotEmpty && _isElectedRotator(rows, revoked)) {
+      await _rotateExcluding(revoked, rows);
+    }
+    return _sameKey(before, _groupKey) ? null : _groupKey;
   }
 
   /// Generates the group key for a brand-new database and seals it to this
@@ -249,9 +368,26 @@ class DeviceRoster {
     );
   }
 
-  /// Marks [deviceId] revoked in the roster. Cryptographic exclusion (a key
-  /// rotation) is a later, separate step.
-  Future<void> revoke(String deviceId) async {
+  /// Revokes [deviceId]: rotates the group key to the next epoch, seals it to
+  /// every non-revoked device except [deviceId], and marks [deviceId] revoked.
+  /// Returns the new group key.
+  ///
+  /// Callable only from [DeviceState.ready].
+  Future<List<int>> revoke(String deviceId) async {
+    if (_state != DeviceState.ready) {
+      throw StateError('This device does not hold the group key.');
+    }
+    final rows = await _collection.all();
+    if (!rows.whereType<DeviceRecord>().any((d) => d.deviceId == deviceId)) {
+      throw StateError('No device "$deviceId" in the roster.');
+    }
+    final revoked = _revokedIds(rows)..add(deviceId);
+    await _rotateExcluding(revoked, rows, newlyRevoked: deviceId);
+    return _groupKey!;
+  }
+
+  /// Changes the label on [deviceId]'s roster record.
+  Future<void> rename(String deviceId, String label) async {
     final rows = await _collection.all();
     DeviceRecord? record;
     for (final r in rows.whereType<DeviceRecord>()) {
@@ -260,11 +396,90 @@ class DeviceRoster {
     if (record == null) {
       throw StateError('No device "$deviceId" in the roster.');
     }
-    await _collection.put(record.copyWith(revoked: true));
-    if (deviceId == _identity.deviceId) {
-      _groupKey = null;
-      _state = DeviceState.revoked;
+    await _collection.put(record.copyWith(label: label));
+  }
+
+  /// Every device id that is revoked, whether by a [KeyRotation] record or a
+  /// [DeviceRecord] flag.
+  Set<String> _revokedIds(List<DeviceRosterEntry> rows) {
+    final out = <String>{};
+    for (final r in rows.whereType<KeyRotation>()) {
+      if (r.revokedDeviceId.isNotEmpty) out.add(r.revokedDeviceId);
     }
+    for (final d in rows.whereType<DeviceRecord>()) {
+      if (d.revoked) out.add(d.deviceId);
+    }
+    return out;
+  }
+
+  /// True when this device should be the one to re-rotate: the lowest device id
+  /// among the non-revoked devices.
+  bool _isElectedRotator(List<DeviceRosterEntry> rows, Set<String> revoked) {
+    final active = rows
+        .whereType<DeviceRecord>()
+        .map((d) => d.deviceId)
+        .where((id) => !revoked.contains(id))
+        .toList()
+      ..sort();
+    return active.isNotEmpty && active.first == _identity.deviceId;
+  }
+
+  /// Rotates to `_epoch + 1`: fresh key, one wrap per non-revoked device, one
+  /// [KeyRotation] record, and the [DeviceRecord] flag for [newlyRevoked].
+  Future<void> _rotateExcluding(
+    Set<String> revoked,
+    List<DeviceRosterEntry> rows, {
+    String? newlyRevoked,
+  }) async {
+    final nextEpoch = _epoch + 1;
+    final newKey = _randomKey();
+    final devices = rows.whereType<DeviceRecord>().toList();
+
+    for (final device in devices) {
+      if (revoked.contains(device.deviceId)) continue;
+      final wrapped = await _identity.wrapFor(
+        DevicePublicKey.fromBytes(device.publicKey),
+        newKey,
+      );
+      await _collection.put(WrappedGroupKey(
+        deviceId: device.deviceId,
+        keyEpoch: nextEpoch,
+        wrappedBytes: wrapped.toBytes(),
+      ));
+    }
+    await _collection.put(KeyRotation(
+      keyEpoch: nextEpoch,
+      byDeviceId: _identity.deviceId,
+      revokedDeviceId: newlyRevoked ?? '',
+      keyDigest: _digest8(newKey),
+    ));
+    if (newlyRevoked != null) {
+      final record = devices.firstWhere((d) => d.deviceId == newlyRevoked);
+      await _collection.put(record.copyWith(revoked: true));
+    }
+
+    _groupKey = newKey;
+    _epoch = nextEpoch;
+    _state = DeviceState.ready;
+  }
+
+  static bool _sameKey(List<int>? a, List<int>? b) {
+    if (a == null || b == null) return a == b;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  static List<int> _digest8(List<int> key) {
+    var h = 0x811c9dc5;
+    for (final b in key) {
+      h = ((h ^ b) * 0x01000193) & 0xffffffff;
+    }
+    return [
+      for (var i = 0; i < 8; i++) (h >> ((i % 4) * 8)) & 0xff,
+    ];
   }
 
   Future<void> _writeWrap({

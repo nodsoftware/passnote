@@ -40,7 +40,9 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
     this._path, {
     List<int>? encryptionKey,
     Duration snapshotInterval = Duration.zero,
-  })  : _encryptionKey = encryptionKey,
+  })  : _encryptionKey = encryptionKey == null
+            ? null
+            : List<int>.unmodifiable(encryptionKey),
         _snapshotInterval = snapshotInterval;
 
   /// Web-only configuration (a no-op on native): points the engine at the
@@ -59,7 +61,7 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
   }
 
   final String _path;
-  final List<int>? _encryptionKey;
+  List<int>? _encryptionKey;
 
   CommonDatabase? _db;
   late String _nodeId;
@@ -153,6 +155,18 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
       quarantinePath: quarantinePath,
     );
     return backend.openSqliteDb(_path, encryptionKey: _encryptionKey);
+  }
+
+  /// Re-encrypts the database under [newKey] with SQLCipher's `PRAGMA rekey`
+  /// (a no-op on a non-SQLCipher build). All data is preserved. Subsequent
+  /// opens and recovery snapshots use [newKey].
+  @override
+  Future<void> rekey(List<int> newKey) async {
+    _encryptionKey = List<int>.unmodifiable(newKey);
+    final db = _db;
+    if (db == null) return;
+    final hex = newKey.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    db.execute('PRAGMA rekey = "x\'$hex\'"');
   }
 
   /// Closes the database and every watch stream. Safe to call more than once.

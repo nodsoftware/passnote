@@ -87,6 +87,26 @@ void main() {
       }
     });
 
+    test('rekey preserves data and is used for the next open', () async {
+      final path = freshPath();
+      final k1 = List<int>.filled(32, 1);
+      final k2 = List<int>.filled(32, 2);
+
+      final a = await SqliteCrdtTable.open(path, encryptionKey: k1);
+      await a.put('items', 'a', 'apple');
+      await a.rekey(k2);
+      expect(await a.value('items', 'a'), 'apple',
+          reason: 'data survives the rekey');
+      await a.put('items', 'b', 'banana');
+      await a.close();
+
+      // The store now opens under the new key.
+      final b = await SqliteCrdtTable.open(path, encryptionKey: k2);
+      addTearDown(b.close);
+      expect(await b.value('items', 'a'), 'apple');
+      expect(await b.value('items', 'b'), 'banana');
+    });
+
     test('a v0 database is migrated to the current schema on open', () async {
       // A schema-less file with user_version 0, as a pre-migration store.
       final path = freshPath();
