@@ -5,3 +5,10 @@ presets:
   web:
     paths: [test/web]
     platforms: [chrome]
+
+# The memory benchmark spawns subprocesses and takes several seconds. It is
+# skipped by the default run; run it with:
+#   dart test --run-skipped -t benchmark
+tags:
+  benchmark:
+    skip: "Heavy; run with: dart test --run-skipped -t benchmark"

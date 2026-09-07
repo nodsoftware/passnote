@@ -1,0 +1,51 @@
+=== DEFAULT ENGINE (SqliteCrdtTable) ===
+
+conclave storage-engine memory benchmark
+date        : 2026-09-07T09:37:18.603749Z
+engine      : sqlite
+documents   : 100000 (one single-field record each)
+platform    : macos Version 26.5.1 (Build 25F80)
+dart        : 3.12.1
+
+checkpoint            resident MB
+-------------------------------------
+after open               243.3
+25% written              250.5
+50% written              252.5
+75% written              252.5
+100% written             252.5
+after 1% read            252.6
+-------------------------------------
+growth over the write workload   9.2 MB
+  (resident set after all writes minus resident set after open;
+   the disk-backed engine holds this flat, MapCrdtTable does not)
+
+read sample  : 1000/1000 live
+write time   : 2684 ms (27 us/doc)
+read time    : 14 ms
+
+=== CONTRAST (MapCrdtTable, in-memory) ===
+
+conclave storage-engine memory benchmark
+date        : 2026-09-07T09:37:29.818672Z
+engine      : map
+documents   : 100000 (one single-field record each)
+platform    : macos Version 26.5.1 (Build 25F80)
+dart        : 3.12.1
+
+checkpoint            resident MB
+-------------------------------------
+after open               242.6
+25% written              276.0
+50% written              286.7
+75% written              297.1
+100% written             306.8
+after 1% read            306.8
+-------------------------------------
+growth over the write workload   64.1 MB
+  (resident set after all writes minus resident set after open;
+   the disk-backed engine holds this flat, MapCrdtTable does not)
+
+read sample  : 1000/1000 live
+write time   : 133 ms (1 us/doc)
+read time    : 2 ms

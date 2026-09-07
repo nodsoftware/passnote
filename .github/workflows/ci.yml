@@ -47,3 +47,9 @@ jobs:
       - name: Web conformance (headless Chrome)
         run: dart test -P web
         working-directory: packages/conclave_core
+
+      # Asserts the disk-backed engine's resident memory stays bounded as the
+      # dataset grows, and that MapCrdtTable does not (the contrast).
+      - name: Memory bounds benchmark
+        run: dart test --run-skipped -t benchmark
+        working-directory: packages/conclave_core
