@@ -9,7 +9,7 @@ library conclave_flutter;
 
 export 'package:conclave/conclave.dart';
 export 'package:conclave_crypto/conclave_crypto.dart';
-export 'package:conclave_lan/conclave_lan.dart';
+export 'package:conclave_lan/discovery.dart';
 
 export 'src/collection_notifier.dart';
 export 'src/conclave_builder.dart';

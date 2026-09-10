@@ -124,7 +124,19 @@ final class ConclaveBuilder {
     return this;
   }
 
-  /// Overrides the transport. Default: the umbrella's LAN transport.
+  /// Overrides the transport. Default: the umbrella's LAN transport (mDNS
+  /// discovery — native only).
+  ///
+  /// A web app, or a peer outside mDNS reach, uses the WebSocket transport
+  /// with explicit addresses instead:
+  ///
+  /// ```dart
+  /// Conclave.builder(appId: 'shopping', salt: 'shopping:v1')
+  ///     .transport(() => WebSocketTransport(
+  ///           connectTo: [Uri.parse('wss://relay.example:9473')],
+  ///         ))
+  ///     .open();
+  /// ```
   ConclaveBuilder transport(Transport Function() factory) {
     _once('transport', _transport != null);
     _transport = factory();

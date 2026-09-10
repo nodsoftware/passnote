@@ -1,6 +1,8 @@
 name: conclave_lan
 version: 0.1.0
-description: LAN transport for Conclave using mDNS discovery and WebSocket connections.
+description: >-
+  Transports for Conclave: WebSocket (web-safe, with a reference relay) and
+  mDNS LAN discovery (native).
 homepage: https://github.com/nodsoftware/conclave
 repository: https://github.com/nodsoftware/conclave
 resolution: workspace
@@ -11,7 +13,9 @@ environment:
 dependencies:
   conclave: ^0.1.0
   mdns_dart: ^2.2.1
+  web: ^1.1.0
 
 dev_dependencies:
   lints: ^4.0.0
+  stream_channel: ^2.1.4
   test: ^1.25.0

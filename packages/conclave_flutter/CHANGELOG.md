@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `LanTransport` is now re-exported from `package:conclave_lan/discovery.dart`
+  (the native-only entry); the web-safe `WebSocketTransport` comes along via
+  the main `conclave_lan` entry.
 - This package is now the entry point for Flutter apps. It re-exports
   `package:conclave` (renamed from `conclave_core`), `package:conclave_crypto`,
   and `package:conclave_lan`, and absorbs `conclaveBuilder` from the former

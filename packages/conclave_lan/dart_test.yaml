@@ -1,5 +1,14 @@
-# Socket-bound LAN integration tests are excluded from the default unit run.
-# Run them explicitly with:
+# `@TestOn('browser')` tests need Chrome; the browser peer converges with a
+# native WebSocketTransport hosted in a hybrid isolate. The default `dart test`
+# (VM) run skips them; `dart test -P web` runs just `test/web/` in headless
+# Chrome.
+presets:
+  web:
+    paths: [test/web]
+    platforms: [chrome]
+
+# The mDNS loopback test binds multicast sockets. It is skipped by the default
+# run; run it with:
 #   dart test --run-skipped -t integration
 tags:
   integration:

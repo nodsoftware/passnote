@@ -2,7 +2,7 @@
 library;
 
 import 'package:conclave/conclave.dart';
-import 'package:conclave_lan/conclave_lan.dart';
+import 'package:conclave_lan/discovery.dart';
 import 'package:test/test.dart';
 
 /// Socket-bound loopback test: two [LanTransport]s on the local machine

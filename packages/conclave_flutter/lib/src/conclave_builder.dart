@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:conclave/conclave.dart';
 import 'package:conclave/engine.dart' show SqliteCrdtTable;
 import 'package:conclave_crypto/conclave_crypto.dart';
-import 'package:conclave_lan/conclave_lan.dart';
+import 'package:conclave_lan/discovery.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
