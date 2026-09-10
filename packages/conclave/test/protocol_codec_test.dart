@@ -57,6 +57,42 @@ void main() {
       expect(m.keyTag, List<int>.generate(8, (i) => 0xF0 + i));
     });
 
+    test('handshake with versions, capabilities, and a device key', () {
+      final m = rt(HandshakeMessage(
+        node: 'n1',
+        versions: const [2, 3],
+        capabilities: const ['recon1', 'future-thing'],
+        devicePublicKey: List<int>.generate(64, (i) => i),
+      )) as HandshakeMessage;
+      expect(m.node, 'n1');
+      expect(m.versions, [2, 3]);
+      expect(m.capabilities, ['recon1', 'future-thing']);
+      expect(m.devicePublicKey, List<int>.generate(64, (i) => i));
+
+      final bare = rt(const HandshakeMessage(node: 'n2', versions: [2]))
+          as HandshakeMessage;
+      expect(bare.capabilities, isEmpty);
+      expect(bare.devicePublicKey, isNull);
+    });
+
+    test('reconcile with probes and send-ranges, including open bounds', () {
+      final m = rt(ReconcileMessage(
+        col: 'docs',
+        probes: [
+          (null, 'hlc-b', 0, 41, List<int>.filled(16, 7)),
+          ('hlc-a', null, 3, 0, List<int>.filled(16, 0)),
+        ],
+        sendRanges: const [(null, null), ('hlc-a', 'hlc-b')],
+      )) as ReconcileMessage;
+      expect(m.col, 'docs');
+      expect(m.probes, hasLength(2));
+      expect(m.probes[0].$1, isNull);
+      expect(m.probes[0].$2, 'hlc-b');
+      expect(m.probes[0].$4, 41);
+      expect(m.probes[1].$3, 3);
+      expect(m.sendRanges, [(null, null), ('hlc-a', 'hlc-b')]);
+    });
+
     test('delta with every value shape', () {
       final records = <Map<String, dynamic>>[
         {
@@ -155,6 +191,16 @@ void main() {
           node: 'n',
           nonce: List<int>.filled(16, 7),
           keyTag: List<int>.filled(8, 3),
+        )),
+        encodeMessage(const HandshakeMessage(
+          node: 'n',
+          versions: [2],
+          capabilities: ['recon1'],
+        )),
+        encodeMessage(ReconcileMessage(
+          col: 'c',
+          probes: [('a', null, 1, 5, List<int>.filled(16, 1))],
+          sendRanges: const [('a', 'b')],
         )),
       ];
       for (final frame in frames) {

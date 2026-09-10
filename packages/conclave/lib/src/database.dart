@@ -17,6 +17,7 @@ import 'protocol/anti_entropy.dart';
 import 'protocol/frame_window.dart';
 import 'protocol/handshake.dart';
 import 'protocol/messages.dart';
+import 'protocol/reconciliation.dart';
 
 /// A shared, encrypted, peer-synced database.
 ///
@@ -39,6 +40,7 @@ class Database {
     required FutureOr<CrdtTable> Function(String collection, List<int> key)
         engineFor,
     required List<int> wireVersions,
+    required List<String> wireCapabilities,
     required Duration antiEntropyInterval,
     required int maxInFlightFrames,
     void Function(PeerId peer, List<int> local, List<int> remote)?
@@ -55,6 +57,7 @@ class Database {
         _cipherFactory = cipherFactory,
         _engineFor = engineFor,
         _wireVersions = wireVersions,
+        _wireCapabilities = wireCapabilities,
         _maxInFlightFrames = maxInFlightFrames,
         _onIncompatiblePeer = onIncompatiblePeer {
     _antiEntropy = AntiEntropy(
@@ -108,6 +111,9 @@ class Database {
   /// The wire versions this node advertises in its handshake.
   final List<int> _wireVersions;
 
+  /// The optional protocol features this node advertises in its handshake.
+  final List<String> _wireCapabilities;
+
   /// Called once per peer whose advertised versions share nothing with ours.
   final void Function(PeerId peer, List<int> local, List<int> remote)?
       _onIncompatiblePeer;
@@ -118,6 +124,9 @@ class Database {
 
   /// The wire version negotiated per peer. Sync starts only once present.
   final Map<PeerId, int> _negotiatedVersion = {};
+
+  /// The optional protocol features each peer advertised in its handshake.
+  final Map<PeerId, Set<String>> _peerCapabilities = {};
 
   /// Peers that advertised no common wire version: deregistered, their frames
   /// swallowed, nothing further sent.
@@ -515,6 +524,7 @@ class Database {
     // A reconnect renegotiates from scratch — the peer may have upgraded.
     _handshakeReceived.remove(peer);
     _negotiatedVersion.remove(peer);
+    _peerCapabilities.remove(peer);
     _incompatiblePeers.remove(peer);
   }
 
@@ -535,6 +545,7 @@ class Database {
       HandshakeMessage(
         node: _nodeId,
         versions: _wireVersions,
+        capabilities: _wireCapabilities,
         devicePublicKey:
             identity == null ? null : (await identity.publicKey).toBytes(),
       ),
@@ -651,8 +662,10 @@ class Database {
         _peerNonce[from] = nonce;
         _tryEstablishSession(from);
         await _sendRatchetNonce(from);
-      case HandshakeMessage(:final versions):
-        await _handleHandshake(from, versions);
+      case HandshakeMessage(:final versions, :final capabilities):
+        await _handleHandshake(from, versions, capabilities);
+      case ReconcileMessage():
+        await _handleReconcile(from, msg);
     }
   }
 
@@ -661,8 +674,13 @@ class Database {
   /// peer sends (both sides also send one on connect, so a peer that opened
   /// its database later still gets ours), which bounds the exchange to at
   /// most two frames each.
-  Future<void> _handleHandshake(PeerId from, List<int> versions) async {
+  Future<void> _handleHandshake(
+    PeerId from,
+    List<int> versions,
+    List<String> capabilities,
+  ) async {
     if (_incompatiblePeers.contains(from)) return;
+    _peerCapabilities[from] = capabilities.toSet();
     final firstReceipt = _handshakeReceived.add(from);
     if (firstReceipt) await _sendHandshake(from);
     if (_negotiatedVersion.containsKey(from)) return;
@@ -753,14 +771,95 @@ class Database {
   Future<void> _sendPoke(PeerId peer) =>
       _sendEncrypted(peer, const PokeMessage());
 
-  /// One anti-entropy round: a hello to every negotiated peer, whose
-  /// state/delta replies carry anything either side is missing.
+  /// One anti-entropy round per negotiated peer: a range-reconciliation probe
+  /// when the peer advertised `recon1` (finds any difference — even a record
+  /// older than both watermarks — in O(log n) round trips), else the plain
+  /// hello whose state/delta replies carry everything newer than the peer's
+  /// watermarks.
   Future<void> _antiEntropyExchange() async {
     for (final peer in _peers.toList()) {
       if (!_negotiatedVersion.containsKey(peer)) continue;
-      await _sendHello(peer);
+      if (_peerCapabilities[peer]?.contains(reconCapability) ?? false) {
+        await _startReconcile(peer);
+      } else {
+        await _sendHello(peer);
+      }
     }
   }
+
+  /// Opens a reconciliation round with [peer]: one whole-range probe per
+  /// collection.
+  Future<void> _startReconcile(PeerId peer) async {
+    for (final entry in _collections.entries.toList()) {
+      final col = entry.value as Collection<dynamic>;
+      final probe = await _reconcilerFor(col).initialProbe();
+      if (probe == null) continue;
+      await _sendEncrypted(
+        peer,
+        ReconcileMessage(col: col.name, probes: [_encodeProbe(probe)]),
+      );
+    }
+  }
+
+  Reconciler _reconcilerFor(Collection<dynamic> col) => Reconciler(
+        digest: (from, to) => col.rangeDigest(fromHlc: from, toHlc: to),
+      );
+
+  Future<void> _handleReconcile(PeerId from, ReconcileMessage msg) async {
+    final col = _collections[msg.col] as Collection<dynamic>?;
+    if (col == null) return;
+
+    // Ranges the peer asked for: ship them as ordinary bounded delta frames.
+    for (final (rangeFrom, rangeTo) in msg.sendRanges) {
+      await _sendRangeRecords(from, col, rangeFrom, rangeTo);
+    }
+    if (msg.probes.isEmpty) return;
+
+    final plan = await _reconcilerFor(col).handleProbes([
+      for (final (probeFrom, probeTo, depth, count, fingerprint) in msg.probes)
+        RangeProbe(
+          from: probeFrom,
+          to: probeTo,
+          depth: depth,
+          count: count,
+          fingerprint: fingerprint,
+        ),
+    ]);
+    for (final range in plan.shipRanges) {
+      await _sendRangeRecords(from, col, range.from, range.to);
+    }
+    if (plan.replyProbes.isNotEmpty || plan.requestRanges.isNotEmpty) {
+      await _sendEncrypted(
+        from,
+        ReconcileMessage(
+          col: col.name,
+          probes: [for (final probe in plan.replyProbes) _encodeProbe(probe)],
+          sendRanges: [
+            for (final range in plan.requestRanges) (range.from, range.to),
+          ],
+        ),
+      );
+    }
+  }
+
+  Future<void> _sendRangeRecords(
+    PeerId peer,
+    Collection<dynamic> col,
+    String? from,
+    String? to,
+  ) async {
+    final changeset = await col.getChangeset(sinceHlc: from, untilHlc: to);
+    for (final entry in changeset.entries) {
+      final records =
+          entry.value.map((r) => Map<String, dynamic>.from(r)).toList();
+      if (records.isEmpty) continue;
+      await _sendDeltas(peer, col.name, records);
+    }
+  }
+
+  static (String?, String?, int, int, List<int>) _encodeProbe(
+          RangeProbe probe) =>
+      (probe.from, probe.to, probe.depth, probe.count, probe.fingerprint);
 
   /// Splits [records] into frames of at most [_maxRecordsPerFrame], never
   /// splitting one document's records across two frames.
@@ -892,6 +991,7 @@ class Database {
     required FutureOr<CrdtTable> Function(String collection, List<int> key)
         engineFor,
     List<int> wireVersions = supportedWireVersions,
+    List<String> wireCapabilities = const [reconCapability],
     Duration antiEntropyInterval = Duration.zero,
     int maxInFlightFrames = 16,
     void Function(PeerId peer, List<int> local, List<int> remote)?
@@ -910,6 +1010,7 @@ class Database {
       cipherFactory: cipherFactory,
       engineFor: engineFor,
       wireVersions: wireVersions,
+      wireCapabilities: wireCapabilities,
       antiEntropyInterval: antiEntropyInterval,
       maxInFlightFrames: maxInFlightFrames,
       onIncompatiblePeer: onIncompatiblePeer,

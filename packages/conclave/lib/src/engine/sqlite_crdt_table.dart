@@ -333,22 +333,27 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
   }
 
   @override
-  Future<CrdtChangeset> changeset(String table, {String? sinceHlc}) async {
+  Future<CrdtChangeset> changeset(
+    String table, {
+    String? sinceHlc,
+    String? untilHlc,
+  }) async {
     if (_db == null) return {table: <CrdtRecord>[]};
-    final ResultSet rows;
-    if (sinceHlc == null || sinceHlc.isEmpty) {
-      rows = _open.select(
-        'SELECT key, value, is_deleted, hlc, crdt_type FROM crdt_records '
-        'WHERE collection = ?',
-        [table],
-      );
-    } else {
-      rows = _open.select(
-        'SELECT key, value, is_deleted, hlc, crdt_type FROM crdt_records '
-        'WHERE collection = ? AND hlc_key > ?',
-        [table, _hlcKey(Hlc.parse(sinceHlc))],
-      );
+    final conditions = ['collection = ?'];
+    final params = <Object?>[table];
+    if (sinceHlc != null && sinceHlc.isNotEmpty) {
+      conditions.add('hlc_key > ?');
+      params.add(_hlcKey(Hlc.parse(sinceHlc)));
     }
+    if (untilHlc != null && untilHlc.isNotEmpty) {
+      conditions.add('hlc_key <= ?');
+      params.add(_hlcKey(Hlc.parse(untilHlc)));
+    }
+    final rows = _open.select(
+      'SELECT key, value, is_deleted, hlc, crdt_type FROM crdt_records '
+      'WHERE ${conditions.join(' AND ')}',
+      params,
+    );
     return {
       table: [
         for (final r in rows)
@@ -361,6 +366,35 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
           },
       ],
     };
+  }
+
+  /// One indexed range scan over `(collection, hlc_key)`; O(1) memory.
+  @override
+  Future<RangeDigest> rangeDigest(
+    String table, {
+    String? fromHlc,
+    String? toHlc,
+  }) async {
+    if (_db == null) return RangeDigest.empty;
+    final conditions = ['collection = ?'];
+    final params = <Object?>[table];
+    if (fromHlc != null) {
+      conditions.add('hlc_key > ?');
+      params.add(_hlcKey(Hlc.parse(fromHlc)));
+    }
+    if (toHlc != null) {
+      conditions.add('hlc_key <= ?');
+      params.add(_hlcKey(Hlc.parse(toHlc)));
+    }
+    final builder = RangeDigestBuilder();
+    final rows = _open.select(
+      'SELECT key, hlc FROM crdt_records WHERE ${conditions.join(' AND ')}',
+      params,
+    );
+    for (final row in rows) {
+      builder.add(row['key'] as String, Hlc.parse(row['hlc'] as String));
+    }
+    return builder.build();
   }
 
   @override

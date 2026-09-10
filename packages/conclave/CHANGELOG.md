@@ -175,6 +175,16 @@
     `doc_id` / `field_path` columns generated from `key`, and an index on
     `(collection, doc_id)` that also makes single-document reads an index
     lookup instead of a scan.
+- Added range-based set reconciliation as the anti-entropy mechanism between
+  peers that both advertise it (the `recon1` handshake capability; anyone else
+  gets the full state exchange). Peers compare XOR fingerprints of HLC ranges
+  and recursively split mismatches, so **any** difference — including a record
+  older than both sides' watermarks, which the watermark scheme could never
+  heal short of a full resync — is found in O(log n) round trips. Identical
+  replicas exchange only fingerprints; recursion depth and per-reply probe
+  fan-out are capped, so memory per exchange is bounded even for fully
+  divergent sets. The `CrdtTable` port gains `rangeDigest` and a bounded
+  `changeset(untilHlc:)`.
 - Large changesets now stream as bounded frames (500 records each, split only
   on document boundaries so a receiver never applies half a document) instead
   of one giant frame. Every frame to a peer flows through an ordered,

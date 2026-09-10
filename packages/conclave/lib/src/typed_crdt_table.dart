@@ -173,10 +173,22 @@ final class TypedCrdtTable implements CrdtTable {
       _inner.ensureQueryIndex(table, fieldPath);
 
   @override
-  Future<CrdtChangeset> changeset(String table, {String? sinceHlc}) =>
+  Future<CrdtChangeset> changeset(
+    String table, {
+    String? sinceHlc,
+    String? untilHlc,
+  }) =>
       // Raw states travel on the wire: the receiving side needs the full state
       // (tags, tombstones, sub-counters) to merge, not the resolved value.
-      _inner.changeset(table, sinceHlc: sinceHlc);
+      _inner.changeset(table, sinceHlc: sinceHlc, untilHlc: untilHlc);
+
+  @override
+  Future<RangeDigest> rangeDigest(
+    String table, {
+    String? fromHlc,
+    String? toHlc,
+  }) =>
+      _inner.rangeDigest(table, fromHlc: fromHlc, toHlc: toHlc);
 
   @override
   String maxHlc(String table) => _inner.maxHlc(table);

@@ -128,8 +128,20 @@ class _CountingTable implements CrdtTable {
       _inner.put(table, key, value, isDeleted: isDeleted, crdtType: crdtType);
 
   @override
-  Future<CrdtChangeset> changeset(String table, {String? sinceHlc}) =>
-      _inner.changeset(table, sinceHlc: sinceHlc);
+  Future<CrdtChangeset> changeset(
+    String table, {
+    String? sinceHlc,
+    String? untilHlc,
+  }) =>
+      _inner.changeset(table, sinceHlc: sinceHlc, untilHlc: untilHlc);
+
+  @override
+  Future<RangeDigest> rangeDigest(
+    String table, {
+    String? fromHlc,
+    String? toHlc,
+  }) =>
+      _inner.rangeDigest(table, fromHlc: fromHlc, toHlc: toHlc);
 
   @override
   String maxHlc(String table) => _inner.maxHlc(table);

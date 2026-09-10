@@ -1,4 +1,6 @@
 import 'package:crdt/crdt.dart';
+import 'package:crypto/crypto.dart' show sha256;
+import 'dart:convert' show utf8;
 
 import '../crdt/crdt_type.dart';
 import 'query.dart';
@@ -176,9 +178,27 @@ abstract interface class CrdtTable {
   /// Returns records in [table] in [CrdtChangeset] format.
   ///
   /// When [sinceHlc] is non-null, only records modified after that HLC string
-  /// are returned. Pass `null` (the default) for the full table, including
-  /// tombstones — required for persistence and sync.
-  Future<CrdtChangeset> changeset(String table, {String? sinceHlc});
+  /// are returned; when [untilHlc] is non-null, only records at or before it.
+  /// Both bounds are parsed and compared as HLCs, never as raw strings. Pass
+  /// neither (the default) for the full table, including tombstones — required
+  /// for persistence and sync; the bounded form serves range reconciliation's
+  /// leaf fetches.
+  Future<CrdtChangeset> changeset(
+    String table, {
+    String? sinceHlc,
+    String? untilHlc,
+  });
+
+  /// Summarises the records of [table] whose HLC lies in the half-open range
+  /// `(fromHlc, toHlc]` (a `null` bound is open): how many there are, the XOR
+  /// fingerprint of their identities, and the range's lowest and highest HLCs.
+  ///
+  /// Tombstoned records are included — a deletion is state that must
+  /// reconcile. Two replicas whose digests match over a range hold the same
+  /// record versions there (see [RangeDigestBuilder] for the identity). Must
+  /// stream: memory per call is O(1), not O(range).
+  Future<RangeDigest> rangeDigest(String table,
+      {String? fromHlc, String? toHlc});
 
   /// The highest HLC seen in [table] as a string, or the empty string when
   /// the table is empty.
@@ -208,6 +228,82 @@ abstract interface class CrdtTable {
   /// stream so a late subscriber is safe; [Conclave] listens on it to surface
   /// a [StoreRecovered] event and trigger a re-sync.
   Stream<CrdtRecovery> get recoveries => const Stream<CrdtRecovery>.empty();
+}
+
+/// The summary of one HLC range of a table, as [CrdtTable.rangeDigest]
+/// returns it: the input to range-based set reconciliation.
+class RangeDigest {
+  /// Creates a digest. Engines build these via [RangeDigestBuilder].
+  const RangeDigest({
+    required this.count,
+    required this.fingerprint,
+    this.minHlc,
+    this.maxHlc,
+  });
+
+  /// An empty range: zero records, the zero fingerprint.
+  static final RangeDigest empty = RangeDigest(
+    count: 0,
+    fingerprint: List<int>.unmodifiable(List<int>.filled(16, 0)),
+  );
+
+  /// Number of records in the range.
+  final int count;
+
+  /// XOR of every record's identity hash ([RangeDigestBuilder.add]).
+  /// 16 bytes; all zero for an empty range.
+  final List<int> fingerprint;
+
+  /// The lowest record HLC in the range, or `null` when empty.
+  final String? minHlc;
+
+  /// The highest record HLC in the range, or `null` when empty.
+  final String? maxHlc;
+
+  /// Whether [other] summarises the same record set (same count and
+  /// fingerprint).
+  bool matches(RangeDigest other) {
+    if (count != other.count) return false;
+    for (var i = 0; i < fingerprint.length; i++) {
+      if (fingerprint[i] != other.fingerprint[i]) return false;
+    }
+    return true;
+  }
+}
+
+/// Streams records into a [RangeDigest]: an engine calls [add] once per
+/// record in the range (any order) and takes [build].
+///
+/// A record's identity is its `(key, hlc)` pair — the HLC changes whenever
+/// the value does, so equal pairs mean equal record versions. The fingerprint
+/// is the XOR of the first 16 bytes of `SHA-256(key ‖ 0x00 ‖ hlc)`:
+/// order-independent, so ranges can be summarised in one streaming pass and
+/// split without re-hashing.
+class RangeDigestBuilder {
+  final List<int> _xor = List<int>.filled(16, 0);
+  int _count = 0;
+  Hlc? _min;
+  Hlc? _max;
+
+  /// Folds one record into the digest.
+  void add(String key, Hlc hlc) {
+    final hash = sha256.convert(
+        [...utf8.encode(key), 0x00, ...utf8.encode(hlc.toString())]).bytes;
+    for (var i = 0; i < 16; i++) {
+      _xor[i] ^= hash[i];
+    }
+    _count++;
+    if (_min == null || hlc < _min!) _min = hlc;
+    if (_max == null || hlc > _max!) _max = hlc;
+  }
+
+  /// The accumulated digest.
+  RangeDigest build() => RangeDigest(
+        count: _count,
+        fingerprint: List<int>.unmodifiable(_xor),
+        minHlc: _min?.toString(),
+        maxHlc: _max?.toString(),
+      );
 }
 
 /// How a [CrdtTable] rebuilt its local store after finding it unreadable.

@@ -39,6 +39,7 @@ export 'src/map_crdt_table.dart';
 export 'src/protocol/anti_entropy.dart';
 export 'src/protocol/frame_window.dart';
 export 'src/protocol/handshake.dart';
+export 'src/protocol/reconciliation.dart';
 export 'src/typed_crdt_table.dart';
 export 'src/ports/cipher.dart';
 export 'src/ports/crdt_table.dart';

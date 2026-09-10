@@ -546,10 +546,27 @@ class Collection<T> {
   /// Reads through the write chain: a put writes a document's field records
   /// one at a time, and an unserialised read between two of them would ship a
   /// document to a peer with only some of its fields.
-  Future<CrdtChangeset> getChangeset({String? sinceHlc}) async {
+  Future<CrdtChangeset> getChangeset(
+      {String? sinceHlc, String? untilHlc}) async {
     late CrdtChangeset result;
     await _serialize(
-      () async => result = await _engine.changeset(_name, sinceHlc: sinceHlc),
+      () async => result = await _engine.changeset(
+        _name,
+        sinceHlc: sinceHlc,
+        untilHlc: untilHlc,
+      ),
+    );
+    return result;
+  }
+
+  /// Summarises this collection's records in the half-open HLC range
+  /// `(fromHlc, toHlc]` for range reconciliation. Reads through the write
+  /// chain, so a digest never spans a half-written document.
+  Future<RangeDigest> rangeDigest({String? fromHlc, String? toHlc}) async {
+    late RangeDigest result;
+    await _serialize(
+      () async => result =
+          await _engine.rangeDigest(_name, fromHlc: fromHlc, toHlc: toHlc),
     );
     return result;
   }

@@ -37,6 +37,7 @@ const int _tagDelta = 3;
 const int _tagPoke = 4;
 const int _tagRatchetHello = 5;
 const int _tagHandshake = 6;
+const int _tagReconcile = 7;
 
 // Value type tags for the tagged value encoding.
 const int _valNull = 0;
@@ -87,13 +88,22 @@ List<int> encodeMessage(ProtocolMessage msg) {
         ..string(node)
         ..bytes(nonce)
         ..bytes(keyTag);
-    case HandshakeMessage(:final node, :final versions, :final devicePublicKey):
+    case HandshakeMessage(
+        :final node,
+        :final versions,
+        :final capabilities,
+        :final devicePublicKey
+      ):
       w
         ..byte(_tagHandshake)
         ..string(node)
         ..varint(versions.length);
       for (final version in versions) {
         w.varint(version);
+      }
+      w.varint(capabilities.length);
+      for (final capability in capabilities) {
+        w.string(capability);
       }
       if (devicePublicKey == null) {
         w.byte(0);
@@ -102,9 +112,40 @@ List<int> encodeMessage(ProtocolMessage msg) {
           ..byte(1)
           ..bytes(devicePublicKey);
       }
+    case ReconcileMessage(:final col, :final probes, :final sendRanges):
+      w
+        ..byte(_tagReconcile)
+        ..string(col)
+        ..varint(probes.length);
+      for (final (from, to, depth, count, fingerprint) in probes) {
+        _writeBound(w, from);
+        _writeBound(w, to);
+        w
+          ..varint(depth)
+          ..varint(count)
+          ..bytes(fingerprint);
+      }
+      w.varint(sendRanges.length);
+      for (final (from, to) in sendRanges) {
+        _writeBound(w, from);
+        _writeBound(w, to);
+      }
   }
   return w.take();
 }
+
+/// An optional HLC bound: presence byte, then the string.
+void _writeBound(_Writer w, String? bound) {
+  if (bound == null) {
+    w.byte(0);
+  } else {
+    w
+      ..byte(1)
+      ..string(bound);
+  }
+}
+
+String? _readBound(_Reader r) => r.byte() == 0 ? null : r.string();
 
 /// Decodes a binary frame back into a [ProtocolMessage].
 ///
@@ -137,7 +178,26 @@ ProtocolMessage? decodeMessage(List<int> bytes) {
           versions: [
             for (var i = r.varint(); i > 0; i--) r.varint(),
           ],
+          capabilities: [
+            for (var i = r.varint(); i > 0; i--) r.string(),
+          ],
           devicePublicKey: r.byte() == 0 ? null : r.bytesField(),
+        ),
+      _tagReconcile => ReconcileMessage(
+          col: r.string(),
+          probes: [
+            for (var i = r.varint(); i > 0; i--)
+              (
+                _readBound(r),
+                _readBound(r),
+                r.varint(),
+                r.varint(),
+                r.bytesField()
+              ),
+          ],
+          sendRanges: [
+            for (var i = r.varint(); i > 0; i--) (_readBound(r), _readBound(r)),
+          ],
         ),
       _ => null,
     };

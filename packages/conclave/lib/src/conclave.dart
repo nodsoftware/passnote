@@ -12,6 +12,7 @@ import 'ports/key_store.dart';
 import 'ports/pake.dart';
 import 'ports/transport.dart';
 import 'protocol/handshake.dart';
+import 'protocol/reconciliation.dart';
 
 export 'identity/pairing.dart'
     show PairingCode, PairingBundle, PairingRejected, PairingTimeout;
@@ -257,12 +258,14 @@ class Conclave {
     Pake? pake,
     Future<Identity> Function(String phrase, String salt)? recoveryIdentity,
     List<int> wireVersions = supportedWireVersions,
+    List<String> wireCapabilities = const [reconCapability],
   })  : _config = config,
         _engineFactory = engineFactory,
         _identity = identity,
         _pake = pake,
         _recoveryIdentity = recoveryIdentity,
         _wireVersions = wireVersions,
+        _wireCapabilities = wireCapabilities,
         _keyStore = keyStore,
         _transport = transport,
         _nodeId = nodeId,
@@ -291,6 +294,9 @@ class Conclave {
   /// The wire versions advertised in every handshake. Overridable (staged
   /// rollouts, incompatibility tests); defaults to [supportedWireVersions].
   final List<int> _wireVersions;
+
+  /// The optional protocol features advertised in every handshake.
+  final List<String> _wireCapabilities;
 
   final Map<String, Database> _databases = {};
   // The key each open database's user data is derived from (group key when an
@@ -390,6 +396,7 @@ class Conclave {
       engineFor: (collection, engineKey) =>
           _buildEngine(localId, collection, engineKey),
       wireVersions: _wireVersions,
+      wireCapabilities: _wireCapabilities,
       antiEntropyInterval: _config.antiEntropyInterval,
       maxInFlightFrames: _config.maxInFlightFrames,
       onIncompatiblePeer: (peer, local, remote) => _emit(PeerIncompatible(
@@ -833,6 +840,7 @@ class Conclave {
     Pake? pake,
     Future<Identity> Function(String phrase, String salt)? recoveryIdentity,
     List<int> wireVersions = supportedWireVersions,
+    List<String> wireCapabilities = const [reconCapability],
   }) async {
     final nodeId = generateNodeId();
 
@@ -851,6 +859,7 @@ class Conclave {
       identity: identity,
       recoveryIdentity: recoveryIdentity,
       wireVersions: wireVersions,
+      wireCapabilities: wireCapabilities,
     );
     // Wire listeners BEFORE start so PeerConnected events emitted during
     // registration are not missed.

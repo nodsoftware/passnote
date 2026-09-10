@@ -108,12 +108,46 @@ class MapCrdtTable implements CrdtTable {
   Future<void> ensureQueryIndex(String table, String fieldPath) async {}
 
   @override
-  Future<CrdtChangeset> changeset(String table, {String? sinceHlc}) =>
-      Future.value(_crdt.getChangeset(
-        onlyTables: [table],
-        modifiedAfter:
-            (sinceHlc == null || sinceHlc.isEmpty) ? null : Hlc.parse(sinceHlc),
-      ));
+  Future<CrdtChangeset> changeset(
+    String table, {
+    String? sinceHlc,
+    String? untilHlc,
+  }) {
+    final changeset = _crdt.getChangeset(
+      onlyTables: [table],
+      modifiedAfter:
+          (sinceHlc == null || sinceHlc.isEmpty) ? null : Hlc.parse(sinceHlc),
+    );
+    if (untilHlc == null) return Future.value(changeset);
+    final until = Hlc.parse(untilHlc);
+    return Future.value({
+      for (final entry in changeset.entries)
+        entry.key: [
+          for (final record in entry.value)
+            if ((record['hlc'] as Hlc) <= until) record,
+        ],
+    });
+  }
+
+  /// One pass over the full changeset — this engine is in-memory anyway.
+  @override
+  Future<RangeDigest> rangeDigest(
+    String table, {
+    String? fromHlc,
+    String? toHlc,
+  }) {
+    final from = fromHlc == null ? null : Hlc.parse(fromHlc);
+    final to = toHlc == null ? null : Hlc.parse(toHlc);
+    final builder = RangeDigestBuilder();
+    for (final record in _crdt.getChangeset(onlyTables: [table])[table] ??
+        const <Map<String, Object?>>[]) {
+      final hlc = record['hlc'] as Hlc;
+      if (from != null && hlc <= from) continue;
+      if (to != null && hlc > to) continue;
+      builder.add(record['key'] as String, hlc);
+    }
+    return Future.value(builder.build());
+  }
 
   @override
   String maxHlc(String table) {

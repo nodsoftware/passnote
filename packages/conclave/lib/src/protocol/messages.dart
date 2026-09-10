@@ -60,6 +60,7 @@ final class HandshakeMessage extends ProtocolMessage {
   const HandshakeMessage({
     required this.node,
     required this.versions,
+    this.capabilities = const [],
     this.devicePublicKey,
   });
 
@@ -69,9 +70,37 @@ final class HandshakeMessage extends ProtocolMessage {
   /// The wire versions the sender speaks (see `supportedWireVersions`).
   final List<int> versions;
 
+  /// Optional protocol features the sender supports within the negotiated
+  /// version (e.g. `recon1`, range reconciliation). A feature is used only
+  /// when both sides advertise it; unknown names are ignored.
+  final List<String> capabilities;
+
   /// The sender's encoded `DevicePublicKey`, when it has an identity
   /// configured. Carried for upcoming signed-handshake work; absent otherwise.
   final List<int>? devicePublicKey;
+}
+
+/// One round of range-based set reconciliation for a collection.
+///
+/// [probes] ask "do you match these ranges?"; [sendRanges] ask "ship me your
+/// records for these ranges" (answered with ordinary [DeltaMessage]s). See
+/// `Reconciler` for the exchange.
+final class ReconcileMessage extends ProtocolMessage {
+  const ReconcileMessage({
+    required this.col,
+    this.probes = const [],
+    this.sendRanges = const [],
+  });
+
+  /// Target collection name.
+  final String col;
+
+  /// Range fingerprints to compare, as
+  /// `(from, to, depth, count, fingerprint)` with `null` bounds open.
+  final List<(String?, String?, int, int, List<int>)> probes;
+
+  /// Ranges whose records the sender wants, as `(from, to)`.
+  final List<(String?, String?)> sendRanges;
 }
 
 /// Carries a random per-session nonce so both peers can derive the same
