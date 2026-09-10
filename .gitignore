@@ -32,3 +32,6 @@ Thumbs.db
 /site/
 .venv/
 packages/conclave/test/web/sqlite3.wasm
+
+# Editor swap files
+*.swp
