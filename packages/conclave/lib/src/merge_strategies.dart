@@ -26,6 +26,9 @@ class ObjectMergeStrategy implements MergeStrategy {
     final row = rows.firstWhere((r) => r.path == _wholeDocument);
     return (row.value as Map).cast<String, dynamic>();
   }
+
+  @override
+  CrdtType typeAt(String path) => const LwwRegister();
 }
 
 /// A [MergeStrategy] that gives each top-level field its own CRDT record.
@@ -49,6 +52,9 @@ class ShallowMergeStrategy implements MergeStrategy {
   @override
   Map<String, dynamic> unflatten(Iterable<FieldValue> rows) =>
       {for (final row in rows) row.path: row.value};
+
+  @override
+  CrdtType typeAt(String path) => const LwwRegister();
 }
 
 /// A [MergeStrategy] that flattens nested maps recursively, joining keys with
@@ -110,6 +116,9 @@ class DeepMergeStrategy implements MergeStrategy {
     }
     return root;
   }
+
+  @override
+  CrdtType typeAt(String path) => const LwwRegister();
 }
 
 /// A [MergeStrategy] that decomposes a document per top-level field and assigns
@@ -158,4 +167,7 @@ class SchemaMergeStrategy implements MergeStrategy {
   @override
   Map<String, dynamic> unflatten(Iterable<FieldValue> rows) =>
       base.unflatten(rows);
+
+  @override
+  CrdtType typeAt(String path) => schema[path] ?? base.typeAt(path);
 }

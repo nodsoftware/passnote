@@ -3,6 +3,8 @@ import 'package:crdt/map_crdt.dart';
 
 import 'crdt/crdt_type.dart';
 import 'ports/crdt_table.dart';
+import 'ports/query.dart';
+import 'query/scan_query.dart';
 
 /// In-memory [CrdtTable] backed by the `crdt` package's `MapCrdt`.
 ///
@@ -59,6 +61,22 @@ class MapCrdtTable implements CrdtTable {
     });
   }
 
+  /// One scan of the table, grouping only the requested documents.
+  @override
+  Future<Map<String, Map<String, Object?>>> docFields(
+      String table, Iterable<String> docIds) {
+    final wanted = docIds.toSet();
+    final out = <String, Map<String, Object?>>{};
+    for (final e in _crdt.getMap(table).entries) {
+      final sep = e.key.indexOf('\x1F');
+      if (sep < 0) continue;
+      final id = e.key.substring(0, sep);
+      if (!wanted.contains(id)) continue;
+      (out[id] ??= {})[e.key.substring(sep + 1)] = e.value;
+    }
+    return Future.value(out);
+  }
+
   @override
   Set<String> liveKeys(String table, String prefix) {
     final map = _crdt.getMap(table);
@@ -70,6 +88,20 @@ class MapCrdtTable implements CrdtTable {
         if (e.key.startsWith(prefix) && _crdt.get(table, e.key) != null) e.key,
     };
   }
+
+  /// Answers by a full scan: this engine has no indexes. The scan mirrors the
+  /// SQLite engine's comparison semantics, so pages line up across engines.
+  @override
+  Future<List<QueryRow>> queryDocIds(String table, QuerySpec spec) =>
+      Future.value(evaluateQueryByScan(
+        liveRows: _crdt.getMap(table),
+        spec: spec,
+        separator: '\x1F',
+      ));
+
+  /// A no-op: this engine has no indexes and answers queries by scanning.
+  @override
+  Future<void> ensureQueryIndex(String table, String fieldPath) async {}
 
   @override
   Future<CrdtChangeset> changeset(String table, {String? sinceHlc}) =>

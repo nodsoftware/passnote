@@ -144,6 +144,37 @@
     keys counter contributions by.
   - `runCrdtTypeConformance` joins the conformance suite: the typed behavioural
     contract, run over both shipped engines.
+- Added typed queries with keyset pagination. `collection.query()` returns a
+  `CollectionQuery`: chain `.where(path, isEqualTo: / isGreaterThan: /
+  isLessThan: / isIn: / contains:)`, `.orderBy(path, descending:)`,
+  `.limit(n)`, and `.startAfter(cursor)`, then run `.get()` or `.page()`. The
+  query executes in the storage engine — as SQL on the disk-backed engine —
+  and only the matching documents are decoded. Results are ordered by
+  `(order-by value, document id)`, a total order that is identical across
+  engines, reopens, and converged devices, so `QueryPage.nextCursor` pages are
+  disjoint and gap-free. A `contains` clause queries `OrSet` membership and
+  numeric comparisons target a `PnCounter` total; every clause is validated
+  against the field's `CrdtType` at build time and a misdirected clause throws
+  `ArgumentError` instead of returning nothing.
+  - **Breaking:** `Collection.findBy` and the in-RAM secondary index are
+    removed; `query().where(field, isEqualTo: value)` replaces them. The old
+    index order was only stable within a session; query order is stable
+    everywhere. `indexedFields:` stays and now creates engine-side indexes
+    (`CREATE INDEX` on the disk-backed engine), which `where` equality
+    clauses use.
+  - **Breaking:** `MergeStrategy` gains `CrdtType typeAt(String path)`, which
+    build-time validation reads. Return `LwwRegister()` unless the path is
+    typed.
+  - **Breaking:** declaring `indexedFields` with `ObjectMergeStrategy` now
+    throws `ArgumentError` in all build modes (it was an assert, stripped in
+    release builds, silently returning empty results).
+  - The `CrdtTable` port gains `queryDocIds`, `ensureQueryIndex`, and
+    `docFields` (the batched materialisation read); the conformance suite
+    gains a `queries` section holding every engine to the same order and
+    keyset semantics. The SQLite schema migrates to `user_version` 3: virtual
+    `doc_id` / `field_path` columns generated from `key`, and an index on
+    `(collection, doc_id)` that also makes single-document reads an index
+    lookup instead of a scan.
 
 ## 0.1.0
 

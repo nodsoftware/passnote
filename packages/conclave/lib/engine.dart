@@ -42,6 +42,7 @@ export 'src/ports/crdt_table.dart';
 export 'src/ports/identity.dart';
 export 'src/ports/key_store.dart';
 export 'src/ports/merge_strategy.dart';
+export 'src/ports/query.dart';
 export 'src/ports/transport.dart';
 export 'src/transport/in_memory_bus.dart';
 export 'src/transport/in_memory_transport.dart';

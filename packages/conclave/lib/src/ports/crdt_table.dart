@@ -1,6 +1,7 @@
 import 'package:crdt/crdt.dart';
 
 import '../crdt/crdt_type.dart';
+import 'query.dart';
 
 /// CRDT record store: the persistence and merge layer beneath [Collection].
 ///
@@ -125,6 +126,18 @@ abstract interface class CrdtTable {
   /// a disk-backed adapter can use this to avoid loading the whole table.
   Future<Map<String, Object?>> liveFields(String table, String prefix);
 
+  /// The live field rows of the given documents, grouped by document id and
+  /// keyed by bare field path (the portion of the record key after the
+  /// `"$docId\x1F"` separator). Existence registers are not included; a
+  /// document with no live field rows is absent from the result.
+  ///
+  /// This is the materialisation read for point lookups and query pages: an
+  /// indexed engine must serve it without scanning the whole table, and a
+  /// scanning engine must serve the whole batch in one scan — never one scan
+  /// per document.
+  Future<Map<String, Map<String, Object?>>> docFields(
+      String table, Iterable<String> docIds);
+
   /// All live (non-tombstoned) keys in [table] whose key starts with
   /// [prefix].
   ///
@@ -132,6 +145,26 @@ abstract interface class CrdtTable {
   /// operations such as [Collection.length] can avoid I/O. Must be safe to
   /// call synchronously after [init].
   Set<String> liveKeys(String table, String prefix);
+
+  /// Returns the ids of the live documents in [table] that satisfy [spec], in
+  /// the spec's total order — `(order-by value, document id)` — windowed by its
+  /// limit and cursor.
+  ///
+  /// A document is live when its existence register (the separator-free key)
+  /// is live. Predicates evaluate against the *resolved* value of a field row
+  /// (a counter's total, a set's membership), so a typed state stored at rest
+  /// matches the same way on every engine. The comparison order across value
+  /// kinds is fixed: missing/null, then numbers, then text (non-scalar values
+  /// compare as their JSON encoding) — every engine must produce the same
+  /// order, so keyset pages line up across engines and devices.
+  Future<List<QueryRow>> queryDocIds(String table, QuerySpec spec);
+
+  /// Prepares an index for equality lookups on [fieldPath] in [table], so a
+  /// `QueryOp.equals` predicate on that path does not scan the table.
+  ///
+  /// Idempotent. An engine without secondary indexes (the in-memory
+  /// [MapCrdtTable]) treats this as a no-op and answers queries by scanning.
+  Future<void> ensureQueryIndex(String table, String fieldPath);
 
   /// Returns records in [table] in [CrdtChangeset] format.
   ///

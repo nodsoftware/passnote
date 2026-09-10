@@ -296,6 +296,93 @@ void runCrdtTableConformance(
         expect(rows.map((r) => r['key']), contains('young'));
       }, skip: skip);
     });
+
+    group('queries', () {
+      const sep = '\x1F';
+
+      /// Three documents: d1 {status: open, n: 3}, d2 {status: done, n: 1},
+      /// d3 {status: open} (no n).
+      Future<CrdtTable> seeded() async {
+        final table = await fresh();
+        await table.put(t, 'd1', true);
+        await table.put(t, 'd1${sep}status', 'open');
+        await table.put(t, 'd1${sep}n', 3);
+        await table.put(t, 'd2', true);
+        await table.put(t, 'd2${sep}status', 'done');
+        await table.put(t, 'd2${sep}n', 1);
+        await table.put(t, 'd3', true);
+        await table.put(t, 'd3${sep}status', 'open');
+        return table;
+      }
+
+      QuerySpec whereStatus(String value) => QuerySpec(predicates: [
+            QueryPredicate(
+              path: 'status',
+              op: QueryOp.equals,
+              value: value,
+              type: const LwwRegister(),
+            ),
+          ]);
+
+      test('docFields groups live field rows per requested document', () async {
+        final table = await seeded();
+        final fields = await table.docFields(t, ['d1', 'd3', 'missing']);
+        expect(fields.keys, unorderedEquals(['d1', 'd3']));
+        expect(fields['d1'], {'status': 'open', 'n': 3});
+        expect(fields['d3'], {'status': 'open'});
+      });
+
+      test('an equality predicate returns only live matching documents',
+          () async {
+        final table = await seeded();
+        await table.put(t, 'd3', null, isDeleted: true); // Not alive anymore.
+        final rows = await table.queryDocIds(t, whereStatus('open'));
+        expect(rows.map((r) => r.docId), equals(['d1']));
+      });
+
+      test('order is (order-by value, doc id) with missing values first',
+          () async {
+        final table = await seeded();
+        const spec = QuerySpec(predicates: [], orderByPath: 'n');
+        final rows = await table.queryDocIds(t, spec);
+        expect(rows.map((r) => r.docId), equals(['d3', 'd2', 'd1']));
+
+        const desc =
+            QuerySpec(predicates: [], orderByPath: 'n', descending: true);
+        final reversed = await table.queryDocIds(t, desc);
+        expect(reversed.map((r) => r.docId), equals(['d1', 'd2', 'd3']));
+      });
+
+      test('a keyset cursor resumes exactly after the last row', () async {
+        final table = await seeded();
+        const first = QuerySpec(predicates: [], orderByPath: 'n', limit: 2);
+        final page = await table.queryDocIds(t, first);
+        expect(page.map((r) => r.docId), equals(['d3', 'd2']));
+
+        final rest = await table.queryDocIds(
+          t,
+          QuerySpec(
+            predicates: [],
+            orderByPath: 'n',
+            limit: 2,
+            after: QueryCursor(
+              orderValue: page.last.orderValue,
+              docId: page.last.docId,
+            ),
+          ),
+        );
+        expect(rest.map((r) => r.docId), equals(['d1']));
+      });
+
+      test('ensureQueryIndex is idempotent and keeps answers unchanged',
+          () async {
+        final table = await seeded();
+        await table.ensureQueryIndex(t, 'status');
+        await table.ensureQueryIndex(t, 'status');
+        final rows = await table.queryDocIds(t, whereStatus('open'));
+        expect(rows.map((r) => r.docId), unorderedEquals(['d1', 'd3']));
+      });
+    });
   });
 }
 

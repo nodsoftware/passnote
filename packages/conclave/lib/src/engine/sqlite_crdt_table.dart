@@ -7,6 +7,7 @@ import 'package:sqlite3/common.dart';
 
 import '../crdt/crdt_type.dart';
 import '../ports/crdt_table.dart';
+import '../ports/query.dart';
 import 'sqlite_open_io.dart' if (dart.library.js_interop) 'sqlite_open_web.dart'
     as backend;
 
@@ -277,6 +278,33 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
     };
   }
 
+  /// One indexed lookup per chunk of ids (`doc_id IN (...)`), never a table
+  /// scan.
+  @override
+  Future<Map<String, Map<String, Object?>>> docFields(
+      String table, Iterable<String> docIds) async {
+    if (_db == null) return {};
+    final out = <String, Map<String, Object?>>{};
+    final ids = docIds.toList();
+    // Stay under SQLite's bound-parameter limit.
+    const chunkSize = 400;
+    for (var start = 0; start < ids.length; start += chunkSize) {
+      final chunk = ids.sublist(start,
+          start + chunkSize > ids.length ? ids.length : start + chunkSize);
+      final rows = _open.select(
+        'SELECT doc_id, field_path, value FROM crdt_records '
+        'WHERE collection = ? AND is_deleted = 0 AND field_path IS NOT NULL '
+        'AND doc_id IN (${List.filled(chunk.length, '?').join(', ')})',
+        [table, ...chunk],
+      );
+      for (final r in rows) {
+        (out[r['doc_id'] as String] ??= {})[r['field_path'] as String] =
+            jsonDecode(r['value'] as String);
+      }
+    }
+    return out;
+  }
+
   @override
   Set<String> liveKeys(String table, String prefix) {
     if (_db == null) return const {};
@@ -420,6 +448,183 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
     return removed;
   }
 
+  /// Creates a small partial index for [fieldPath] in [table]: it covers only
+  /// that field's live rows and indexes their extracted value, so an equality
+  /// predicate on the path is an index search rather than a table scan.
+  @override
+  Future<void> ensureQueryIndex(String table, String fieldPath) async {
+    _open.execute(
+      'CREATE INDEX IF NOT EXISTS ${_indexName(table, fieldPath)} '
+      "ON crdt_records (json_extract(value, '\$'), doc_id) "
+      'WHERE collection = ${_lit(table)} AND field_path = ${_lit(fieldPath)} '
+      'AND is_deleted = 0',
+    );
+  }
+
+  @override
+  Future<List<QueryRow>> queryDocIds(String table, QuerySpec spec) async {
+    if (_db == null) return const [];
+    final (sql, params) = _compileQuery(table, spec);
+    final rows = _open.select(sql, params);
+    return [
+      for (final r in rows)
+        QueryRow(docId: r['did'] as String, orderValue: r['ord']),
+    ];
+  }
+
+  /// The `EXPLAIN QUERY PLAN` output for the SQL that [queryDocIds] would run
+  /// for [spec] — one plan line per row. A diagnostic: use it to confirm a
+  /// predicate on an indexed path searches its index instead of scanning.
+  String explainQuery(String table, QuerySpec spec) {
+    final (sql, params) = _compileQuery(table, spec);
+    final rows = _open.select('EXPLAIN QUERY PLAN $sql', params);
+    return rows.map((r) => r['detail']).join('\n');
+  }
+
+  /// Compiles [spec] to one SQL statement over `crdt_records` plus its bind
+  /// parameters.
+  ///
+  /// Shape: an inner SELECT gathers the live document ids (existence registers
+  /// of [table]) that satisfy every predicate — each predicate an EXISTS
+  /// subquery against that document's field row — and computes the resolved
+  /// order-by value; the outer SELECT applies the keyset window and the order.
+  /// Collection and field-path constraints are inlined as literals so SQLite
+  /// can match them against the partial indexes [ensureQueryIndex] creates;
+  /// compared values are always bound.
+  (String, List<Object?>) _compileQuery(String table, QuerySpec spec) {
+    final params = <Object?>[];
+    final conditions = [
+      'e.collection = ${_lit(table)}',
+      'e.field_path IS NULL',
+      'e.is_deleted = 0',
+    ];
+
+    for (final p in spec.predicates) {
+      final valueExpr = _resolvedExpr('p', p.type);
+      final String cond;
+      switch (p.op) {
+        case QueryOp.contains:
+          cond = "EXISTS (SELECT 1 FROM json_each(p.value, '\$.adds') ae "
+              'WHERE ae.value IS ?)';
+          params.add(_bindable(p.value));
+        case QueryOp.equals:
+          // IS, not =: a stored JSON null should match `isEqualTo: null`.
+          cond = '$valueExpr IS ?';
+          params.add(_bindable(p.value));
+        case QueryOp.isIn:
+          final values = p.value as List;
+          cond =
+              '$valueExpr IN (${List.filled(values.length, '?').join(', ')})';
+          params.addAll(values.map(_bindable));
+        case QueryOp.greaterThan:
+          cond = '$valueExpr > ?';
+          params.add(_bindable(p.value));
+        case QueryOp.lessThan:
+          cond = '$valueExpr < ?';
+          params.add(_bindable(p.value));
+      }
+      conditions.add('EXISTS (SELECT 1 FROM crdt_records p '
+          'WHERE p.collection = ${_lit(table)} '
+          'AND p.field_path = ${_lit(p.path)} AND p.is_deleted = 0 '
+          'AND p.doc_id = e.key AND $cond)');
+    }
+
+    final orderPath = spec.orderByPath;
+    final String ordExpr;
+    var join = '';
+    if (orderPath == null) {
+      ordExpr = 'NULL';
+    } else {
+      ordExpr = _resolvedExpr('o', spec.orderByType);
+      join = 'LEFT JOIN crdt_records o ON o.collection = ${_lit(table)} '
+          'AND o.doc_id = e.key AND o.field_path = ${_lit(orderPath)} '
+          'AND o.is_deleted = 0 ';
+    }
+
+    final inner = 'SELECT e.key AS did, $ordExpr AS ord FROM crdt_records e '
+        '$join'
+        'WHERE ${conditions.join(' AND ')}';
+
+    // Keyset window: strictly after the cursor in the (ord, did) total order.
+    // Ascending sorts NULL order values first (SQLite's NULLS-first default),
+    // descending sorts them last; the OR shapes below encode exactly that.
+    final outerConditions = <String>[];
+    final after = spec.after;
+    if (after != null) {
+      final cv = after.orderValue;
+      if (orderPath == null) {
+        outerConditions.add(spec.descending ? 'did < ?' : 'did > ?');
+        params.add(after.docId);
+      } else if (spec.descending) {
+        if (cv == null) {
+          outerConditions.add('(ord IS NULL AND did < ?)');
+          params.add(after.docId);
+        } else {
+          outerConditions
+              .add('(ord < ? OR ord IS NULL OR (ord = ? AND did < ?))');
+          params.addAll([_bindable(cv), _bindable(cv), after.docId]);
+        }
+      } else {
+        if (cv == null) {
+          outerConditions.add('(ord IS NOT NULL OR did > ?)');
+          params.add(after.docId);
+        } else {
+          outerConditions.add('(ord > ? OR (ord = ? AND did > ?))');
+          params.addAll([_bindable(cv), _bindable(cv), after.docId]);
+        }
+      }
+    }
+
+    final direction = spec.descending ? 'DESC' : 'ASC';
+    final where = outerConditions.isEmpty
+        ? ''
+        : 'WHERE ${outerConditions.join(' AND ')} ';
+    var sql = 'SELECT did, ord FROM ($inner) $where'
+        'ORDER BY ord $direction, did $direction';
+    if (spec.limit != null) {
+      sql += ' LIMIT ?';
+      params.add(spec.limit);
+    }
+    return (sql, params);
+  }
+
+  /// The SQL expression for the resolved, comparable value of a field row
+  /// aliased [a]: a counter state becomes its summed total, anything else its
+  /// extracted JSON value (numbers as numbers, strings as text, booleans as
+  /// 0/1 — the same domain the Dart scan evaluator normalises into).
+  static String _resolvedExpr(String a, CrdtType type) => switch (type) {
+        PnCounter() =>
+          "(COALESCE((SELECT sum(pe.value) FROM json_each($a.value, '\$.p') "
+              'pe), 0) - COALESCE((SELECT sum(ne.value) FROM '
+              "json_each($a.value, '\$.n') ne), 0))",
+        _ => "json_extract($a.value, '\$')",
+      };
+
+  /// A deterministic, quoted index name for [table]/[fieldPath].
+  static String _indexName(String table, String fieldPath) {
+    String sanitize(String s) => s.replaceAll(RegExp('[^A-Za-z0-9]'), '_');
+    var hash = 5381;
+    for (final unit in '$table\x1F$fieldPath'.codeUnits) {
+      hash = ((hash * 33) ^ unit) & 0xFFFFFFFF;
+    }
+    return '"cq_${sanitize(table)}_${sanitize(fieldPath)}_'
+        '${hash.toRadixString(16)}"';
+  }
+
+  /// [s] as a single-quoted SQL string literal.
+  static String _lit(String s) => "'${s.replaceAll("'", "''")}'";
+
+  /// A predicate value in SQLite's binding domain, matching what
+  /// `json_extract` yields for stored values: booleans as 0/1, non-scalar
+  /// values as their JSON text.
+  static Object? _bindable(Object? value) => switch (value) {
+        null => null,
+        final bool b => b ? 1 : 0,
+        final num n => n,
+        final String s => s,
+        _ => jsonEncode(value),
+      };
+
   // ---------------------------------------------------------------------------
 
   void _emit(String table) {
@@ -437,7 +642,16 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
 
   /// The schema version this build expects. Bumped whenever [_migrate] gains a
   /// step.
-  static const int _schemaVersion = 2;
+  static const int _schemaVersion = 3;
+
+  /// The generated-column expressions that split a record `key` into its
+  /// document id and field path at the unit separator (`char(31)` = `\x1F`).
+  /// An existence register (no separator) has the whole key as its document id
+  /// and a NULL field path.
+  static const String _docIdExpr = 'CASE WHEN instr(key, char(31)) = 0 '
+      'THEN key ELSE substr(key, 1, instr(key, char(31)) - 1) END';
+  static const String _fieldPathExpr = 'CASE WHEN instr(key, char(31)) = 0 '
+      'THEN NULL ELSE substr(key, instr(key, char(31)) + 1) END';
 
   /// Brings the schema up to date. The whole step runs in one transaction —
   /// including the `user_version` bump, which is header state and rolls back
@@ -449,6 +663,11 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
   ///   A database created fresh gets the column in `CREATE TABLE`; a v1 database
   ///   gets it by `ALTER TABLE`, and its existing rows default to `'lww'`
   ///   (last-write-wins, the behaviour before per-field types).
+  /// - v3 adds `doc_id` and `field_path`, virtual columns generated from `key`,
+  ///   so queries and their indexes can address one field across all documents,
+  ///   plus an index on `(collection, doc_id)` so one document's rows are an
+  ///   index lookup. Virtual columns are computed on read: no backfill, no
+  ///   write-path change.
   static void _migrate(CommonDatabase db) {
     final version =
         db.select('PRAGMA user_version').first['user_version'] as int;
@@ -466,6 +685,8 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
             hlc        TEXT NOT NULL,
             hlc_key    TEXT NOT NULL,
             crdt_type  TEXT NOT NULL DEFAULT 'lww',
+            doc_id     TEXT GENERATED ALWAYS AS ($_docIdExpr) VIRTUAL,
+            field_path TEXT GENERATED ALWAYS AS ($_fieldPathExpr) VIRTUAL,
             PRIMARY KEY (collection, key)
           )
         ''');
@@ -473,17 +694,33 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
           'CREATE INDEX IF NOT EXISTS idx_crdt_hlc '
           'ON crdt_records (collection, hlc_key)',
         );
+        db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_crdt_doc '
+          'ON crdt_records (collection, doc_id)',
+        );
         db.execute('''
           CREATE TABLE IF NOT EXISTS crdt_meta (
             k TEXT PRIMARY KEY,
             v TEXT NOT NULL
           )
         ''');
-      } else if (version < 2) {
-        db.execute(
-          "ALTER TABLE crdt_records ADD COLUMN crdt_type TEXT NOT NULL "
-          "DEFAULT 'lww'",
-        );
+      } else {
+        if (version < 2) {
+          db.execute(
+            "ALTER TABLE crdt_records ADD COLUMN crdt_type TEXT NOT NULL "
+            "DEFAULT 'lww'",
+          );
+        }
+        if (version < 3) {
+          db.execute('ALTER TABLE crdt_records ADD COLUMN doc_id TEXT '
+              'GENERATED ALWAYS AS ($_docIdExpr) VIRTUAL');
+          db.execute('ALTER TABLE crdt_records ADD COLUMN field_path TEXT '
+              'GENERATED ALWAYS AS ($_fieldPathExpr) VIRTUAL');
+          db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_crdt_doc '
+            'ON crdt_records (collection, doc_id)',
+          );
+        }
       }
       db.execute('PRAGMA user_version = $_schemaVersion');
       db.execute('COMMIT');

@@ -81,6 +81,11 @@ void main() {
     expect(const api.SchemaMergeStrategy({'qty': api.PnCounter()}),
         isA<api.MergeStrategy>());
 
+    // Typed queries.
+    expect(api.CollectionQuery, isNotNull);
+    expect(api.QueryPage, isNotNull);
+    expect(const api.QueryCursor(orderValue: 1, docId: 'd'), isNotNull);
+
     // Per-field CRDT types.
     expect(const api.LwwRegister(), isA<api.CrdtType>());
     expect(const api.OrSet(), isA<api.CrdtType>());
@@ -120,5 +125,19 @@ void main() {
     expect(engine.KeyStore, isNotNull);
     expect(engine.MergeStrategy, isNotNull);
     expect(engine.CrdtType, isNotNull);
+    // Query port types.
+    expect(engine.TypedCrdtTable(engine.MapCrdtTable('t')),
+        isA<engine.CrdtTable>());
+    expect(const engine.QuerySpec(predicates: []), isNotNull);
+    expect(
+      const engine.QueryPredicate(
+        path: 'p',
+        op: engine.QueryOp.equals,
+        value: 1,
+        type: engine.LwwRegister(),
+      ),
+      isNotNull,
+    );
+    expect(const engine.QueryRow(docId: 'd', orderValue: null), isNotNull);
   });
 }

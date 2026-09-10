@@ -6,6 +6,7 @@ import 'crdt/or_set.dart';
 import 'crdt/pn_counter.dart';
 import 'id.dart';
 import 'ports/crdt_table.dart';
+import 'ports/query.dart';
 
 /// The layer that gives [OrSet] and [PnCounter] fields their merge semantics,
 /// wrapping any [CrdtTable].
@@ -142,8 +143,30 @@ final class TypedCrdtTable implements CrdtTable {
   }
 
   @override
+  Future<Map<String, Map<String, Object?>>> docFields(
+      String table, Iterable<String> docIds) async {
+    final raw = await _inner.docFields(table, docIds);
+    return {
+      for (final doc in raw.entries)
+        doc.key: {
+          for (final f in doc.value.entries) f.key: _resolve(f.value),
+        },
+    };
+  }
+
+  @override
   Set<String> liveKeys(String table, String prefix) =>
       _inner.liveKeys(table, prefix);
+
+  @override
+  Future<List<QueryRow>> queryDocIds(String table, QuerySpec spec) =>
+      // Engines evaluate predicates over resolved values themselves (a SQL
+      // engine cannot round-trip rows through Dart), so nothing to translate.
+      _inner.queryDocIds(table, spec);
+
+  @override
+  Future<void> ensureQueryIndex(String table, String fieldPath) =>
+      _inner.ensureQueryIndex(table, fieldPath);
 
   @override
   Future<CrdtChangeset> changeset(String table, {String? sinceHlc}) =>

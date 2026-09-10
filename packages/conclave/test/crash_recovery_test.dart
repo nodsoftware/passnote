@@ -231,7 +231,7 @@ void main() {
       final after = sqlite3.open(path);
       expect(
         after.select('PRAGMA user_version').first['user_version'],
-        2,
+        3,
       );
       after.dispose();
     });
@@ -245,7 +245,7 @@ void main() {
       final check = sqlite3.open(path);
       expect(
         check.select('PRAGMA user_version').first['user_version'],
-        2,
+        3,
       );
       check.dispose();
 

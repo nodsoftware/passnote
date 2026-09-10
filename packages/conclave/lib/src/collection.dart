@@ -9,7 +9,10 @@ import 'map_crdt_table.dart';
 import 'merge_strategies.dart';
 import 'ports/crdt_table.dart';
 import 'ports/merge_strategy.dart';
+import 'ports/query.dart';
 import 'typed_crdt_table.dart';
+
+part 'query/query.dart';
 
 /// A typed, queryable set of documents backed by a per-collection [CrdtTable].
 ///
@@ -32,7 +35,7 @@ import 'typed_crdt_table.dart';
 /// (`\x1F`, U+001F), which is reserved as the id/field separator.
 ///
 /// The initial load is asynchronous. [put], [delete], [get], [all], [where],
-/// and [findBy] await it before returning meaningful results.
+/// and [query] await it before returning meaningful results.
 class Collection<T> {
   Collection._(
     this._name,
@@ -48,15 +51,16 @@ class Collection<T> {
         _engine = TypedCrdtTable(MapCrdtTable(_name)),
         _onLocalChange = onLocalChange,
         _onRemoteConflict = onRemoteConflict,
-        _index = _Index(indexedFields),
-        assert(
-          indexedFields.isEmpty || merge is! ObjectMergeStrategy,
-          'indexedFields with ObjectMergeStrategy: the default merge '
-          "strategy flattens each document to a single record (key '') "
-          'and will not populate individual declared field paths '
-          'in the index. Use ShallowMergeStrategy or '
-          'DeepMergeStrategy instead.',
-        ) {
+        _queryIndexPaths = List.unmodifiable(indexedFields) {
+    if (indexedFields.isNotEmpty && merge is ObjectMergeStrategy) {
+      throw ArgumentError(
+        'indexedFields with ObjectMergeStrategy: the default merge '
+        "strategy stores each document as a single record (key '') "
+        'and produces no per-field rows to index or query. Use '
+        'ShallowMergeStrategy or DeepMergeStrategy instead.',
+      );
+    }
+    indexedFields.forEach(CollectionQuery._validatePath);
     _ready = _serialize(() async {
       if (engine != null) {
         // The typed layer gives OrSet / PnCounter fields their merge
@@ -65,7 +69,9 @@ class Collection<T> {
         _engine = built is TypedCrdtTable ? built : TypedCrdtTable(built);
       }
       if (_engine.isPersistent) await _engine.init();
-      await _rebuildIndex();
+      for (final path in _queryIndexPaths) {
+        await _engine.ensureQueryIndex(_name, path);
+      }
     });
   }
 
@@ -81,9 +87,8 @@ class Collection<T> {
   final void Function()? _onLocalChange;
   final void Function(String documentId)? _onRemoteConflict;
 
-  /// Secondary index for equality lookups on declared indexed fields.
-  /// Only active when [indexedFields] was non-empty at creation time.
-  final _Index _index;
+  /// Field paths declared for engine-side query indexes at creation time.
+  final List<String> _queryIndexPaths;
 
   /// Tracks open [watch] stream controllers so they can be closed on
   /// [dispose]. Closed automatically when the controller's subscription is
@@ -190,9 +195,10 @@ class Collection<T> {
   /// [test] runs against decoded documents, so this always scans and decodes up
   /// to the point it stops: when [limit] is provided, decoding stops once
   /// [limit] matching documents have been found (after skipping [offset]
-  /// matches). For an equality match on a declared field, prefer [findBy], which
-  /// avoids decoding non-matching documents entirely. Awaits the initial storage
-  /// load before returning.
+  /// matches). For a match the engine can evaluate — equality, comparison, set
+  /// membership on stored fields — prefer [query], which runs in the engine and
+  /// decodes only matching documents. Awaits the initial storage load before
+  /// returning.
   Future<Iterable<T>> where(bool Function(T) test,
       {int? limit, int? offset}) async {
     await _ready;
@@ -218,56 +224,18 @@ class Collection<T> {
     return result;
   }
 
-  /// All live documents whose indexed [field] equals [value].
+  /// Starts a typed query over this collection.
   ///
-  /// Only fields declared in [indexedFields] at collection creation time can
-  /// be queried; throws [ArgumentError] otherwise. Only equality is supported —
-  /// range, prefix and ordering queries are out of scope; use [where] for those.
-  /// Results are in an unspecified but stable (within a session) order.
+  /// Chain [CollectionQuery.where], [CollectionQuery.orderBy],
+  /// [CollectionQuery.limit], and [CollectionQuery.startAfter], then execute
+  /// with [CollectionQuery.get] or [CollectionQuery.page]. The query runs in
+  /// the storage engine (as SQL on the disk-backed engine, using the indexes
+  /// declared via `indexedFields`) and decodes only the matching documents.
   ///
-  /// ## Cost
-  ///
-  /// The index lookup is O(1) and **only the matching documents are decoded**
-  /// (O(matches)), unlike [where], which decodes every document. The matched
-  /// documents' field records are then materialised through the engine; with
-  /// the default in-memory [MapCrdtTable] that materialisation costs a single
-  /// O(collection) scan of the stored keys (string comparisons, no decoding),
-  /// because a hash-backed table cannot range-scan. A disk- or SQL-backed
-  /// [CrdtTable] can serve the same matched ids without the full scan — the
-  /// decode savings hold regardless. So today the win is "stop decoding the
-  /// whole collection on every query"; true sub-linear lookup arrives with a
-  /// range-capable engine (see [CrdtTable.liveKeys]).
-  ///
-  /// When [limit] and/or [offset] are provided, only the requested page is
-  /// decoded. Awaits the initial storage load before returning.
-  Future<Iterable<T>> findBy(String field, Object? value,
-      {int? limit, int? offset}) async {
-    await _ready;
-    final docIds = _index.lookup(field, value); // throws if field not indexed
-    await _debugVerifyIndex(field, value, docIds);
-    if (docIds.isEmpty) return [];
-
-    // Single scan, decoding only matched documents. Intersecting with the
-    // freshly scanned live ids shares [all]'s liveness semantics and is a cheap
-    // backstop against index/CRDT drift (also guarded by [_debugVerifyIndex]).
-    final (:aliveIds, :grouped) = await _scan(onlyDocs: docIds);
-    final live = [
-      for (final id in docIds)
-        if (aliveIds.contains(id)) id
-    ];
-
-    final start = offset ?? 0;
-    if (start >= live.length) return [];
-    final end = limit != null
-        ? (start + limit < live.length ? start + limit : live.length)
-        : live.length;
-
-    return [
-      for (final id in live.sublist(start, end))
-        if (grouped[id] case final fields?)
-          _codec.fromMap(_merge.unflatten(_rows(fields))),
-    ];
-  }
+  /// Requires a merge strategy that produces per-field records; a query on a
+  /// collection using [ObjectMergeStrategy] throws [ArgumentError].
+  CollectionQuery<T> query() =>
+      CollectionQuery._(this, const [], null, false, null, null);
 
   /// Persists [value], using [Codec.idOf] as the document key.
   ///
@@ -315,12 +283,6 @@ class Collection<T> {
           await _engine.put(_name, '$prefix$path', null, isDeleted: true);
         }
       }
-      if (_index.isActive) {
-        // Read the fields back rather than indexing the written specs: for a
-        // typed field the engine's resolved value (a merged set, a counter
-        // total) is what queries must match, not the value the caller passed.
-        _index.reindex(id, await _fieldsForDoc(id));
-      }
     });
     _onLocalChange?.call();
   }
@@ -350,9 +312,6 @@ class Collection<T> {
       }
       await _engine.put(_name, documentId, true);
       await _engine.increment(_name, '$documentId$_sep$fieldPath', by);
-      if (_index.isActive) {
-        _index.reindex(documentId, await _fieldsForDoc(documentId));
-      }
     });
     _onLocalChange?.call();
   }
@@ -368,7 +327,6 @@ class Collection<T> {
     await _ready;
     await _serialize(() async {
       await _engine.put(_name, documentId, null, isDeleted: true);
-      if (_index.isActive) _index.removeDoc(documentId);
     });
     _onLocalChange?.call();
   }
@@ -580,15 +538,6 @@ class Collection<T> {
         }
       }
       await _engine.merge(changeset);
-      if (_index.isActive) {
-        for (final docId in touched) {
-          if (await _engine.value(_name, docId) != null) {
-            _index.reindex(docId, await _fieldsForDoc(docId));
-          } else {
-            _index.removeDoc(docId);
-          }
-        }
-      }
       for (final docId in conflicted) {
         _onRemoteConflict!(docId);
       }
@@ -604,26 +553,18 @@ class Collection<T> {
   ///   keys in the CRDT).
   /// - [grouped]: field records grouped by document id, keyed by the field path
   ///   (the portion of the CRDT key after the `"$id\x1F"` prefix).
-  /// When [onlyDocs] is given, [grouped] (and the alive-id set) is restricted to
-  /// those document ids — the scan still visits every key once (the in-memory
-  /// engine can't range-scan), but field maps are only built for the documents
-  /// of interest, so memory stays O(onlyDocs) rather than O(collection). Used by
-  /// [findBy], where the index has already narrowed the result to a few ids.
   Future<({Set<String> aliveIds, Map<String, Map<String, Object?>> grouped})>
-      _scan({Set<String>? onlyDocs}) async {
+      _scan() async {
     final map = await _engine.liveFields(_name, '');
     final aliveIds = <String>{};
     final grouped = <String, Map<String, Object?>>{};
     for (final entry in map.entries) {
       final sep = entry.key.indexOf(_sep);
       if (sep < 0) {
-        if (onlyDocs == null || onlyDocs.contains(entry.key)) {
-          aliveIds.add(entry.key);
-        }
+        aliveIds.add(entry.key);
         continue;
       }
       final id = entry.key.substring(0, sep);
-      if (onlyDocs != null && !onlyDocs.contains(id)) continue;
       final path = entry.key.substring(sep + 1);
       (grouped[id] ??= <String, Object?>{})[path] = entry.value;
     }
@@ -639,58 +580,12 @@ class Collection<T> {
       [for (final e in fields.entries) (path: e.key, value: e.value)];
 
   /// Returns the live field entries (field-path → value) for [documentId],
-  /// scoped to a single document. Strips the `"$id\x1F"` prefix from the keys
-  /// so the result is path → value as [MergeStrategy.unflatten] expects.
+  /// scoped to a single document, as [MergeStrategy.unflatten] expects.
   ///
-  /// Uses the engine's scoped [CrdtTable.liveFields] so a lazy adapter can
-  /// load only the requested document without scanning the full table.
-  Future<Map<String, Object?>> _fieldsForDoc(String documentId) async {
-    final prefix = '$documentId$_sep';
-    return {
-      for (final e in (await _engine.liveFields(_name, prefix)).entries)
-        e.key.substring(prefix.length): e.value,
-    };
-  }
-
-  // ---------------------------------------------------------------------------
-  // Index helpers
-
-  Future<void> _rebuildIndex() async {
-    if (!_index.isActive) return;
-    _index.clear();
-    final (:aliveIds, :grouped) = await _scan();
-    for (final id in aliveIds) {
-      if (grouped[id] case final fields?) {
-        _index.reindex(id, fields);
-      }
-    }
-  }
-
-  /// Debug-only: cross-checks [findBy] results against a full scan.
-  ///
-  /// Only runs when the `CONCLAVE_VERIFY_INDEX` environment variable is set
-  /// (checked at compile time via `bool.fromEnvironment`). Not called in
-  /// production.
-  Future<void> _debugVerifyIndex(
-      String field, Object? value, Set<String> docIds) async {
-    if (!_index.isActive) return;
-    if (!const bool.fromEnvironment('CONCLAVE_VERIFY_INDEX')) return;
-    final expected = <String>{};
-    final (:aliveIds, :grouped) = await _scan();
-    for (final id in aliveIds) {
-      if (grouped[id] case final fields?) {
-        if (jsonEncode(fields[field]) == jsonEncode(value)) {
-          expected.add(id);
-        }
-      }
-    }
-    if (docIds.length != expected.length || !docIds.every(expected.contains)) {
-      throw StateError(
-        'Index drift detected for $field=$value: '
-        'live index returned $docIds, full scan returned $expected',
-      );
-    }
-  }
+  /// Uses the engine's [CrdtTable.docFields] so an indexed engine serves the
+  /// document without scanning the full table.
+  Future<Map<String, Object?>> _fieldsForDoc(String documentId) async =>
+      (await _engine.docFields(_name, [documentId]))[documentId] ?? {};
 
   // ---------------------------------------------------------------------------
   // Factory — used by Database
@@ -711,11 +606,12 @@ class Collection<T> {
   /// incoming changeset. Use this to detect when a document was edited on
   /// another device.
   ///
-  /// [indexedFields] declares field paths that should be indexed for
-  /// equality lookups via [findBy]. The values are the flattened field paths
+  /// [indexedFields] declares field paths the engine should index for
+  /// [query] equality lookups. The values are the flattened field paths
   /// produced by [merge] (top-level keys for [ShallowMergeStrategy], dotted
-  /// paths for [DeepMergeStrategy], etc.). The index is derived state —
-  /// rebuilt on load and updated incrementally. Defaults to no indexes.
+  /// paths for [DeepMergeStrategy], etc.). Index creation is idempotent and
+  /// happens during the initial load; an engine without secondary indexes
+  /// answers queries by scanning instead. Defaults to no indexes.
   ///
   /// [engine] builds the backing [CrdtTable]. It runs once, during the initial
   /// load, and may be async (a disk-backed engine opens a file). When omitted,
@@ -738,86 +634,4 @@ class Collection<T> {
         onLocalChange: onLocalChange,
         onRemoteConflict: onRemoteConflict,
       );
-}
-
-/// In-memory secondary index for a [Collection]'s declared indexed fields.
-///
-/// Maintains a mapping of field path → JSON-encoded value → set of document ids
-/// that have that field set to that value. The index is rebuilt on load from
-/// storage (derived state — not persisted independently) and updated
-/// incrementally on every [Collection.put], [Collection.delete], and
-/// [Collection.mergeChangeset].
-///
-/// Only the fields listed in [fields] are tracked. The values come from the
-/// merge strategy's flattened field map, so the index granularity (whole-doc,
-/// per-field, or deep) matches the merge granularity automatically.
-class _Index {
-  _Index(List<String> fields) : _fields = fields.toSet();
-
-  /// The set of indexed field paths.
-  final Set<String> _fields;
-
-  // field → jsonValue → Set<docId>
-  final _data = <String, Map<String, Set<String>>>{};
-
-  // docId → {field: jsonValue} — enables cleanup when a doc is reindexed
-  // or removed without needing to re-read the doc from the engine.
-  final _entries = <String, Map<String, String>>{};
-
-  /// Whether this index has any indexed fields (and therefore needs updating).
-  bool get isActive => _fields.isNotEmpty;
-
-  /// Removes [docId] from the index, then adds entries for its current
-  /// [flattenedFields] (already flattened by the merge strategy).
-  void reindex(String docId, Map<String, Object?> flattenedFields) {
-    _removeDoc(docId);
-    _addDoc(docId, flattenedFields);
-  }
-
-  /// Removes all index entries for [docId].
-  void removeDoc(String docId) => _removeDoc(docId);
-
-  /// Removes every entry from this index.
-  void clear() {
-    _data.clear();
-    _entries.clear();
-  }
-
-  /// Returns the set of document ids whose indexed [field] equals [value].
-  ///
-  /// Throws [ArgumentError] if [field] was not declared in this index's
-  /// field set.
-  Set<String> lookup(String field, Object? value) {
-    if (!_fields.contains(field)) {
-      throw ArgumentError(
-        'Field "$field" is not indexed. Indexed fields: $_fields',
-      );
-    }
-    final byValue = _data[field];
-    if (byValue == null) return const {};
-    return byValue[jsonEncode(value)] ?? const {};
-  }
-
-  void _addDoc(String docId, Map<String, Object?> flattenedFields) {
-    final entry = <String, String>{};
-    for (final field in _fields) {
-      if (flattenedFields.containsKey(field)) {
-        final jv = jsonEncode(flattenedFields[field]);
-        _data.putIfAbsent(field, () => <String, Set<String>>{});
-        _data[field]!.putIfAbsent(jv, () => <String>{});
-        _data[field]![jv]!.add(docId);
-        entry[field] = jv;
-      }
-    }
-    if (entry.isNotEmpty) _entries[docId] = entry;
-  }
-
-  void _removeDoc(String docId) {
-    final old = _entries.remove(docId);
-    if (old != null) {
-      for (final entry in old.entries) {
-        _data[entry.key]?[entry.value]?.remove(docId);
-      }
-    }
-  }
 }

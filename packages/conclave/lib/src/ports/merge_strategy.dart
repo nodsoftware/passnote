@@ -48,4 +48,12 @@ abstract interface class MergeStrategy {
   /// Rebuilds the document map from its live field [rows] (path → value), the
   /// inverse of [fields].
   Map<String, dynamic> unflatten(Iterable<FieldValue> rows);
+
+  /// The [CrdtType] this strategy assigns to the field at [path].
+  ///
+  /// Must agree with what [fields] produces for that path on any document.
+  /// Queries use it to validate a predicate against the field's type before
+  /// touching the engine. Return [LwwRegister] for a path this strategy never
+  /// types otherwise.
+  CrdtType typeAt(String path);
 }

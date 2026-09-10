@@ -160,7 +160,7 @@ void main() {
       final version =
           check.select('PRAGMA user_version').first['user_version'] as int;
       check.dispose();
-      expect(version, equals(2));
+      expect(version, equals(3));
     });
   });
 }

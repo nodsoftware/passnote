@@ -82,6 +82,8 @@ class _CountingTable implements CrdtTable {
   _CountingTable(this._inner);
   final CrdtTable _inner;
   int liveFieldsCalls = 0;
+  int docFieldsCalls = 0;
+  int queryCalls = 0;
   int valueCalls = 0;
 
   @override
@@ -92,6 +94,23 @@ class _CountingTable implements CrdtTable {
     liveFieldsCalls++;
     return _inner.liveFields(table, prefix);
   }
+
+  @override
+  Future<Map<String, Map<String, Object?>>> docFields(
+      String table, Iterable<String> docIds) {
+    docFieldsCalls++;
+    return _inner.docFields(table, docIds);
+  }
+
+  @override
+  Future<List<QueryRow>> queryDocIds(String table, QuerySpec spec) {
+    queryCalls++;
+    return _inner.queryDocIds(table, spec);
+  }
+
+  @override
+  Future<void> ensureQueryIndex(String table, String fieldPath) =>
+      _inner.ensureQueryIndex(table, fieldPath);
 
   @override
   Future<Object?> value(String table, String key) {
@@ -827,14 +846,14 @@ void main() {
     });
   });
 
-  group('Secondary indexes (4b)', () {
-    // Index granularity matches the merge strategy's flattened field paths.
-    // ShallowMergeStrategy exposes top-level fields (text, status, …);
+  group('Typed queries (4b)', () {
+    // Query granularity matches the merge strategy's flattened field paths.
+    // ShallowMergeStrategy exposes top-level fields (text, status, ...);
     // ObjectMergeStrategy only exposes '' (the whole doc), so these tests
-    // use ShallowMergeStrategy for per-field indexing.
+    // use ShallowMergeStrategy.
     final merge = const ShallowMergeStrategy();
 
-    test('findBy returns matching documents', () async {
+    test('query returns matching documents', () async {
       final col = Collection.create<_Note>(
         'notes',
         _Note.codec,
@@ -847,42 +866,31 @@ void main() {
       await col.put(_Note(id: 'b', text: 'pending'));
       await col.put(_Note(id: 'c', text: 'done'));
 
-      expect((await col.findBy('text', 'done')).map((n) => n.id),
+      expect(
+          (await col.query().where('text', isEqualTo: 'done').get())
+              .map((n) => n.id),
           unorderedEquals(['a', 'c']));
-      expect((await col.findBy('text', 'pending')).map((n) => n.id),
+      expect(
+          (await col.query().where('text', isEqualTo: 'pending').get())
+              .map((n) => n.id),
           equals(['b']));
     });
 
-    test('findBy returns empty for unmatched value', () async {
+    test('query returns empty for unmatched value', () async {
       final col = Collection.create<_Note>(
         'notes',
         _Note.codec,
         merge: merge,
-        indexedFields: ['text'],
       );
       await col.ready;
 
       await col.put(_Note(id: 'a', text: 'done'));
 
-      expect(await col.findBy('text', 'missing'), isEmpty);
-    });
-
-    test('findBy on undeclared field throws', () async {
-      final col = Collection.create<_Note>(
-        'notes',
-        _Note.codec,
-        merge: merge,
-        indexedFields: ['text'],
-      );
-      await col.ready;
-
       expect(
-        () async => await col.findBy('nonexistent', 'x'),
-        throwsArgumentError,
-      );
+          await col.query().where('text', isEqualTo: 'missing').get(), isEmpty);
     });
 
-    test('index survives put that changes an indexed field', () async {
+    test('query reflects a put that changes a field', () async {
       final col = Collection.create<_Note>(
         'notes',
         _Note.codec,
@@ -894,64 +902,69 @@ void main() {
       await col.put(_Note(id: 'a', text: 'pending'));
       await col.put(_Note(id: 'a', text: 'done'));
 
-      expect(await col.findBy('text', 'pending'), isEmpty);
       expect(
-          (await col.findBy('text', 'done')).map((n) => n.id), equals(['a']));
+          await col.query().where('text', isEqualTo: 'pending').get(), isEmpty);
+      expect(
+          (await col.query().where('text', isEqualTo: 'done').get())
+              .map((n) => n.id),
+          equals(['a']));
     });
 
-    test('index reflects delete', () async {
+    test('query reflects delete', () async {
       final col = Collection.create<_Note>(
         'notes',
         _Note.codec,
         merge: merge,
-        indexedFields: ['text'],
       );
       await col.ready;
 
       await col.put(_Note(id: 'a', text: 'done'));
       await col.delete('a');
 
-      expect(await col.findBy('text', 'done'), isEmpty);
+      expect(await col.query().where('text', isEqualTo: 'done').get(), isEmpty);
     });
 
-    test('index reflects concurrent edit through mergeChangeset', () async {
+    test('query reflects a concurrent edit through mergeChangeset', () async {
       // Node A creates a doc with status 'pending'.
       final colA = Collection.create<_Note>(
         'notes',
         _Note.codec,
         merge: merge,
-        indexedFields: ['text'],
       );
       await colA.ready;
       await colA.put(_Note(id: 'a', text: 'pending'));
 
-      // Node B receives the changeset and indexes it.
+      // Node B receives the changeset.
       final colB = Collection.create<_Note>(
         'notes',
         _Note.codec,
         merge: merge,
-        indexedFields: ['text'],
       );
       await colB.ready;
       await colB.mergeChangeset(await colA.getChangeset());
 
-      expect((await colB.findBy('text', 'pending')).map((n) => n.id),
+      expect(
+          (await colB.query().where('text', isEqualTo: 'pending').get())
+              .map((n) => n.id),
           equals(['a']));
 
       // Node B edits the doc's text.
       await colB.put(_Note(id: 'a', text: 'done'));
 
-      expect(await colB.findBy('text', 'pending'), isEmpty);
+      expect(await colB.query().where('text', isEqualTo: 'pending').get(),
+          isEmpty);
       expect(
-          (await colB.findBy('text', 'done')).map((n) => n.id), equals(['a']));
+          (await colB.query().where('text', isEqualTo: 'done').get())
+              .map((n) => n.id),
+          equals(['a']));
     });
 
-    test('findBy supports limit and offset', () async {
+    test('limit and keyset pagination page through the full result set',
+        () async {
       final col = Collection.create<_Note>(
         'notes',
         _Note.codec,
         merge: merge,
-        indexedFields: ['text'],
       );
       await col.ready;
 
@@ -959,9 +972,26 @@ void main() {
         await col.put(_Note(id: 'n$i', text: 'even'));
       }
 
-      expect(await col.findBy('text', 'even', limit: 3), hasLength(3));
-      expect(await col.findBy('text', 'even', offset: 8), hasLength(2));
-      expect(await col.findBy('text', 'even', offset: 10), isEmpty);
+      final first =
+          await col.query().where('text', isEqualTo: 'even').limit(3).page();
+      expect(first.items, hasLength(3));
+      expect(first.nextCursor, isNotNull);
+
+      final seen = first.items.map((n) => n.id).toSet();
+      var cursor = first.nextCursor;
+      while (cursor != null) {
+        final next = await col
+            .query()
+            .where('text', isEqualTo: 'even')
+            .limit(3)
+            .startAfter(cursor)
+            .page();
+        for (final n in next.items) {
+          expect(seen.add(n.id), isTrue, reason: 'pages must be disjoint');
+        }
+        cursor = next.nextCursor;
+      }
+      expect(seen, hasLength(10));
     });
 
     test('no-index collection works unchanged', () async {
@@ -979,31 +1009,39 @@ void main() {
 
     test('declaring indexedFields with ObjectMergeStrategy throws', () {
       // The default ObjectMergeStrategy flattens each document to a single
-      // record (key ''), so per-field index paths would never be populated.
+      // record (key ''), so per-field query paths would never be populated.
       // This must fail loudly at construction rather than silently returning
-      // empty results from findBy.
+      // empty results.
       expect(
         () => Collection.create<_Note>(
           'notes',
           _Note.codec,
           indexedFields: ['text'],
         ),
-        throwsA(isA<AssertionError>()),
+        throwsArgumentError,
+      );
+    });
+
+    test('querying an ObjectMergeStrategy collection throws', () async {
+      final col = Collection.create<_Note>('notes', _Note.codec);
+      await col.ready;
+      await expectLater(
+        col.query().where('text', isEqualTo: 'x').get(),
+        throwsArgumentError,
       );
     });
   });
 
-  // The point of the feature: an indexed/paginated read must not decode the
-  // whole collection, and must not re-scan the engine once per matched id.
+  // The point of the feature: a query must not decode the whole collection,
+  // and must not re-scan the engine once per matched id.
   group('Query cost', () {
-    test('findBy decodes only matching documents, not the whole collection',
+    test('query decodes only matching documents, not the whole collection',
         () async {
       final codec = _CountingCodec(_Note.codec);
       final col = Collection.create<_Note>(
         'notes',
         codec,
         merge: const ShallowMergeStrategy(),
-        indexedFields: ['text'],
       );
       await col.ready;
 
@@ -1012,21 +1050,18 @@ void main() {
       }
 
       codec.decodes = 0;
-      final hits = (await col.findBy('text', 'hit')).toList();
+      final hits = await col.query().where('text', isEqualTo: 'hit').get();
       expect(hits, hasLength(5));
-      // Only the 5 matches are decoded — not all 100. The old O(matches·n)
-      // implementation decoded one doc per match too, but via get(); the win
-      // here is over `where`, which would decode all 100.
+      // Only the 5 matches are decoded — not all 100.
       expect(codec.decodes, equals(5));
     });
 
-    test('findBy scans the engine once, not once per matched id', () async {
+    test('query materialises a page in one batched engine read', () async {
       final table = _CountingTable(MapCrdtTable('notes'));
       final col = Collection.create<_Note>(
         'notes',
         _Note.codec,
         merge: const ShallowMergeStrategy(),
-        indexedFields: ['text'],
         engine: () => table,
       );
       await col.ready;
@@ -1035,11 +1070,15 @@ void main() {
         await col.put(_Note(id: 'n$i', text: 'hit'));
       }
 
+      table.docFieldsCalls = 0;
       table.liveFieldsCalls = 0;
-      final hits = (await col.findBy('text', 'hit')).toList();
+      final hits = await col.query().where('text', isEqualTo: 'hit').get();
       expect(hits, hasLength(50));
-      // Regression guard for the O(matches·n) bug: a single scan, not 50.
-      expect(table.liveFieldsCalls, equals(1));
+      // Regression guard for the O(matches·n) bug: one query plus one
+      // batched materialisation, never one engine read per matched id.
+      expect(table.queryCalls, equals(1));
+      expect(table.docFieldsCalls, equals(1));
+      expect(table.liveFieldsCalls, equals(0));
     });
 
     test('all(limit: N) decodes only the page', () async {
