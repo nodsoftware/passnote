@@ -175,6 +175,19 @@
     `doc_id` / `field_path` columns generated from `key`, and an index on
     `(collection, doc_id)` that also makes single-document reads an index
     lookup instead of a scan.
+- Large changesets now stream as bounded frames (500 records each, split only
+  on document boundaries so a receiver never applies half a document) instead
+  of one giant frame. Every frame to a peer flows through an ordered,
+  bounded send window (`ConclaveConfig.maxInFlightFrames`, default 16): a
+  sender streaming to a slow peer pauses at the bound instead of buffering
+  without limit, and strict per-peer FIFO order now also protects the
+  ratchet chain, which fire-and-forget broadcasts previously did not
+  guarantee.
+- Added anti-entropy: every open database runs a periodic state exchange with
+  its connected peers (`ConclaveConfig.antiEntropyInterval`, default 3
+  minutes; `Duration.zero` disables), so a frame lost to a flaky link or the
+  inbound rate limiter heals by itself instead of waiting for a manual
+  `forceSync`. The timer stops on `close` and `leave`.
 - Added wire-version negotiation to the connection handshake. On connect both
   sides exchange a `HandshakeMessage` carrying the wire versions they speak
   and their device public key; sync (and the forward-secrecy ratchet) starts

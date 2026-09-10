@@ -92,6 +92,8 @@ class ConclaveConfig {
     this.maxInboundFramesPerSecond = 100,
     this.snapshotInterval = const Duration(minutes: 30),
     this.recoveryEnabled = false,
+    this.antiEntropyInterval = const Duration(minutes: 3),
+    this.maxInFlightFrames = 16,
   });
 
   /// Scopes mDNS discovery and storage namespacing for this app.
@@ -129,6 +131,18 @@ class ConclaveConfig {
   /// Set to [Duration.zero] to disable snapshots (a peer is then the only way
   /// back). Ignored by the in-memory engine. Defaults to 30 minutes.
   final Duration snapshotInterval;
+
+  /// How often each open database runs an anti-entropy exchange: a `Hello` to
+  /// every connected peer, whose replies carry anything either side is
+  /// missing. This heals a frame lost to a flaky link or the inbound rate
+  /// limiter without a manual [Conclave.forceSync]. [Duration.zero] disables
+  /// it (sync is then push-only). Defaults to 3 minutes.
+  final Duration antiEntropyInterval;
+
+  /// Maximum frames queued or in flight per peer. A sender streaming a large
+  /// changeset to a slow peer pauses at this bound instead of buffering
+  /// without limit. Defaults to 16.
+  final int maxInFlightFrames;
 
   /// Whether this app offers a written recovery phrase
   /// ([Conclave.enableRecovery] / [Conclave.recoverFrom]).
@@ -376,6 +390,8 @@ class Conclave {
       engineFor: (collection, engineKey) =>
           _buildEngine(localId, collection, engineKey),
       wireVersions: _wireVersions,
+      antiEntropyInterval: _config.antiEntropyInterval,
+      maxInFlightFrames: _config.maxInFlightFrames,
       onIncompatiblePeer: (peer, local, remote) => _emit(PeerIncompatible(
         peer: peer,
         localVersions: local,

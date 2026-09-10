@@ -13,6 +13,8 @@ import 'ports/identity.dart';
 import 'ports/key_store.dart';
 import 'ports/merge_strategy.dart';
 import 'ports/transport.dart';
+import 'protocol/anti_entropy.dart';
+import 'protocol/frame_window.dart';
 import 'protocol/handshake.dart';
 import 'protocol/messages.dart';
 
@@ -37,6 +39,8 @@ class Database {
     required FutureOr<CrdtTable> Function(String collection, List<int> key)
         engineFor,
     required List<int> wireVersions,
+    required Duration antiEntropyInterval,
+    required int maxInFlightFrames,
     void Function(PeerId peer, List<int> local, List<int> remote)?
         onIncompatiblePeer,
   })  : _id = id,
@@ -51,7 +55,13 @@ class Database {
         _cipherFactory = cipherFactory,
         _engineFor = engineFor,
         _wireVersions = wireVersions,
-        _onIncompatiblePeer = onIncompatiblePeer;
+        _maxInFlightFrames = maxInFlightFrames,
+        _onIncompatiblePeer = onIncompatiblePeer {
+    _antiEntropy = AntiEntropy(
+      interval: antiEntropyInterval,
+      exchange: _antiEntropyExchange,
+    )..start();
+  }
 
   final String _id;
   final String _room;
@@ -112,6 +122,23 @@ class Database {
   /// Peers that advertised no common wire version: deregistered, their frames
   /// swallowed, nothing further sent.
   final Set<PeerId> _incompatiblePeers = {};
+
+  /// Cap on outstanding frames per peer ([ConclaveConfig.maxInFlightFrames]).
+  final int _maxInFlightFrames;
+
+  /// Per-peer ordered, bounded send queues. Every encrypted frame flows
+  /// through its peer's window: FIFO order protects the ratchet chain, and the
+  /// bound is the backpressure a slow peer applies to a streaming sender.
+  final Map<PeerId, FrameWindow> _sendWindows = {};
+
+  /// The periodic hello exchange that heals dropped frames; stopped on
+  /// [close] and [leave].
+  late final AntiEntropy _antiEntropy;
+
+  /// Records per delta frame: a changeset larger than this streams as several
+  /// frames, split only on document boundaries so a receiver never applies
+  /// half a document.
+  static const int _maxRecordsPerFrame = 500;
 
   /// Frame prefix (only when an [Identity] is configured): `0x01` = the payload
   /// is ratchet-wrapped, `0x00` = plain (control / bootstrap).
@@ -241,6 +268,7 @@ class Database {
   /// in the [KeyStore] so the database can later be reopened without the
   /// passphrase via [Conclave.reopenDatabase]. Used on normal shutdown.
   Future<void> close() async {
+    _antiEntropy.stop();
     _tearDownSessions();
     for (final col in _collections.values) {
       await (col as Collection<dynamic>).dispose();
@@ -251,6 +279,7 @@ class Database {
   /// [KeyStore]. After [leave] the data can only be reopened by re-supplying
   /// the original passphrase.
   Future<void> leave() async {
+    _antiEntropy.stop();
     for (final col in _collections.values) {
       await (col as Collection<dynamic>).dispose();
     }
@@ -687,10 +716,7 @@ class Database {
         // left as Hlc objects — encodeMessage converts them to strings.
         final records =
             tableEntry.value.map((r) => Map<String, dynamic>.from(r)).toList();
-        await _sendEncrypted(
-          from,
-          DeltaMessage(col: colName, records: records),
-        );
+        await _sendDeltas(from, colName, records);
       }
     }
   }
@@ -727,7 +753,65 @@ class Database {
   Future<void> _sendPoke(PeerId peer) =>
       _sendEncrypted(peer, const PokeMessage());
 
+  /// One anti-entropy round: a hello to every negotiated peer, whose
+  /// state/delta replies carry anything either side is missing.
+  Future<void> _antiEntropyExchange() async {
+    for (final peer in _peers.toList()) {
+      if (!_negotiatedVersion.containsKey(peer)) continue;
+      await _sendHello(peer);
+    }
+  }
+
+  /// Splits [records] into frames of at most [_maxRecordsPerFrame], never
+  /// splitting one document's records across two frames.
+  static List<List<Map<String, dynamic>>> _frameRecords(
+    List<Map<String, dynamic>> records,
+  ) {
+    // Group by document id (the key up to the unit separator) so a document's
+    // existence register and field records travel together.
+    final byDoc = <String, List<Map<String, dynamic>>>{};
+    for (final record in records) {
+      final key = record['key'] as String;
+      final sep = key.indexOf('\x1F');
+      final docId = sep < 0 ? key : key.substring(0, sep);
+      (byDoc[docId] ??= []).add(record);
+    }
+    final frames = <List<Map<String, dynamic>>>[];
+    var current = <Map<String, dynamic>>[];
+    for (final group in byDoc.values) {
+      if (current.isNotEmpty &&
+          current.length + group.length > _maxRecordsPerFrame) {
+        frames.add(current);
+        current = <Map<String, dynamic>>[];
+      }
+      current.addAll(group);
+    }
+    if (current.isNotEmpty) frames.add(current);
+    return frames;
+  }
+
+  /// Streams [records] for [colName] to [peer] as bounded frames through the
+  /// peer's send window. Awaits admission of every frame — the producer-side
+  /// backpressure — not their delivery.
+  Future<void> _sendDeltas(
+    PeerId peer,
+    String colName,
+    List<Map<String, dynamic>> records,
+  ) async {
+    for (final frame in _frameRecords(records)) {
+      await _sendEncrypted(peer, DeltaMessage(col: colName, records: frame));
+    }
+  }
+
   Future<void> _sendEncrypted(PeerId peer, ProtocolMessage msg) async {
+    final window = _sendWindows.putIfAbsent(
+      peer,
+      () => FrameWindow(capacity: _maxInFlightFrames),
+    );
+    await window.enqueue(() => _sendEncryptedNow(peer, msg));
+  }
+
+  Future<void> _sendEncryptedNow(PeerId peer, ProtocolMessage msg) async {
     final cipher = _cipherForMessage(msg);
     if (cipher == null) return; // user data, but no group key yet
     final inner = await cipher.encrypt(encodeMessage(msg));
@@ -782,8 +866,8 @@ class Database {
         final records =
             tableEntry.value.map((r) => Map<String, dynamic>.from(r)).toList();
         for (final peer in _peers) {
-          // fire-and-forget; errors surface in transport layer
-          _sendEncrypted(peer, DeltaMessage(col: col.name, records: records));
+          // Fire-and-forget: the window keeps it bounded and ordered.
+          unawaited(_sendDeltas(peer, col.name, records));
         }
       }
     });
@@ -808,6 +892,8 @@ class Database {
     required FutureOr<CrdtTable> Function(String collection, List<int> key)
         engineFor,
     List<int> wireVersions = supportedWireVersions,
+    Duration antiEntropyInterval = Duration.zero,
+    int maxInFlightFrames = 16,
     void Function(PeerId peer, List<int> local, List<int> remote)?
         onIncompatiblePeer,
   }) async {
@@ -824,6 +910,8 @@ class Database {
       cipherFactory: cipherFactory,
       engineFor: engineFor,
       wireVersions: wireVersions,
+      antiEntropyInterval: antiEntropyInterval,
+      maxInFlightFrames: maxInFlightFrames,
       onIncompatiblePeer: onIncompatiblePeer,
     );
   }
