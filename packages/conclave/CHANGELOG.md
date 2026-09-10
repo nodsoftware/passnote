@@ -175,6 +175,15 @@
     `doc_id` / `field_path` columns generated from `key`, and an index on
     `(collection, doc_id)` that also makes single-document reads an index
     lookup instead of a scan.
+- **Breaking (wire):** protocol messages now travel as compact binary frames
+  (wire version 2) instead of JSON — magic byte, version, type tag, and
+  varint-prefixed fields, with record values in a tagged binary encoding. A
+  50-record counter delta measures ~34% smaller than its JSON form, and no
+  application-level chunking is needed. `decodeMessage` stays fail-closed:
+  malformed, truncated, unknown, or old-JSON input returns `null`, never
+  throws (fuzzed against random bytes, corruptions, truncations, and nesting
+  bombs). All devices in a group must run the same build until version
+  negotiation lands; nothing was released on the JSON wire.
 - Added the `@Document()`, `@DocumentId()`, and `@Crdt(...)` annotations. With
   the new `conclave_generator` dev dependency, one annotated class generates
   its codec, its document-id extractor, and its per-field CRDT schema in one

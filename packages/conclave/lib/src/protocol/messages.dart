@@ -1,9 +1,6 @@
-import 'dart:convert';
-
 import 'package:crdt/crdt.dart';
 
-/// Wire protocol version tag included in every frame.
-const int _wireVersion = 1;
+export 'codec.dart' show decodeMessage, encodeMessage, wireVersion;
 
 /// Sealed hierarchy for engine-level protocol messages.
 sealed class ProtocolMessage {
@@ -66,86 +63,20 @@ final class RatchetHelloMessage extends ProtocolMessage {
   final List<int> nonce;
 }
 
-// ---------------------------------------------------------------------------
-// Serialisation helpers
-
-/// Encodes a [ProtocolMessage] to a JSON byte payload.
-List<int> encodeMessage(ProtocolMessage msg) {
-  final json = switch (msg) {
-    HelloMessage(:final node) => {
-        'v': _wireVersion,
-        'type': 'hello',
-        'node': node,
-      },
-    StateMessage(:final cols) => {
-        'v': _wireVersion,
-        'type': 'state',
-        'cols': cols,
-      },
-    DeltaMessage(:final col, :final records) => {
-        'v': _wireVersion,
-        'type': 'delta',
-        'col': col,
-        'records': records.map(_encodeRecord).toList(),
-      },
-    PokeMessage() => {
-        'v': _wireVersion,
-        'type': 'poke',
-      },
-    RatchetHelloMessage(:final node, :final nonce) => {
-        'v': _wireVersion,
-        'type': 'ratchet-hello',
-        'node': node,
-        'nonce': base64.encode(nonce),
-      },
-  };
-  return utf8.encode(jsonEncode(json));
-}
-
-/// Decodes a JSON byte payload into a [ProtocolMessage], or returns `null` for
-/// unknown or malformed payloads (forward-compatibility).
+/// Shapes decoded delta [records] into a [CrdtChangeset] ready for
+/// [Collection.mergeChangeset].
 ///
-/// Returns `null` — never throws — for any structurally invalid frame, so a
-/// peer that holds the key but sends a malformed message cannot crash the
-/// receiving node.
-ProtocolMessage? decodeMessage(List<int> bytes) {
-  try {
-    final json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
-    return switch (json['type'] as String?) {
-      'hello' => HelloMessage(node: json['node'] as String),
-      'state' => StateMessage(
-          cols: (json['cols'] as Map<String, dynamic>).cast<String, String>(),
-        ),
-      'delta' => DeltaMessage(
-          col: json['col'] as String,
-          // Materialise eagerly so a wrong element type fails here (and is
-          // caught) rather than lazily during a later iteration.
-          records: (json['records'] as List)
-              .map((e) => (e as Map).cast<String, dynamic>())
-              .toList(),
-        ),
-      'poke' => const PokeMessage(),
-      'ratchet-hello' => RatchetHelloMessage(
-          node: json['node'] as String,
-          nonce: base64.decode(json['nonce'] as String),
-        ),
-      _ => null,
-    };
-  } catch (_) {
-    return null;
-  }
-}
-
-/// Converts [Hlc] objects to strings for wire transport.
-Map<String, dynamic> _encodeRecord(Map<String, Object?> record) => {
-      ...record,
-      'hlc': (record['hlc'] as Hlc).toString(),
-    };
-
-/// Parses the HLC strings in [records] back to [Hlc] objects, returning a
-/// [CrdtChangeset] ready for [Collection.mergeChangeset].
+/// The binary codec already parses each record's HLC to an [Hlc]; a string
+/// (from a hand-built record in a test) is parsed here for convenience.
 CrdtChangeset parseDeltaChangeset(
   String colName,
   List<Map<String, dynamic>> records,
 ) =>
-    parseCrdtChangeset({colName: records});
+    {
+      colName: [
+        for (final record in records)
+          record['hlc'] is Hlc
+              ? record
+              : {...record, 'hlc': Hlc.parse(record['hlc'] as String)},
+      ],
+    };
