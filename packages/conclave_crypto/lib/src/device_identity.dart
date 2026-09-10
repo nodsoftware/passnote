@@ -5,6 +5,8 @@ import 'package:conclave/conclave.dart';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:cryptography/cryptography.dart';
 
+import 'key_derivation.dart';
+
 /// Default [Identity]: an X25519 key-exchange keypair and an Ed25519 signing
 /// keypair, generated once and then kept in the injected [KeyStore].
 ///
@@ -43,6 +45,33 @@ class DeviceIdentity implements Identity {
   static Future<DeviceIdentity> generate() async {
     final kx = await (await X25519().newKeyPair()).extract();
     final signing = await (await Ed25519().newKeyPair()).extract();
+    final publicKey = DevicePublicKey(
+      keyExchange: kx.publicKey.bytes,
+      signing: signing.publicKey.bytes,
+    );
+    return DeviceIdentity._(kx, signing, publicKey);
+  }
+
+  /// Derives the deterministic identity behind a recovery [phrase]: the same
+  /// phrase and app [salt] always produce the same keypairs, so a wrap sealed
+  /// to this identity can be opened years later on a fresh install.
+  ///
+  /// Pipeline: BIP39 seed → Argon2id under a recovery-specific domain
+  /// ([deriveRecoverySecret]) → one seed per keypair by domain-separated
+  /// SHA-256. Never persisted; derive it, use it, drop it.
+  static Future<DeviceIdentity> fromRecoveryPhrase(
+    String phrase, {
+    required String salt,
+  }) async {
+    final master = await deriveRecoverySecret(phrase, salt);
+    List<int> seedFor(String domain) =>
+        crypto.sha256.convert([...utf8.encode(domain), ...master]).bytes;
+    final kx = await (await X25519()
+            .newKeyPairFromSeed(seedFor('conclave-recovery-kx-v1')))
+        .extract();
+    final signing = await (await Ed25519()
+            .newKeyPairFromSeed(seedFor('conclave-recovery-sign-v1')))
+        .extract();
     final publicKey = DevicePublicKey(
       keyExchange: kx.publicKey.bytes,
       signing: signing.publicKey.bytes,

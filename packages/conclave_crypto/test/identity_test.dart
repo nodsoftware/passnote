@@ -110,6 +110,52 @@ void main() {
     final reloaded = await DeviceIdentity.load(keyStore: store);
     expect(reloaded.deviceId, loaded.deviceId);
   });
+
+  group('recovery identity', () {
+    test('the same phrase and salt always derive the same identity', () async {
+      final phrase = generateMnemonic(words: 24).join(' ');
+      final first =
+          await DeviceIdentity.fromRecoveryPhrase(phrase, salt: 'app:v1');
+      final again =
+          await DeviceIdentity.fromRecoveryPhrase(phrase, salt: 'app:v1');
+      expect(again.deviceId, first.deviceId);
+      expect(
+          (await again.publicKey).toBytes(), (await first.publicKey).toBytes());
+    });
+
+    test('a different phrase or salt derives a different identity', () async {
+      final phrase = generateMnemonic(words: 24).join(' ');
+      final other = generateMnemonic(words: 24).join(' ');
+      final base =
+          await DeviceIdentity.fromRecoveryPhrase(phrase, salt: 'app:v1');
+      expect(
+        (await DeviceIdentity.fromRecoveryPhrase(other, salt: 'app:v1'))
+            .deviceId,
+        isNot(base.deviceId),
+      );
+      expect(
+        (await DeviceIdentity.fromRecoveryPhrase(phrase, salt: 'other:v1'))
+            .deviceId,
+        isNot(base.deviceId),
+      );
+    });
+
+    test('a wrap sealed to the phrase opens on a fresh derivation', () async {
+      // The recovery scenario: the device that sealed the wrap is gone; only
+      // the phrase survives, and a fresh install re-derives the keypair.
+      final phrase = generateMnemonic(words: 24).join(' ');
+      final registered =
+          await DeviceIdentity.fromRecoveryPhrase(phrase, salt: 'app:v1');
+      final sponsor = await DeviceIdentity.generate();
+      final groupKey = List<int>.generate(32, (i) => i * 3 & 0xff);
+
+      final wrap = await sponsor.wrapFor(await registered.publicKey, groupKey);
+
+      final freshInstall =
+          await DeviceIdentity.fromRecoveryPhrase(phrase, salt: 'app:v1');
+      expect(await freshInstall.unwrap(wrap), groupKey);
+    });
+  });
 }
 
 _FakeKeyStore _copy(_FakeKeyStore other) {

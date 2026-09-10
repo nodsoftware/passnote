@@ -49,6 +49,28 @@ Future<List<int>> deriveKey(String passphrase, String salt) async {
   return derived.extractBytes();
 }
 
+/// Derives the deterministic 32-byte master secret behind a recovery
+/// [phrase], for `DeviceIdentity.fromRecoveryPhrase`.
+///
+/// Same pipeline as [deriveKey] — BIP39 seed → Argon2id — but under its own
+/// domain-separated salt, so a phrase used (wrongly) as both passphrase and
+/// recovery phrase still yields unrelated keys. The [salt] is the app-wide
+/// salt: the same phrase recovers a different keypair per app.
+Future<List<int>> deriveRecoverySecret(String phrase, String salt) async {
+  final seed = bip39.mnemonicToSeed(phrase);
+  final argon2 = Argon2id(
+    memory: _argon2Memory,
+    iterations: _argon2Iterations,
+    parallelism: _argon2Parallelism,
+    hashLength: 32,
+  );
+  final derived = await argon2.deriveKey(
+    secretKey: SecretKey(seed),
+    nonce: _argonSalt('recovery-v1/$salt'),
+  );
+  return derived.extractBytes();
+}
+
 /// FIPS fallback: the pre-Argon2id pipeline, BIP39 seed → PBKDF2-HMAC-SHA256
 /// (600 000 iterations). Use only where an approved KDF list rules Argon2id out.
 Future<List<int>> deriveKeyPbkdf2(String passphrase, String salt) async {

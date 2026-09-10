@@ -21,6 +21,7 @@ final class ConclaveDefaults {
     required this.validateMnemonic,
     this.identity,
     this.pake,
+    this.recoveryIdentity,
   });
 
   /// Builds the backing [CrdtTable] for a collection in a database.
@@ -52,6 +53,12 @@ final class ConclaveDefaults {
   /// key store. `null` when the host does not provide one; [Conclave.identity]
   /// then throws until an identity is configured.
   final Future<Identity> Function(KeyStore keyStore)? identity;
+
+  /// Derives the deterministic keypair behind a recovery phrase, for
+  /// [Conclave.enableRecovery] / [Conclave.recoverFrom]. `null` when the host
+  /// does not provide one; the recovery APIs then throw even when the app
+  /// opted in with [ConclaveBuilder.recovery].
+  final Future<Identity> Function(String phrase, String salt)? recoveryIdentity;
 
   /// Builds the PAKE used to authenticate device pairing. `null` when the host
   /// does not provide one; [Conclave.startPairing] / [Conclave.pairWith] then
@@ -91,6 +98,8 @@ final class ConclaveBuilder {
   Cipher Function(List<int> key)? _cipher;
   Future<Identity> Function(KeyStore keyStore)? _identity;
   Pake Function()? _pake;
+  bool _recoveryEnabled = false;
+  bool _recoverySet = false;
   int _words = 24;
   PassphraseStrictness _strictness = PassphraseStrictness.warn;
   bool _passphraseSet = false;
@@ -148,6 +157,17 @@ final class ConclaveBuilder {
   }
 
   /// Overrides the pairing PAKE. Default: the umbrella's SPAKE2.
+  /// Opts this app into a written recovery phrase: [Conclave.enableRecovery]
+  /// mints one and [Conclave.recoverFrom] restores access with it. Default:
+  /// disabled — "no recovery" is a valid product choice, and a lost phrase
+  /// plus lost devices then mean lost access by design.
+  ConclaveBuilder recovery({required bool enabled}) {
+    _once('recovery', _recoverySet);
+    _recoverySet = true;
+    _recoveryEnabled = enabled;
+    return this;
+  }
+
   ConclaveBuilder pake(Pake Function() factory) {
     _once('pake', _pake != null);
     _pake = factory;
@@ -215,6 +235,7 @@ final class ConclaveBuilder {
         ),
         compactionHorizon: _compactionHorizon ?? const Duration(days: 30),
         maxInboundFramesPerSecond: _maxInboundFramesPerSecond ?? 100,
+        recoveryEnabled: _recoveryEnabled,
       ),
       keyStore: keyStore,
       transport: _transport ?? defaults.transport(),
@@ -225,6 +246,7 @@ final class ConclaveBuilder {
       validateMnemonic: defaults.validateMnemonic,
       identity: identity,
       pake: (_pake ?? defaults.pake)?.call(),
+      recoveryIdentity: defaults.recoveryIdentity,
     );
   }
 

@@ -323,6 +323,22 @@ class Database {
     await roster.admit(peer, label: label);
   }
 
+  /// Unwraps the group key with [recovery] (a keypair derived from a recovery
+  /// phrase) and admits this physical device to the roster as [label].
+  ///
+  /// Returns `false` when the roster holds no wrap for [recovery] yet — the
+  /// caller drives sync and retries. Throws [StateError] when [recovery]'s
+  /// roster entry has been revoked. Called by [Conclave.recoverFrom].
+  Future<bool> adoptRecovery(
+    Identity recovery, {
+    required String label,
+  }) async {
+    final roster = _requireRoster();
+    if (!await roster.adoptVia(recovery, label: label)) return false;
+    await _applyGroupKey();
+    return true;
+  }
+
   /// Revokes [deviceId]: rotates the group key to the next epoch, re-wraps it to
   /// every other non-revoked device, re-keys this database, and marks the device
   /// revoked. Peers adopt the new epoch on sync; the revoked device drops to

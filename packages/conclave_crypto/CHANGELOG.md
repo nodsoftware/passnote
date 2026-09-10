@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added `DeviceIdentity.fromRecoveryPhrase(phrase, salt:)` and
+  `deriveRecoverySecret`: the deterministic keypair behind a recovery phrase
+  (BIP39 seed → Argon2id under a recovery-specific domain → per-keypair
+  seeds), so a wrap sealed to the phrase opens on a fresh install years later.
 - **The default cipher is now `XChaChaPoly1305Cipher`** (XChaCha20-Poly1305),
   frame layout `nonce(24) ‖ ciphertext ‖ tag(16)`. The 192-bit nonce removes any
   practical random-nonce collision concern. `AesGcmCipher` stays available.

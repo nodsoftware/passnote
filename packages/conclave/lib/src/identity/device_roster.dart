@@ -368,6 +368,47 @@ class DeviceRoster {
     );
   }
 
+  /// Recovers membership through [recovery], a virtual device derived from a
+  /// recovery phrase: unwraps the latest group-key wrap sealed to it, adopts
+  /// the key, and admits this physical device to the roster as [label].
+  ///
+  /// Returns `false` when the roster holds no wrap for [recovery] yet (rows
+  /// may still be syncing in — retry after more sync). Throws [StateError]
+  /// when [recovery]'s roster entry has been revoked: a withdrawn phrase must
+  /// not regain access.
+  Future<bool> adoptVia(Identity recovery, {required String label}) async {
+    final rows = await _collection.all();
+    final recoveryId = recovery.deviceId;
+    if (_revokedIds(rows).contains(recoveryId)) {
+      throw StateError(
+        'This recovery phrase has been revoked and can no longer restore '
+        'access.',
+      );
+    }
+    final wraps = rows
+        .whereType<WrappedGroupKey>()
+        .where((w) => w.deviceId == recoveryId)
+        .toList()
+      ..sort((a, b) => a.keyEpoch.compareTo(b.keyEpoch));
+    if (wraps.isEmpty) return false;
+
+    final latest = wraps.last;
+    final groupKey =
+        await recovery.unwrap(WrappedKey.fromBytes(latest.wrappedBytes));
+    _groupKey = groupKey;
+    _epoch = latest.keyEpoch;
+    _state = DeviceState.ready;
+
+    await _writeWrap(
+      publicKey: await _identity.publicKey,
+      deviceId: _identity.deviceId,
+      label: label,
+      groupKey: groupKey,
+      epoch: latest.keyEpoch,
+    );
+    return true;
+  }
+
   /// Revokes [deviceId]: rotates the group key to the next epoch, seals it to
   /// every non-revoked device except [deviceId], and marks [deviceId] revoked.
   /// Returns the new group key.

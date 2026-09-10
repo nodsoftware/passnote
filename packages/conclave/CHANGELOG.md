@@ -175,6 +175,25 @@
     `doc_id` / `field_path` columns generated from `key`, and an index on
     `(collection, doc_id)` that also makes single-document reads an index
     lookup instead of a scan.
+- Added an optional written recovery phrase, off by default. Opt in with
+  `Conclave.builder(...).recovery(enabled: true)` (or `recoveryEnabled` on
+  `ConclaveConfig` plus a `recoveryIdentity:` derivation on
+  `Conclave.lowLevel`).
+  - `Conclave.enableRecovery(localId)` mints a 24-word BIP39 phrase and
+    registers the keypair derived from it in the device roster as a virtual
+    device holding a wrap of the group key. The words are returned once —
+    show them to the user; nothing is stored.
+  - `Conclave.recoverFrom(localId, phrase, passphrase:)` on a fresh install
+    regains access: the passphrase unlocks the roster, the roster syncs from
+    any reachable peer, the phrase's keypair opens its still-valid wrap, and
+    the device is admitted as an ordinary roster member. Both the phrase and
+    the database passphrase are needed — the phrase replaces the lost
+    *devices*, not the passphrase.
+  - A phrase is withdrawn like a device: `revokeDevice` with its roster id
+    rotates the group key away from it, and a revoked phrase can no longer
+    recover.
+  - With recovery disabled (the default), both APIs throw `StateError`; "no
+    recovery" stays a valid product choice.
 - Added `CollectionQuery.watch()`, the bounded-cost reactive read. It emits
   the query result after the initial load and again whenever a change — local
   or synced — alters the result's contents or order. Each change signal

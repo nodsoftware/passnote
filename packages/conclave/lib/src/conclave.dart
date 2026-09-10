@@ -90,6 +90,7 @@ class ConclaveConfig {
     this.compactionHorizon = const Duration(days: 30),
     this.maxInboundFramesPerSecond = 100,
     this.snapshotInterval = const Duration(minutes: 30),
+    this.recoveryEnabled = false,
   });
 
   /// Scopes mDNS discovery and storage namespacing for this app.
@@ -127,6 +128,15 @@ class ConclaveConfig {
   /// Set to [Duration.zero] to disable snapshots (a peer is then the only way
   /// back). Ignored by the in-memory engine. Defaults to 30 minutes.
   final Duration snapshotInterval;
+
+  /// Whether this app offers a written recovery phrase
+  /// ([Conclave.enableRecovery] / [Conclave.recoverFrom]).
+  ///
+  /// Off by default: "no recovery" is a valid product choice (a lost phrase
+  /// and lost devices then mean lost access, by design). When enabled, the app
+  /// calls [Conclave.enableRecovery] once after setup, shows the returned
+  /// 24-word phrase to the user, and never stores it.
+  final bool recoveryEnabled;
 }
 
 /// An observable event from a [Conclave] instance. Listen via [Conclave.events].
@@ -207,10 +217,12 @@ class Conclave {
         engineFactory,
     Identity? identity,
     Pake? pake,
+    Future<Identity> Function(String phrase, String salt)? recoveryIdentity,
   })  : _config = config,
         _engineFactory = engineFactory,
         _identity = identity,
         _pake = pake,
+        _recoveryIdentity = recoveryIdentity,
         _keyStore = keyStore,
         _transport = transport,
         _nodeId = nodeId,
@@ -233,6 +245,8 @@ class Conclave {
       String databaseId, String collection, List<int> key) _engineFactory;
   final Identity? _identity;
   final Pake? _pake;
+  final Future<Identity> Function(String phrase, String salt)?
+      _recoveryIdentity;
 
   final Map<String, Database> _databases = {};
   // The key each open database's user data is derived from (group key when an
@@ -315,8 +329,9 @@ class Conclave {
     String localId,
     String entryKey,
     List<int> key,
-    Cipher cipher,
-  ) async {
+    Cipher cipher, {
+    bool allowAutoFound = true,
+  }) async {
     final db = await Database.open(
       id: localId,
       room: _roomTag(key),
@@ -348,7 +363,8 @@ class Conclave {
     // `needsPairing` until it is admitted.
     final identity = _identity;
     if (identity != null) {
-      await db.initDeviceRoster(identity, autoFound: aloneAtOpen);
+      await db.initDeviceRoster(identity,
+          autoFound: aloneAtOpen && allowAutoFound);
     }
 
     return db;
@@ -458,6 +474,117 @@ class Conclave {
       await db.refreshDeviceState();
     }
     return db;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Recovery phrase
+
+  /// Mints a recovery phrase for the open database [localId] and registers it
+  /// in the roster: 24 BIP39 words whose derived keypair is admitted as a
+  /// virtual device holding a wrap of the group key, so a fresh install can
+  /// later regain access with [recoverFrom] — even when the device that called
+  /// this is gone.
+  ///
+  /// Returns the words. **Show them to the user once and never store them**;
+  /// they are equivalent to a device that can read everything. Calling this
+  /// again mints an independent second phrase (each is its own roster entry).
+  /// A phrase is withdrawn like a device: pass its device id (labelled
+  /// [label] in [devices]) to [revokeDevice].
+  ///
+  /// Requires [ConclaveConfig.recoveryEnabled], a configured recovery
+  /// derivation (see `Conclave.builder` / `recoveryIdentity:` on
+  /// [Conclave.lowLevel]), and a database in [DeviceState.ready]; throws
+  /// [StateError] otherwise.
+  Future<List<String>> enableRecovery(
+    String localId, {
+    String label = 'recovery phrase',
+  }) async {
+    final derive = _requireRecovery();
+    final db = _database(localId);
+    if (db.deviceState != DeviceState.ready) {
+      throw StateError(
+        'Database "$localId" does not hold the group key '
+        '(deviceState is ${db.deviceState}); pair or found it first.',
+      );
+    }
+    final words = _mnemonicGenerator(24);
+    final recovery = await derive(words.join(' '), _config.salt);
+    await db.admitDevice(await recovery.publicKey, label: label);
+    return words;
+  }
+
+  /// Regains access to the database [localId] on a fresh install, using a
+  /// recovery [phrase] minted by [enableRecovery] plus the database
+  /// [passphrase].
+  ///
+  /// The passphrase unlocks the device roster (its key derives from it); the
+  /// roster then syncs from any reachable peer, and the keypair derived from
+  /// [phrase] unwraps the group key from its still-valid wrap. This device is
+  /// then admitted to the roster as [deviceLabel] and the returned [Database]
+  /// is [DeviceState.ready].
+  ///
+  /// Needs at least one reachable peer that holds the roster (there is no
+  /// server to ask). Throws [StateError] when recovery is disabled, when the
+  /// phrase's roster entry has been revoked, or when no usable wrap arrives in
+  /// time; [ArgumentError] when [phrase] is not a valid mnemonic.
+  Future<Database> recoverFrom(
+    String localId,
+    String phrase, {
+    required String passphrase,
+    String deviceLabel = 'recovered device',
+  }) async {
+    final derive = _requireRecovery();
+    if (_databases.containsKey(localId)) {
+      throw StateError('Database "$localId" is already open.');
+    }
+    if (!_validateMnemonic(phrase)) {
+      throw ArgumentError.value(
+        phrase,
+        'phrase',
+        'not a valid recovery mnemonic',
+      );
+    }
+    final recovery = await derive(phrase, _config.salt);
+
+    final entryKey = '${_config.appId}/$localId';
+    final key = await _deriveKey(passphrase, _config.salt);
+    await _keyStore.setKey(entryKey, key);
+    // Never auto-found here: the group exists elsewhere; founding a fresh key
+    // on a briefly-alone install would fork it.
+    final db = await _finishOpen(
+      localId,
+      entryKey,
+      key,
+      _cipherFactory(key),
+      allowAutoFound: false,
+    );
+
+    var adopted = false;
+    for (var i = 0; i < 100 && !adopted; i++) {
+      await db.forceSync();
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      adopted = await db.adoptRecovery(recovery, label: deviceLabel);
+    }
+    if (!adopted) {
+      throw StateError(
+        'Recovery timed out: no usable wrap for this phrase arrived. Is a '
+        'peer that holds the roster reachable?',
+      );
+    }
+    return db;
+  }
+
+  Future<Identity> Function(String phrase, String salt) _requireRecovery() {
+    final derive = _recoveryIdentity;
+    if (!_config.recoveryEnabled || derive == null) {
+      throw StateError(
+        'Recovery is not enabled for this app. Opt in with '
+        'Conclave.builder(...).recovery(enabled: true), or pass '
+        'recoveryIdentity: to Conclave.lowLevel with recoveryEnabled in the '
+        'config.',
+      );
+    }
+    return derive;
   }
 
   PairingCoordinator _requirePairing() {
@@ -652,6 +779,7 @@ class Conclave {
         engine,
     Identity? identity,
     Pake? pake,
+    Future<Identity> Function(String phrase, String salt)? recoveryIdentity,
   }) async {
     final nodeId = generateNodeId();
 
@@ -668,6 +796,7 @@ class Conclave {
       engineFactory: engine,
       pake: pake,
       identity: identity,
+      recoveryIdentity: recoveryIdentity,
     );
     // Wire listeners BEFORE start so PeerConnected events emitted during
     // registration are not missed.
