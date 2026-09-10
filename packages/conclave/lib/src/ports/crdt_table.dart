@@ -117,6 +117,13 @@ abstract interface class CrdtTable {
   /// tombstoned.
   Future<Object?> value(String table, String key);
 
+  /// The stored HLC string of the record at [table]/[key] — tombstoned or
+  /// live — or `null` when no record exists.
+  ///
+  /// Lets the sync layer tell a record that will actually change local state
+  /// (incoming HLC newer) from a redelivery of something already held.
+  Future<String?> recordHlc(String table, String key);
+
   /// Returns all live (non-tombstoned) records in [table] whose key starts
   /// with [prefix], as a flat map of key → value.
   ///

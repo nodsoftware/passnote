@@ -278,6 +278,16 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
     };
   }
 
+  @override
+  Future<String?> recordHlc(String table, String key) async {
+    if (_db == null) return null;
+    final rows = _open.select(
+      'SELECT hlc FROM crdt_records WHERE collection = ? AND key = ?',
+      [table, key],
+    );
+    return rows.isEmpty ? null : rows.first['hlc'] as String;
+  }
+
   /// One indexed lookup per chunk of ids (`doc_id IN (...)`), never a table
   /// scan.
   @override

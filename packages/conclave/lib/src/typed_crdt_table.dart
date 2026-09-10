@@ -137,6 +137,10 @@ final class TypedCrdtTable implements CrdtTable {
       _resolve(await _inner.value(table, key));
 
   @override
+  Future<String?> recordHlc(String table, String key) =>
+      _inner.recordHlc(table, key);
+
+  @override
   Future<Map<String, Object?>> liveFields(String table, String prefix) async {
     final raw = await _inner.liveFields(table, prefix);
     return {for (final e in raw.entries) e.key: _resolve(e.value)};

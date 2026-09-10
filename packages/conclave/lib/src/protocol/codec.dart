@@ -36,6 +36,7 @@ const int _tagState = 2;
 const int _tagDelta = 3;
 const int _tagPoke = 4;
 const int _tagRatchetHello = 5;
+const int _tagHandshake = 6;
 
 // Value type tags for the tagged value encoding.
 const int _valNull = 0;
@@ -80,11 +81,27 @@ List<int> encodeMessage(ProtocolMessage msg) {
       }
     case PokeMessage():
       w.byte(_tagPoke);
-    case RatchetHelloMessage(:final node, :final nonce):
+    case RatchetHelloMessage(:final node, :final nonce, :final keyTag):
       w
         ..byte(_tagRatchetHello)
         ..string(node)
-        ..bytes(nonce);
+        ..bytes(nonce)
+        ..bytes(keyTag);
+    case HandshakeMessage(:final node, :final versions, :final devicePublicKey):
+      w
+        ..byte(_tagHandshake)
+        ..string(node)
+        ..varint(versions.length);
+      for (final version in versions) {
+        w.varint(version);
+      }
+      if (devicePublicKey == null) {
+        w.byte(0);
+      } else {
+        w
+          ..byte(1)
+          ..bytes(devicePublicKey);
+      }
   }
   return w.take();
 }
@@ -113,6 +130,14 @@ ProtocolMessage? decodeMessage(List<int> bytes) {
       _tagRatchetHello => RatchetHelloMessage(
           node: r.string(),
           nonce: r.bytesField(),
+          keyTag: r.bytesField(),
+        ),
+      _tagHandshake => HandshakeMessage(
+          node: r.string(),
+          versions: [
+            for (var i = r.varint(); i > 0; i--) r.varint(),
+          ],
+          devicePublicKey: r.byte() == 0 ? null : r.bytesField(),
         ),
       _ => null,
     };

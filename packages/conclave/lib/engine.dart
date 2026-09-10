@@ -36,6 +36,7 @@ export 'src/ports/pake.dart';
 export 'src/crdt/crdt_type.dart';
 export 'src/engine/sqlite_crdt_table.dart';
 export 'src/map_crdt_table.dart';
+export 'src/protocol/handshake.dart';
 export 'src/typed_crdt_table.dart';
 export 'src/ports/cipher.dart';
 export 'src/ports/crdt_table.dart';

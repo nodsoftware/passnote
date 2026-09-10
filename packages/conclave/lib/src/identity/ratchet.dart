@@ -81,6 +81,18 @@ class RatchetSession {
 ///
 /// Order-independent in the two nonces and the two node ids, so both peers
 /// compute the same value.
+/// A short, non-secret tag identifying a group-key generation.
+///
+/// Two devices pair their ratchet nonces only when their tags match, so a
+/// nonce minted under an older key — or under the *other* branch of two
+/// concurrent rotations that share an epoch number — can never establish a
+/// session with mismatched roots. Eight bytes of SHA-256 under a dedicated
+/// domain: enough to tell generations apart, useless for recovering the key.
+List<int> ratchetKeyTag(List<int> groupKey) => sha256
+    .convert([...utf8.encode('conclave-ratchet-key-tag-v1'), ...groupKey])
+    .bytes
+    .sublist(0, 8);
+
 List<int> deriveRatchetRoot({
   required List<int> groupKey,
   required List<int> nonceA,

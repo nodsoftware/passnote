@@ -175,6 +175,30 @@
     `doc_id` / `field_path` columns generated from `key`, and an index on
     `(collection, doc_id)` that also makes single-document reads an index
     lookup instead of a scan.
+- Added wire-version negotiation to the connection handshake. On connect both
+  sides exchange a `HandshakeMessage` carrying the wire versions they speak
+  and their device public key; sync (and the forward-secrecy ratchet) starts
+  only on the highest common version. No overlap emits a
+  `PeerIncompatible(peer, localVersions, remoteVersions)` event on
+  `Conclave.events` — instead of the old silent never-syncs — and nothing
+  further is exchanged with that peer. `Conclave.lowLevel` accepts a
+  `wireVersions:` override for staged rollouts.
+- The ratchet nonce exchange now tags each nonce with a digest of the group
+  key generation it was minted under, and a fresh nonce from a peer that
+  already has a session resets that session. This fixes two convergence
+  defects around concurrent revocations: two devices that rotated offline to
+  the same epoch number (but different keys) could establish sessions with
+  mismatched roots, and a device that adopted a rotation late could end up in
+  a half-session where every ratcheted frame was silently dropped until
+  reconnect.
+- The remote-conflict callback (`onRemoteConflict`) now fires only for
+  incoming records that are strictly newer than what is stored (a new
+  `CrdtTable.recordHlc` supports the check). The sync protocol legitimately
+  redelivers records — a push broadcast and a state-driven delta can overlap —
+  and a redelivery is not an edit.
+- `Collection.getChangeset` now reads at a write-consistent point, so a state
+  exchange that lands while a multi-field `put` is mid-write can no longer
+  ship a peer a document with only some of its fields.
 - **Breaking (wire):** protocol messages now travel as compact binary frames
   (wire version 2) instead of JSON — magic byte, version, type tag, and
   varint-prefixed fields, with record values in a tagged binary encoding. A

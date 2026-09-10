@@ -11,6 +11,7 @@ import 'ports/identity.dart';
 import 'ports/key_store.dart';
 import 'ports/pake.dart';
 import 'ports/transport.dart';
+import 'protocol/handshake.dart';
 
 export 'identity/pairing.dart'
     show PairingCode, PairingBundle, PairingRejected, PairingTimeout;
@@ -160,6 +161,29 @@ final class PeerDisappeared extends ConclaveEvent {
   final PeerId peer;
 }
 
+/// A peer advertised wire versions that share nothing with this build's.
+///
+/// The peer is not registered and nothing further is exchanged with it: one of
+/// the two apps needs an update before they can sync. Emitted once per
+/// connection.
+final class PeerIncompatible extends ConclaveEvent {
+  /// Creates the event.
+  const PeerIncompatible({
+    required this.peer,
+    required this.localVersions,
+    required this.remoteVersions,
+  });
+
+  /// The incompatible peer's transport id.
+  final PeerId peer;
+
+  /// The wire versions this build speaks.
+  final List<int> localVersions;
+
+  /// The wire versions the peer advertised.
+  final List<int> remoteVersions;
+}
+
 /// A collection's local store was found unreadable on open and rebuilt.
 ///
 /// With [CrdtRecoverySource.snapshot] the last on-disk snapshot was restored;
@@ -218,11 +242,13 @@ class Conclave {
     Identity? identity,
     Pake? pake,
     Future<Identity> Function(String phrase, String salt)? recoveryIdentity,
+    List<int> wireVersions = supportedWireVersions,
   })  : _config = config,
         _engineFactory = engineFactory,
         _identity = identity,
         _pake = pake,
         _recoveryIdentity = recoveryIdentity,
+        _wireVersions = wireVersions,
         _keyStore = keyStore,
         _transport = transport,
         _nodeId = nodeId,
@@ -247,6 +273,10 @@ class Conclave {
   final Pake? _pake;
   final Future<Identity> Function(String phrase, String salt)?
       _recoveryIdentity;
+
+  /// The wire versions advertised in every handshake. Overridable (staged
+  /// rollouts, incompatibility tests); defaults to [supportedWireVersions].
+  final List<int> _wireVersions;
 
   final Map<String, Database> _databases = {};
   // The key each open database's user data is derived from (group key when an
@@ -345,6 +375,12 @@ class Conclave {
       cipherFactory: _cipherFactory,
       engineFor: (collection, engineKey) =>
           _buildEngine(localId, collection, engineKey),
+      wireVersions: _wireVersions,
+      onIncompatiblePeer: (peer, local, remote) => _emit(PeerIncompatible(
+        peer: peer,
+        localVersions: local,
+        remoteVersions: remote,
+      )),
     );
 
     _databases[localId] = db;
@@ -780,6 +816,7 @@ class Conclave {
     Identity? identity,
     Pake? pake,
     Future<Identity> Function(String phrase, String salt)? recoveryIdentity,
+    List<int> wireVersions = supportedWireVersions,
   }) async {
     final nodeId = generateNodeId();
 
@@ -797,6 +834,7 @@ class Conclave {
       pake: pake,
       identity: identity,
       recoveryIdentity: recoveryIdentity,
+      wireVersions: wireVersions,
     );
     // Wire listeners BEFORE start so PeerConnected events emitted during
     // registration are not missed.

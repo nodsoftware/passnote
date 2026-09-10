@@ -542,26 +542,41 @@ class Collection<T> {
 
   /// Returns records modified after [sinceHlc] (or all records when null) in
   /// [CrdtChangeset] format ready for wire serialisation.
-  Future<CrdtChangeset> getChangeset({String? sinceHlc}) =>
-      _engine.changeset(_name, sinceHlc: sinceHlc);
+  ///
+  /// Reads through the write chain: a put writes a document's field records
+  /// one at a time, and an unserialised read between two of them would ship a
+  /// document to a peer with only some of its fields.
+  Future<CrdtChangeset> getChangeset({String? sinceHlc}) async {
+    late CrdtChangeset result;
+    await _serialize(
+      () async => result = await _engine.changeset(_name, sinceHlc: sinceHlc),
+    );
+    return result;
+  }
 
   /// Merges a [CrdtChangeset] received from a peer and persists the result.
   /// Does NOT trigger [onLocalChange] — remote changes must not be re-broadcast.
   Future<void> mergeChangeset(CrdtChangeset changeset) async {
     await _ready;
     await _serialize(() async {
-      final touched = <String>{};
       final conflicted = <String>{};
       for (final records in changeset.values) {
         for (final record in records) {
           final key = record['key'] as String;
           final sep = key.indexOf(_sep);
           final docId = sep < 0 ? key : key.substring(0, sep);
-          touched.add(docId);
-          if (_onRemoteConflict != null &&
-              await _engine.value(_name, docId) != null) {
-            conflicted.add(docId);
-          }
+          if (_onRemoteConflict == null) continue;
+          // A conflict needs the document to exist locally AND the incoming
+          // record to be new information. The sync protocol legitimately
+          // redelivers records (a push broadcast and a state-driven delta can
+          // overlap), so a record no newer than the one stored is not an edit.
+          if (await _engine.value(_name, docId) == null) continue;
+          final stored = await _engine.recordHlc(_name, key);
+          final incoming = record['hlc'];
+          final incomingHlc =
+              incoming is Hlc ? incoming : Hlc.parse(incoming as String);
+          if (stored != null && Hlc.parse(stored) >= incomingHlc) continue;
+          conflicted.add(docId);
         }
       }
       await _engine.merge(changeset);

@@ -52,6 +52,10 @@ class MapCrdtTable implements CrdtTable {
       Future.value(_crdt.get(table, key));
 
   @override
+  Future<String?> recordHlc(String table, String key) =>
+      Future.value(_crdt.getRecord(table, key)?.hlc.toString());
+
+  @override
   Future<Map<String, Object?>> liveFields(String table, String prefix) {
     final map = _crdt.getMap(table);
     if (prefix.isEmpty) return Future.value(Map.of(map));

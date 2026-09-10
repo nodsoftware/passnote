@@ -119,6 +119,10 @@ class _CountingTable implements CrdtTable {
   }
 
   @override
+  Future<String?> recordHlc(String table, String key) =>
+      _inner.recordHlc(table, key);
+
+  @override
   Future<void> put(String table, String key, Object? value,
           {bool isDeleted = false, CrdtType crdtType = const LwwRegister()}) =>
       _inner.put(table, key, value, isDeleted: isDeleted, crdtType: crdtType);

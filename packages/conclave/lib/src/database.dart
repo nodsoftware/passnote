@@ -13,6 +13,7 @@ import 'ports/identity.dart';
 import 'ports/key_store.dart';
 import 'ports/merge_strategy.dart';
 import 'ports/transport.dart';
+import 'protocol/handshake.dart';
 import 'protocol/messages.dart';
 
 /// A shared, encrypted, peer-synced database.
@@ -35,6 +36,9 @@ class Database {
     required Cipher Function(List<int> key) cipherFactory,
     required FutureOr<CrdtTable> Function(String collection, List<int> key)
         engineFor,
+    required List<int> wireVersions,
+    void Function(PeerId peer, List<int> local, List<int> remote)?
+        onIncompatiblePeer,
   })  : _id = id,
         _room = room,
         _cipher = cipher,
@@ -45,7 +49,9 @@ class Database {
         _baseKey = baseKey,
         _identity = identity,
         _cipherFactory = cipherFactory,
-        _engineFor = engineFor;
+        _engineFor = engineFor,
+        _wireVersions = wireVersions,
+        _onIncompatiblePeer = onIncompatiblePeer;
 
   final String _id;
   final String _room;
@@ -88,6 +94,24 @@ class Database {
   final Map<PeerId, List<int>> _peerNonce = {};
 
   static final Random _nonceRng = Random.secure();
+
+  /// The wire versions this node advertises in its handshake.
+  final List<int> _wireVersions;
+
+  /// Called once per peer whose advertised versions share nothing with ours.
+  final void Function(PeerId peer, List<int> local, List<int> remote)?
+      _onIncompatiblePeer;
+
+  /// Peers whose handshake has been received at least once (bounds the
+  /// handshake reply ping-pong to one reply each).
+  final Set<PeerId> _handshakeReceived = {};
+
+  /// The wire version negotiated per peer. Sync starts only once present.
+  final Map<PeerId, int> _negotiatedVersion = {};
+
+  /// Peers that advertised no common wire version: deregistered, their frames
+  /// swallowed, nothing further sent.
+  final Set<PeerId> _incompatiblePeers = {};
 
   /// Frame prefix (only when an [Identity] is configured): `0x01` = the payload
   /// is ratchet-wrapped, `0x00` = plain (control / bootstrap).
@@ -445,11 +469,11 @@ class Database {
   /// Called when a peer has just connected (or when [Conclave.openDatabase]
   /// discovers already-connected peers).
   Future<void> onPeerConnected(PeerId peer) async {
+    if (_incompatiblePeers.contains(peer)) return;
     _peers.add(peer);
-    // Only a device that holds the current group key can derive a ratchet root;
-    // a not-yet-paired device syncs the roster in the clear first.
-    if (_identity != null && _dataKey != null) await _kickRatchet(peer);
-    await _sendHello(peer);
+    // Handshake first: the ratchet and the hello/state/delta exchange start
+    // only once a common wire version is negotiated (see [handlePlaintext]).
+    await _sendHandshake(peer);
   }
 
   /// Called when a peer has disconnected. Drops the transport session so a
@@ -459,6 +483,10 @@ class Database {
     _sessions.remove(peer)?.dispose();
     _myNonce.remove(peer);
     _peerNonce.remove(peer);
+    // A reconnect renegotiates from scratch — the peer may have upgraded.
+    _handshakeReceived.remove(peer);
+    _negotiatedVersion.remove(peer);
+    _incompatiblePeers.remove(peer);
   }
 
   /// Kicks off the ratchet handshake with [peer]: sends our nonce if no session
@@ -469,13 +497,38 @@ class Database {
     _tryEstablishSession(peer);
   }
 
-  /// Sends this side's stable nonce for [peer].
+  /// Sends this side's connection handshake: the wire versions this build
+  /// speaks, and its device public key when an identity is configured.
+  Future<void> _sendHandshake(PeerId peer) async {
+    final identity = _identity;
+    await _sendPlain(
+      peer,
+      HandshakeMessage(
+        node: _nodeId,
+        versions: _wireVersions,
+        devicePublicKey:
+            identity == null ? null : (await identity.publicKey).toBytes(),
+      ),
+    );
+  }
+
+  /// Sends this side's stable nonce for [peer], tagged with the current
+  /// group-key generation so the peer only pairs it against the same key.
   Future<void> _sendRatchetNonce(PeerId peer) async {
+    final key = _dataKey;
+    if (key == null) return;
     final nonce = _myNonce.putIfAbsent(
       peer,
       () => List<int>.generate(16, (_) => _nonceRng.nextInt(256)),
     );
-    await _sendPlain(peer, RatchetHelloMessage(node: _nodeId, nonce: nonce));
+    await _sendPlain(
+      peer,
+      RatchetHelloMessage(
+        node: _nodeId,
+        nonce: nonce,
+        keyTag: ratchetKeyTag(key),
+      ),
+    );
   }
 
   void _tryEstablishSession(PeerId peer) {
@@ -504,6 +557,9 @@ class Database {
   /// decrypts with neither (a revoked device's traffic after rotation) is
   /// dropped. Returns `true` if the frame was handled.
   Future<bool> handleFrame(PeerId from, List<int> frame) async {
+    // An incompatible peer's frames are swallowed: addressed to us, not
+    // processable, never an error loop.
+    if (_incompatiblePeers.contains(from)) return true;
     var payload = frame;
     if (_identity != null) {
       if (payload.isEmpty) return false;
@@ -544,14 +600,61 @@ class Database {
         await _handleDelta(col, records);
       case PokeMessage():
         await _sendHello(from);
-      case RatchetHelloMessage(:final nonce):
-        // Ignore until we hold the group key; once a session exists, stop the
-        // nonce ping-pong.
-        if (_dataKey == null || _sessions.containsKey(from)) break;
+      case RatchetHelloMessage(:final nonce, :final keyTag):
+        final key = _dataKey;
+        // Ignore until we hold the group key, and ignore a nonce minted under
+        // a different key generation — a stale queued frame, or the other
+        // branch of two concurrent rotations that share an epoch number. A
+        // session established from such a nonce would have a mismatched root
+        // and silently drop every frame.
+        if (key == null || !_listEquals(keyTag, ratchetKeyTag(key))) break;
+        if (_sessions.containsKey(from)) {
+          // Duplicate of the nonce we already paired with: ping-pong ends.
+          final known = _peerNonce[from];
+          if (known != null && _listEquals(known, nonce)) break;
+          // A fresh nonce from a peer we hold a session with: the peer redid
+          // its handshake (it adopted the key later than we did) and our
+          // session is one-sided. Drop it and pair anew, or every ratcheted
+          // frame between us is silently lost.
+          _sessions.remove(from)?.dispose();
+          _myNonce.remove(from);
+        }
         _peerNonce[from] = nonce;
         _tryEstablishSession(from);
         await _sendRatchetNonce(from);
+      case HandshakeMessage(:final versions):
+        await _handleHandshake(from, versions);
     }
+  }
+
+  /// Negotiates the wire version with [from] and, on success, starts the
+  /// ratchet and the sync exchange. Replies once to the first handshake a
+  /// peer sends (both sides also send one on connect, so a peer that opened
+  /// its database later still gets ours), which bounds the exchange to at
+  /// most two frames each.
+  Future<void> _handleHandshake(PeerId from, List<int> versions) async {
+    if (_incompatiblePeers.contains(from)) return;
+    final firstReceipt = _handshakeReceived.add(from);
+    if (firstReceipt) await _sendHandshake(from);
+    if (_negotiatedVersion.containsKey(from)) return;
+
+    final version = negotiate(_wireVersions, versions);
+    if (version == null) {
+      _incompatiblePeers.add(from);
+      _peers.remove(from);
+      _onIncompatiblePeer?.call(
+        from,
+        List<int>.unmodifiable(_wireVersions),
+        List<int>.unmodifiable(versions),
+      );
+      return;
+    }
+    _negotiatedVersion[from] = version;
+    _peers.add(from);
+    // Only a device that holds the current group key can derive a ratchet root;
+    // a not-yet-paired device syncs the roster in the clear first.
+    if (_identity != null && _dataKey != null) await _kickRatchet(from);
+    await _sendHello(from);
   }
 
   // ---------------------------------------------------------------------------
@@ -704,6 +807,9 @@ class Database {
     required Cipher Function(List<int> key) cipherFactory,
     required FutureOr<CrdtTable> Function(String collection, List<int> key)
         engineFor,
+    List<int> wireVersions = supportedWireVersions,
+    void Function(PeerId peer, List<int> local, List<int> remote)?
+        onIncompatiblePeer,
   }) async {
     return Database._(
       id: id,
@@ -717,6 +823,8 @@ class Database {
       identity: identity,
       cipherFactory: cipherFactory,
       engineFor: engineFor,
+      wireVersions: wireVersions,
+      onIncompatiblePeer: onIncompatiblePeer,
     );
   }
 }

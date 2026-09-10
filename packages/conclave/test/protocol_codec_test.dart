@@ -50,9 +50,11 @@ void main() {
       final m = rt(RatchetHelloMessage(
         node: 'n1',
         nonce: List<int>.generate(16, (i) => i),
+        keyTag: List<int>.generate(8, (i) => 0xF0 + i),
       )) as RatchetHelloMessage;
       expect(m.node, 'n1');
       expect(m.nonce, List<int>.generate(16, (i) => i));
+      expect(m.keyTag, List<int>.generate(8, (i) => 0xF0 + i));
     });
 
     test('delta with every value shape', () {
@@ -152,6 +154,7 @@ void main() {
         encodeMessage(RatchetHelloMessage(
           node: 'n',
           nonce: List<int>.filled(16, 7),
+          keyTag: List<int>.filled(8, 3),
         )),
       ];
       for (final frame in frames) {
