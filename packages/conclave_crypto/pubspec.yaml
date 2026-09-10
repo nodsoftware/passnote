@@ -10,7 +10,7 @@ environment:
 
 dependencies:
   bip39: ^1.0.6
-  conclave_core: ^0.1.0
+  conclave: ^0.1.0
   crypto: ^3.0.6
   cryptography: ^2.7.0
   pointycastle: ^3.9.1

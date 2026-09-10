@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:conclave_core/conclave_core.dart';
+import 'package:conclave/conclave.dart';
 import 'package:flutter/foundation.dart';
 
 /// A [ChangeNotifier] that mirrors the contents of a Conclave [Collection],

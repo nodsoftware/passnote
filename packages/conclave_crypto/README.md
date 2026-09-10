@@ -3,7 +3,7 @@
 Cryptographic adapters for [Conclave](https://github.com/nodsoftware/conclave):
 AES-256-GCM encryption, BIP39 passphrase generation, and PBKDF2 key derivation.
 
-Implements the `Cipher` port from `conclave_core` and provides the key-derivation
+Implements the `Cipher` port from `conclave` and provides the key-derivation
 and mnemonic helpers used by the [`conclave`](https://pub.dev/packages/conclave)
 umbrella's `conclaveBuilder`.
 

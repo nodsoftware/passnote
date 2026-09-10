@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:conclave_core/conclave_core.dart';
+import 'package:conclave/conclave.dart';
 import 'package:cryptography/cryptography.dart' hide Cipher;
 
 /// AES-256-GCM implementation of the [Cipher] port.

@@ -1,4 +1,4 @@
-import 'package:conclave/conclave.dart';
+import 'package:conclave_flutter/conclave_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 

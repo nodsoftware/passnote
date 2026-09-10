@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:conclave_core/conclave_core.dart' show KeyStore;
+import 'package:conclave/conclave.dart' show KeyStore;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// A [KeyStore] backed by the platform secure storage (iOS/macOS Keychain,

@@ -41,7 +41,7 @@ items.watch().listen((all) => print('now ${all.length} items'));
 ```mermaid
 flowchart LR
   App["Your app"] --> C["Conclave (umbrella)"]
-  C --> Core["conclave_core<br/>engine + CRDT"]
+  C --> Core["conclave<br/>engine + CRDT"]
   C --> Crypto["conclave_crypto<br/>AES-GCM, BIP39, PBKDF2"]
   C --> Sembast["conclave_sembast<br/>storage"]
   C --> Lan["conclave_lan<br/>mDNS + WebSocket"]
@@ -53,7 +53,7 @@ flowchart LR
 | Package                                                   | Purpose                                              |
 | --------------------------------------------------------- | ---------------------------------------------------- |
 | [`conclave`](https://pub.dev/packages/conclave)           | Umbrella + `openDefault` batteries-included wiring   |
-| [`conclave_core`](https://pub.dev/packages/conclave_core) | Pure-Dart engine, CRDT collections, ports, protocol  |
+| [`conclave`](https://pub.dev/packages/conclave) | Pure-Dart engine, CRDT collections, ports, protocol  |
 | `conclave_crypto`                                         | AES-256-GCM cipher, BIP39 passphrases, PBKDF2        |
 | `conclave_sembast`                                        | Sembast-backed `BlobStore`                           |
 | `conclave_hive`                                           | Hive-backed `BlobStore`                              |

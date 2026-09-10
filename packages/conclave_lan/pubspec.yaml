@@ -9,7 +9,7 @@ environment:
   sdk: ^3.6.0
 
 dependencies:
-  conclave_core: ^0.1.0
+  conclave: ^0.1.0
   mdns_dart: ^2.2.1
 
 dev_dependencies:

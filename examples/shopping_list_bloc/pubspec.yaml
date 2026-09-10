@@ -10,7 +10,7 @@ environment:
 
 dependencies:
   bloc: ^9.0.0
-  conclave: ^0.1.0
+  conclave_flutter: ^0.1.0
   flutter:
     sdk: flutter
   flutter_bloc: ^9.1.0

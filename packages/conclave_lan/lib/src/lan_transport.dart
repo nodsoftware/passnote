@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:conclave_core/conclave_core.dart';
+import 'package:conclave/conclave.dart';
 import 'package:mdns_dart/mdns_dart.dart';
 
 import 'frame_codec.dart';

@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:conclave/conclave.dart';
+import 'package:conclave_flutter/conclave_flutter.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'item.dart';

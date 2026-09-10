@@ -5,7 +5,7 @@ discovery plus WebSocket data connections, in pure Dart. This is the default
 transport used by the [`conclave`](https://pub.dev/packages/conclave) umbrella's
 `conclaveBuilder`.
 
-It implements the `Transport` port from `conclave_core`, discovering same-app
+It implements the `Transport` port from `conclave`, discovering same-app
 peers on the local network and exchanging already-encrypted frames between them.
 
 ## What's inside

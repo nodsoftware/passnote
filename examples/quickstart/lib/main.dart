@@ -1,7 +1,7 @@
 // The getting-started walkthrough, compiled. Each numbered section matches a
 // step in docs/getting-started.md; keep the two in sync.
 
-import 'package:conclave/conclave.dart';
+import 'package:conclave_flutter/conclave_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 

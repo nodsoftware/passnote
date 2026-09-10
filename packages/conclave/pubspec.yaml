@@ -1,26 +1,22 @@
 name: conclave
 version: 0.1.0
-description: End-to-end encrypted, local-first CRDT sync engine for Dart and Flutter.
+description: >-
+  End-to-end encrypted, local-first CRDT sync engine for Dart: port interfaces,
+  the SQLite-backed engine, typed collections, device identity, the wire
+  protocol, and an in-memory transport for testing.
 homepage: https://github.com/nodsoftware/conclave
 repository: https://github.com/nodsoftware/conclave
-resolution: workspace
 
 environment:
   sdk: ^3.6.0
-  flutter: ^3.27.0
+
+resolution: workspace
 
 dependencies:
-  conclave_core: ^0.1.0
-  conclave_crypto: ^0.1.0
-  conclave_flutter: ^0.1.0
-  conclave_lan: ^0.1.0
-  flutter:
-    sdk: flutter
-  path: ^1.9.0
-  path_provider: ^2.1.0
-  sqlite3_flutter_libs: ^0.5.0
+  crdt: ^5.1.3
+  crypto: ^3.0.6
+  sqlite3: ^2.4.0
 
 dev_dependencies:
-  flutter_test:
-    sdk: flutter
   lints: ^4.0.0
+  test: ^1.25.0

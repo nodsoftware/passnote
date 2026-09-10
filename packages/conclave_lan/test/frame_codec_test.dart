@@ -1,4 +1,4 @@
-import 'package:conclave_core/conclave_core.dart';
+import 'package:conclave/conclave.dart';
 import 'package:conclave_lan/conclave_lan.dart';
 import 'package:test/test.dart';
 

@@ -14,7 +14,7 @@ dependencies:
 
 The umbrella re-exports everything you need and pulls in the default adapters
 (Sembast storage, OS keychain, LAN transport, AES-GCM crypto). If you only want
-the pure-Dart engine, depend on `conclave_core` instead and wire adapters
+the pure-Dart engine, depend on `conclave` instead and wire adapters
 yourself — see [Adapters](concepts/databases-keys.md).
 
 ```sh

@@ -75,7 +75,7 @@ The `FrameCodec` itself has fast, socket-free unit tests that always run.
 Implement the five members and emit `PeerConnected`/`PeerLost` on `events` and
 `InboundFrame`s on `inbound`. Anything that can discover peers and ship bytes
 works — Bluetooth, a relay server, WebRTC, a test bus. The in-memory transport in
-`conclave_core` (`InMemoryTransport` over an `InMemoryBus`) is a minimal
+`conclave` (`InMemoryTransport` over an `InMemoryBus`) is a minimal
 reference implementation used by the engine tests.
 
 Then pass it to `Conclave.open`:

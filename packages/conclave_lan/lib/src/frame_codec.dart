@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:conclave_core/conclave_core.dart' show Frame;
+import 'package:conclave/conclave.dart' show Frame;
 
 /// Serialises [Frame]s to and from the binary form sent over a WebSocket.
 ///

@@ -5,11 +5,10 @@ environment:
 dev_dependencies:
   melos: ^7.8.0
 workspace:
-  - packages/conclave_core
+  - packages/conclave
   - packages/conclave_crypto
   - packages/conclave_lan
   - packages/conclave_flutter
-  - packages/conclave
   - examples/quickstart
   - examples/shopping_list_provider
   - examples/shopping_list_bloc

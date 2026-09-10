@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:conclave_core/conclave_core.dart';
+import 'package:conclave/conclave.dart';
 import 'package:cryptography/cryptography.dart' hide Cipher;
 
 /// XChaCha20-Poly1305 implementation of the [Cipher] port, and the default

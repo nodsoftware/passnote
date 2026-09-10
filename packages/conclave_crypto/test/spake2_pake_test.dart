@@ -1,10 +1,10 @@
 import 'dart:convert';
 
-import 'package:conclave_core/conclave_core.dart';
+import 'package:conclave/conclave.dart';
 import 'package:conclave_crypto/conclave_crypto.dart';
 import 'package:test/test.dart';
 
-/// [Spake2Pake] behind the `conclave_core` [Pake] port: the same run the pairing
+/// [Spake2Pake] behind the `conclave` [Pake] port: the same run the pairing
 /// state machine drives. The wire-level RFC 9382 vectors are in `spake2_test`.
 void main() {
   final pake = const Spake2Pake();

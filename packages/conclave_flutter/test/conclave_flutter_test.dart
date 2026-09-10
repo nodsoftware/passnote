@@ -1,4 +1,3 @@
-import 'package:conclave_core/conclave_core.dart';
 import 'package:conclave_flutter/conclave_flutter.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';

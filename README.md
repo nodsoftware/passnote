@@ -8,7 +8,7 @@ network — with no server, no account, and no plaintext ever leaving the device
 Pairing is a passphrase; everything else is automatic.
 
 ```dart
-import 'package:conclave/conclave.dart';
+import 'package:conclave_flutter/conclave_flutter.dart';
 
 final conclave = await conclaveBuilder(appId: 'shopping', salt: 'shopping:v1').open();
 final list = await conclave.openDatabase('home', passphrase: words);
@@ -37,21 +37,18 @@ This is a [Melos](https://melos.invertase.dev/) monorepo.
 
 | Package | Description |
 | --- | --- |
-| [`conclave`](packages/conclave) | Umbrella + `conclaveBuilder` batteries-included wiring |
-| [`conclave_core`](packages/conclave_core) | Pure-Dart engine, CRDT collections, ports, protocol |
-| [`conclave_crypto`](packages/conclave_crypto) | AES-256-GCM cipher, BIP39 passphrases, PBKDF2 |
-| [`conclave_sembast`](packages/conclave_sembast) | Sembast-backed `BlobStore` |
-| [`conclave_hive`](packages/conclave_hive) | Hive-backed `BlobStore` |
+| [`conclave`](packages/conclave) | Pure-Dart engine: CRDT collections, ports, SQLite engine, device identity, protocol |
+| [`conclave_crypto`](packages/conclave_crypto) | XChaCha20-Poly1305 cipher, Argon2id / BIP39 key derivation, SPAKE2 |
 | [`conclave_lan`](packages/conclave_lan) | LAN transport (mDNS discovery + WebSocket frames) |
-| [`conclave_flutter`](packages/conclave_flutter) | Keychain key store + `CollectionNotifier` |
+| [`conclave_flutter`](packages/conclave_flutter) | Flutter apps: keychain key store, `CollectionNotifier`, `conclaveBuilder`; re-exports the other packages |
 
 ## Quick start
 
-Add the umbrella package:
+Add the Flutter package (it pulls in the rest):
 
 ```yaml
 dependencies:
-  conclave: ^0.1.0
+  conclave_flutter: ^0.1.0
 ```
 
 Then open Conclave, unlock a database with a passphrase, and read/write a typed
@@ -107,7 +104,7 @@ workspace package, so a broken snippet fails the build.
 On the web the SQLite engine runs via `sqlite3/wasm`. Serve a `sqlite3.wasm`
 build matching the `sqlite3` package version (from its GitHub releases) and call
 `SqliteCrdtTable.configureWeb(wasmUri: ...)` before opening. Browser tests
-(`dart test -P web` in `packages/conclave_core`) fetch it into `test/web/`.
+(`dart test -P web` in `packages/conclave`) fetch it into `test/web/`.
 
 ```sh
 dart pub global activate melos 7.8.2

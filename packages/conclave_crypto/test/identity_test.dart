@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:conclave_core/conclave_core.dart';
+import 'package:conclave/conclave.dart';
 import 'package:conclave_crypto/conclave_crypto.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:test/test.dart';
