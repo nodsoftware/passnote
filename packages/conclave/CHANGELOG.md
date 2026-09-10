@@ -109,6 +109,23 @@
   ratchet only — post-compromise security via a DH re-key is a later addition
   behind the same seam.)
   - `conclave` now depends on `package:crypto` for the ratchet's HKDF.
+- Added per-field CRDT types. `CrdtType` is a sealed hierarchy — `LwwRegister`
+  (the default and current behaviour), `OrSet`, and `PnCounter` — and
+  `SchemaMergeStrategy({'qty': PnCounter(), 'tags': OrSet()})` assigns a type to
+  named field paths, with every other field staying last-write-wins.
+  - **Breaking:** `MergeStrategy.flatten` is replaced by
+    `Iterable<FieldSpec> fields(document)` (each entry is
+    `(path, value, CrdtType)`), and `unflatten` now takes `Iterable<FieldValue>`
+    rows instead of a map. `ObjectMergeStrategy`, `ShallowMergeStrategy`, and
+    `DeepMergeStrategy` are unchanged in behaviour — every field is
+    `LwwRegister`.
+  - `CrdtTable.put` gains an optional `crdtType` (defaults to `LwwRegister`).
+    `SqliteCrdtTable` records it in a new `crdt_type` column (schema
+    `user_version` 2; a v1 database is migrated in place and its rows default to
+    `lww`). `MapCrdtTable` accepts and ignores it.
+  - The merge algorithms for `OrSet` and `PnCounter` are not wired yet — every
+    type still merges last-write-wins. The type is recorded so dispatch can be
+    added without a data migration.
 
 ## 0.1.0
 

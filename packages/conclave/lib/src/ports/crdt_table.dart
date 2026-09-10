@@ -1,12 +1,16 @@
 import 'package:crdt/crdt.dart';
 
+import '../crdt/crdt_type.dart';
+
 /// CRDT record store: the persistence and merge layer beneath [Collection].
 ///
 /// A [CrdtTable] stores a set of records, each identified by a string key and
-/// carrying an opaque value, a tombstone flag (`isDeleted`), and a Hybrid
-/// Logical Clock (HLC) timestamp. The HLC ordering is the sole source of
-/// truth for conflict resolution: when two peers hold different values for the
-/// same key, the record with the higher HLC wins on merge — last-write-wins.
+/// carrying an opaque value, a tombstone flag (`isDeleted`), a Hybrid Logical
+/// Clock (HLC) timestamp, and a [CrdtType]. The [CrdtType] selects the merge
+/// rule for the record: for [LwwRegister] — the default, and the only rule
+/// wired today — HLC ordering decides, so when two peers hold different values
+/// for the same key the record with the higher HLC wins on merge
+/// (last-write-wins).
 ///
 /// ## Tombstones
 ///
@@ -83,11 +87,17 @@ abstract interface class CrdtTable {
   /// Setting [isDeleted] to `true` tombstones the record (soft-delete); the
   /// record remains in the table and is included in changesets so peers can
   /// observe the deletion.
+  ///
+  /// [crdtType] is the merge rule recorded for this record. It defaults to
+  /// [LwwRegister] (last-write-wins), which is also the only rule wired today;
+  /// an engine that cannot store the type may ignore it. A persistent engine
+  /// must record it so merge dispatch can be added without a data migration.
   Future<void> put(
     String table,
     String key,
     Object? value, {
     bool isDeleted = false,
+    CrdtType crdtType = const LwwRegister(),
   });
 
   /// Returns the live value for [key] in [table], or `null` if absent or

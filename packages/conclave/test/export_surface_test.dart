@@ -78,6 +78,15 @@ void main() {
     expect(const api.ObjectMergeStrategy(), isA<api.MergeStrategy>());
     expect(const api.ShallowMergeStrategy(), isA<api.MergeStrategy>());
     expect(const api.DeepMergeStrategy(), isA<api.MergeStrategy>());
+    expect(const api.SchemaMergeStrategy({'qty': api.PnCounter()}),
+        isA<api.MergeStrategy>());
+
+    // Per-field CRDT types.
+    expect(const api.LwwRegister(), isA<api.CrdtType>());
+    expect(const api.OrSet(), isA<api.CrdtType>());
+    expect(const api.PnCounter(), isA<api.CrdtType>());
+    expect(api.crdtTypeFromTag('pn_counter'), equals(const api.PnCounter()));
+    expect(api.crdtTypeFromTag(null), equals(const api.LwwRegister()));
 
     // Observable events.
     expect(api.ConclaveEvent, isNotNull);
@@ -110,5 +119,6 @@ void main() {
     expect(engine.Cipher, isNotNull);
     expect(engine.KeyStore, isNotNull);
     expect(engine.MergeStrategy, isNotNull);
+    expect(engine.CrdtType, isNotNull);
   });
 }

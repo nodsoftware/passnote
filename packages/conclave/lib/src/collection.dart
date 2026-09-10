@@ -150,7 +150,7 @@ class Collection<T> {
     if (exists == null) return null;
     final fields = await _fieldsForDoc(documentId);
     if (fields.isEmpty) return null;
-    return _codec.fromMap(_merge.unflatten(fields));
+    return _codec.fromMap(_merge.unflatten(_rows(fields)));
   }
 
   /// All live (non-deleted) documents in unspecified order.
@@ -176,7 +176,7 @@ class Collection<T> {
     return [
       for (final id in ids.sublist(start, end))
         if (grouped[id] case final fields?)
-          _codec.fromMap(_merge.unflatten(fields)),
+          _codec.fromMap(_merge.unflatten(_rows(fields))),
     ];
   }
 
@@ -199,7 +199,7 @@ class Collection<T> {
     for (final id in aliveIds) {
       if (limit != null && matched >= limit) break;
       if (grouped[id] case final fields?) {
-        final doc = _codec.fromMap(_merge.unflatten(fields));
+        final doc = _codec.fromMap(_merge.unflatten(_rows(fields)));
         if (test(doc)) {
           if (skipped < off) {
             skipped++;
@@ -260,7 +260,7 @@ class Collection<T> {
     return [
       for (final id in live.sublist(start, end))
         if (grouped[id] case final fields?)
-          _codec.fromMap(_merge.unflatten(fields)),
+          _codec.fromMap(_merge.unflatten(_rows(fields))),
     ];
   }
 
@@ -275,33 +275,37 @@ class Collection<T> {
     await _ready;
     await _serialize(() async {
       final id = _codec.idOf(value);
-      final fields = _merge.flatten(_codec.toMap(value));
+      final specs = _merge.fields(_codec.toMap(value)).toList();
       final prefix = '$id$_sep';
       final current = await _fieldsForDoc(id);
+      final livePaths = {for (final s in specs) s.path};
 
       // Mark the document alive. Refreshing this on every write means an edit
       // competes with a concurrent delete on a single register (latest wins).
       await _engine.put(_name, id, true);
 
-      for (final field in fields.entries) {
+      for (final spec in specs) {
         // Only write fields whose value actually changed. Rewriting an unchanged
         // field would stamp it with a fresher HLC and clobber a concurrent edit
         // to that field made on another node.
-        if (current.containsKey(field.key) &&
-            jsonEncode(current[field.key]) == jsonEncode(field.value)) {
+        if (current.containsKey(spec.path) &&
+            jsonEncode(current[spec.path]) == jsonEncode(spec.value)) {
           continue;
         }
-        await _engine.put(_name, '$prefix${field.key}', field.value);
+        await _engine.put(_name, '$prefix${spec.path}', spec.value,
+            crdtType: spec.type);
       }
       // Tombstone fields that no longer exist on the document (e.g. a key removed
       // from a map under shallow/deep merge). The schema of a fixed type rarely
       // changes, but custom strategies may vary the field set.
       for (final path in current.keys) {
-        if (!fields.containsKey(path)) {
+        if (!livePaths.contains(path)) {
           await _engine.put(_name, '$prefix$path', null, isDeleted: true);
         }
       }
-      if (_index.isActive) _index.reindex(id, fields);
+      if (_index.isActive) {
+        _index.reindex(id, {for (final s in specs) s.path: s.value});
+      }
     });
     _onLocalChange?.call();
   }
@@ -581,6 +585,11 @@ class Collection<T> {
 
   // ---------------------------------------------------------------------------
   // Field helpers
+
+  /// Adapts a flat path → value map (as the engine and index use internally)
+  /// to the [FieldValue] rows [MergeStrategy.unflatten] expects.
+  static Iterable<FieldValue> _rows(Map<String, Object?> fields) =>
+      [for (final e in fields.entries) (path: e.key, value: e.value)];
 
   /// Returns the live field entries (field-path → value) for [documentId],
   /// scoped to a single document. Strips the `"$id\x1F"` prefix from the keys

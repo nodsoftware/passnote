@@ -7,6 +7,7 @@ library conclave;
 
 export 'src/codec.dart';
 export 'src/collection.dart';
+export 'src/crdt/crdt_type.dart';
 export 'src/id.dart';
 export 'src/conclave.dart';
 export 'src/database.dart';

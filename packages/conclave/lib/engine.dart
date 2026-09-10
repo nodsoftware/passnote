@@ -33,6 +33,7 @@ export 'src/identity/ratchet.dart'
     show RatchetSession, deriveRatchetRoot, newRatchetNonce;
 export 'src/ports/pake.dart';
 
+export 'src/crdt/crdt_type.dart';
 export 'src/engine/sqlite_crdt_table.dart';
 export 'src/map_crdt_table.dart';
 export 'src/ports/cipher.dart';

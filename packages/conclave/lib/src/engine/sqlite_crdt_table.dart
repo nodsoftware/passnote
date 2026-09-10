@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:crdt/crdt.dart';
 import 'package:sqlite3/common.dart';
 
+import '../crdt/crdt_type.dart';
 import '../ports/crdt_table.dart';
 import 'sqlite_open_io.dart' if (dart.library.js_interop) 'sqlite_open_web.dart'
     as backend;
@@ -213,14 +214,16 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
     String key,
     Object? value, {
     bool isDeleted = false,
+    CrdtType crdtType = const LwwRegister(),
   }) async {
     _canonical = _canonical.increment();
     _open.execute(
       'INSERT INTO crdt_records (collection, key, value, is_deleted, hlc, '
-      'hlc_key) VALUES (?, ?, ?, ?, ?, ?) '
+      'hlc_key, crdt_type) VALUES (?, ?, ?, ?, ?, ?, ?) '
       'ON CONFLICT(collection, key) DO UPDATE SET '
       'value = excluded.value, is_deleted = excluded.is_deleted, '
-      'hlc = excluded.hlc, hlc_key = excluded.hlc_key',
+      'hlc = excluded.hlc, hlc_key = excluded.hlc_key, '
+      'crdt_type = excluded.crdt_type',
       [
         table,
         key,
@@ -228,6 +231,7 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
         isDeleted ? 1 : 0,
         _canonical.toString(),
         _hlcKey(_canonical),
+        crdtType.tag,
       ],
     );
     _emit(table);
@@ -289,13 +293,13 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
     final ResultSet rows;
     if (sinceHlc == null || sinceHlc.isEmpty) {
       rows = _open.select(
-        'SELECT key, value, is_deleted, hlc FROM crdt_records '
+        'SELECT key, value, is_deleted, hlc, crdt_type FROM crdt_records '
         'WHERE collection = ?',
         [table],
       );
     } else {
       rows = _open.select(
-        'SELECT key, value, is_deleted, hlc FROM crdt_records '
+        'SELECT key, value, is_deleted, hlc, crdt_type FROM crdt_records '
         'WHERE collection = ? AND hlc_key > ?',
         [table, _hlcKey(Hlc.parse(sinceHlc))],
       );
@@ -308,6 +312,7 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
             'value': jsonDecode(r['value'] as String),
             'is_deleted': (r['is_deleted'] as int) == 1,
             'hlc': Hlc.parse(r['hlc'] as String),
+            'crdt_type': r['crdt_type'] as String,
           },
       ],
     };
@@ -356,10 +361,11 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
 
           _open.execute(
             'INSERT INTO crdt_records (collection, key, value, is_deleted, '
-            'hlc, hlc_key) VALUES (?, ?, ?, ?, ?, ?) '
+            'hlc, hlc_key, crdt_type) VALUES (?, ?, ?, ?, ?, ?, ?) '
             'ON CONFLICT(collection, key) DO UPDATE SET '
             'value = excluded.value, is_deleted = excluded.is_deleted, '
-            'hlc = excluded.hlc, hlc_key = excluded.hlc_key',
+            'hlc = excluded.hlc, hlc_key = excluded.hlc_key, '
+            'crdt_type = excluded.crdt_type',
             [
               table,
               key,
@@ -367,6 +373,9 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
               (record['is_deleted'] as bool) ? 1 : 0,
               incoming.toString(),
               _hlcKey(incoming),
+              // A peer that predates per-field types (or an in-memory engine)
+              // sends no tag; treat it as last-write-wins.
+              record['crdt_type'] as String? ?? const LwwRegister().tag,
             ],
           );
           changed = true;
@@ -419,39 +428,57 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
     return '$micros|$counter|${hlc.nodeId}';
   }
 
+  /// The schema version this build expects. Bumped whenever [_migrate] gains a
+  /// step.
+  static const int _schemaVersion = 2;
+
   /// Brings the schema up to date. The whole step runs in one transaction —
   /// including the `user_version` bump, which is header state and rolls back
   /// with it — so an interrupted migration reopens at the old version with no
   /// objects, never half-applied.
+  ///
+  /// - v1 created `crdt_records`, its HLC index, and `crdt_meta`.
+  /// - v2 adds the per-record `crdt_type` column (the field's CRDT merge rule).
+  ///   A database created fresh gets the column in `CREATE TABLE`; a v1 database
+  ///   gets it by `ALTER TABLE`, and its existing rows default to `'lww'`
+  ///   (last-write-wins, the behaviour before per-field types).
   static void _migrate(CommonDatabase db) {
     final version =
         db.select('PRAGMA user_version').first['user_version'] as int;
-    if (version >= 1) return;
+    if (version >= _schemaVersion) return;
 
     db.execute('BEGIN');
     try {
-      db.execute('''
-        CREATE TABLE IF NOT EXISTS crdt_records (
-          collection TEXT NOT NULL,
-          key        TEXT NOT NULL,
-          value      TEXT NOT NULL,
-          is_deleted INTEGER NOT NULL DEFAULT 0,
-          hlc        TEXT NOT NULL,
-          hlc_key    TEXT NOT NULL,
-          PRIMARY KEY (collection, key)
-        )
-      ''');
-      db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_crdt_hlc '
-        'ON crdt_records (collection, hlc_key)',
-      );
-      db.execute('''
-        CREATE TABLE IF NOT EXISTS crdt_meta (
-          k TEXT PRIMARY KEY,
-          v TEXT NOT NULL
-        )
-      ''');
-      db.execute('PRAGMA user_version = 1');
+      if (version < 1) {
+        db.execute('''
+          CREATE TABLE IF NOT EXISTS crdt_records (
+            collection TEXT NOT NULL,
+            key        TEXT NOT NULL,
+            value      TEXT NOT NULL,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+            hlc        TEXT NOT NULL,
+            hlc_key    TEXT NOT NULL,
+            crdt_type  TEXT NOT NULL DEFAULT 'lww',
+            PRIMARY KEY (collection, key)
+          )
+        ''');
+        db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_crdt_hlc '
+          'ON crdt_records (collection, hlc_key)',
+        );
+        db.execute('''
+          CREATE TABLE IF NOT EXISTS crdt_meta (
+            k TEXT PRIMARY KEY,
+            v TEXT NOT NULL
+          )
+        ''');
+      } else if (version < 2) {
+        db.execute(
+          "ALTER TABLE crdt_records ADD COLUMN crdt_type TEXT NOT NULL "
+          "DEFAULT 'lww'",
+        );
+      }
+      db.execute('PRAGMA user_version = $_schemaVersion');
       db.execute('COMMIT');
     } catch (_) {
       db.execute('ROLLBACK');

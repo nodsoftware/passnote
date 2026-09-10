@@ -1,6 +1,18 @@
 import 'package:conclave/conclave.dart';
 import 'package:test/test.dart';
 
+/// The field paths [s] produces for [doc].
+Set<String> _paths(MergeStrategy s, Map<String, dynamic> doc) =>
+    {for (final f in s.fields(doc)) f.path};
+
+/// path -> value for [s]'s decomposition of [doc].
+Map<String, Object?> _values(MergeStrategy s, Map<String, dynamic> doc) =>
+    {for (final f in s.fields(doc)) f.path: f.value};
+
+/// Round-trips [doc] through [s]: `fields()` then `unflatten()`.
+Map<String, dynamic> _roundTrip(MergeStrategy s, Map<String, dynamic> doc) => s
+    .unflatten([for (final f in s.fields(doc)) (path: f.path, value: f.value)]);
+
 void main() {
   group('ObjectMergeStrategy', () {
     const strategy = ObjectMergeStrategy();
@@ -11,9 +23,11 @@ void main() {
         'title': 'A',
         'meta': {'pinned': true}
       };
-      final fields = strategy.flatten(doc);
+      final fields = strategy.fields(doc).toList();
       expect(fields, hasLength(1));
-      expect(fields.values.single, equals(doc));
+      expect(fields.single.path, equals(''));
+      expect(fields.single.value, equals(doc));
+      expect(fields.single.type, equals(const LwwRegister()));
     });
 
     test('round-trips a document', () {
@@ -22,7 +36,7 @@ void main() {
         'title': 'A',
         'meta': {'pinned': true}
       };
-      expect(strategy.unflatten(strategy.flatten(doc)), equals(doc));
+      expect(_roundTrip(strategy, doc), equals(doc));
     });
   });
 
@@ -31,9 +45,16 @@ void main() {
 
     test('gives each top-level field its own entry', () {
       final doc = {'id': 'n1', 'title': 'A', 'content': 'B'};
-      final fields = strategy.flatten(doc);
-      expect(fields.keys, containsAll(['id', 'title', 'content']));
-      expect(fields['title'], equals('A'));
+      expect(_paths(strategy, doc), containsAll(['id', 'title', 'content']));
+      expect(_values(strategy, doc)['title'], equals('A'));
+    });
+
+    test('types every field last-write-wins', () {
+      final doc = {'id': 'n1', 'title': 'A'};
+      expect(
+        strategy.fields(doc).map((f) => f.type),
+        everyElement(equals(const LwwRegister())),
+      );
     });
 
     test('keeps nested objects atomic', () {
@@ -44,9 +65,8 @@ void main() {
           'tags': ['x', 'y']
         },
       };
-      final fields = strategy.flatten(doc);
       expect(
-          fields['meta'],
+          _values(strategy, doc)['meta'],
           equals({
             'color': 'red',
             'tags': ['x', 'y']
@@ -55,7 +75,7 @@ void main() {
 
     test('round-trips a document', () {
       final doc = {'id': 'n1', 'title': 'A', 'content': 'B'};
-      expect(strategy.unflatten(strategy.flatten(doc)), equals(doc));
+      expect(_roundTrip(strategy, doc), equals(doc));
     });
   });
 
@@ -70,10 +90,20 @@ void main() {
           'author': {'name': 'Ada'}
         },
       };
-      final fields = strategy.flatten(doc);
-      expect(fields['id'], equals('n1'));
-      expect(fields['meta.color'], equals('red'));
-      expect(fields['meta.author.name'], equals('Ada'));
+      final values = _values(strategy, doc);
+      expect(values['id'], equals('n1'));
+      expect(values['meta.color'], equals('red'));
+      expect(values['meta.author.name'], equals('Ada'));
+    });
+
+    test('types every leaf last-write-wins', () {
+      final doc = {
+        'meta': {'color': 'red'}
+      };
+      expect(
+        strategy.fields(doc).map((f) => f.type),
+        everyElement(equals(const LwwRegister())),
+      );
     });
 
     test('treats lists as atomic leaves', () {
@@ -81,14 +111,12 @@ void main() {
         'id': 'n1',
         'tags': ['x', 'y'],
       };
-      final fields = strategy.flatten(doc);
-      expect(fields['tags'], equals(['x', 'y']));
+      expect(_values(strategy, doc)['tags'], equals(['x', 'y']));
     });
 
     test('preserves empty nested objects', () {
       final doc = {'id': 'n1', 'meta': <String, dynamic>{}};
-      final fields = strategy.flatten(doc);
-      expect(strategy.unflatten(fields), equals(doc));
+      expect(_roundTrip(strategy, doc), equals(doc));
     });
 
     test('round-trips a deeply nested document', () {
@@ -100,7 +128,7 @@ void main() {
         },
         'tags': ['x', 'y'],
       };
-      expect(strategy.unflatten(strategy.flatten(doc)), equals(doc));
+      expect(_roundTrip(strategy, doc), equals(doc));
     });
 
     test('honours a custom path separator', () {
@@ -108,8 +136,8 @@ void main() {
       final doc = {
         'a': {'b': 1},
       };
-      expect(sep.flatten(doc).keys.single, equals('a/b'));
-      expect(sep.unflatten(sep.flatten(doc)), equals(doc));
+      expect(_paths(sep, doc).single, equals('a/b'));
+      expect(_roundTrip(sep, doc), equals(doc));
     });
   });
 }

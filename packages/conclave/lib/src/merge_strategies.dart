@@ -1,3 +1,4 @@
+import 'crdt/crdt_type.dart';
 import 'ports/merge_strategy.dart';
 
 /// A [MergeStrategy] that treats each document as a single, atomic CRDT record.
@@ -16,13 +17,15 @@ class ObjectMergeStrategy implements MergeStrategy {
   static const String _wholeDocument = '';
 
   @override
-  Map<String, Object?> flatten(Map<String, dynamic> document) => {
-        _wholeDocument: document,
-      };
+  Iterable<FieldSpec> fields(Map<String, dynamic> document) => [
+        (path: _wholeDocument, value: document, type: const LwwRegister()),
+      ];
 
   @override
-  Map<String, dynamic> unflatten(Map<String, Object?> fields) =>
-      (fields[_wholeDocument] as Map).cast<String, dynamic>();
+  Map<String, dynamic> unflatten(Iterable<FieldValue> rows) {
+    final row = rows.firstWhere((r) => r.path == _wholeDocument);
+    return (row.value as Map).cast<String, dynamic>();
+  }
 }
 
 /// A [MergeStrategy] that gives each top-level field its own CRDT record.
@@ -38,12 +41,14 @@ class ShallowMergeStrategy implements MergeStrategy {
   const ShallowMergeStrategy();
 
   @override
-  Map<String, Object?> flatten(Map<String, dynamic> document) =>
-      Map<String, Object?>.of(document);
+  Iterable<FieldSpec> fields(Map<String, dynamic> document) => [
+        for (final entry in document.entries)
+          (path: entry.key, value: entry.value, type: const LwwRegister()),
+      ];
 
   @override
-  Map<String, dynamic> unflatten(Map<String, Object?> fields) =>
-      Map<String, dynamic>.of(fields);
+  Map<String, dynamic> unflatten(Iterable<FieldValue> rows) =>
+      {for (final row in rows) row.path: row.value};
 }
 
 /// A [MergeStrategy] that flattens nested maps recursively, joining keys with
@@ -63,17 +68,21 @@ class DeepMergeStrategy implements MergeStrategy {
   final String pathSeparator;
 
   @override
-  Map<String, Object?> flatten(Map<String, dynamic> document) {
-    final out = <String, Object?>{};
+  Iterable<FieldSpec> fields(Map<String, dynamic> document) {
+    final out = <FieldSpec>[];
     _flattenInto('', document, out);
     return out;
   }
 
   void _flattenInto(
-      String prefix, Map<dynamic, dynamic> map, Map<String, Object?> out) {
+      String prefix, Map<dynamic, dynamic> map, List<FieldSpec> out) {
     if (map.isEmpty && prefix.isNotEmpty) {
       // Preserve empty nested objects as leaves so they round-trip.
-      out[prefix] = <String, dynamic>{};
+      out.add((
+        path: prefix,
+        value: <String, dynamic>{},
+        type: const LwwRegister()
+      ));
       return;
     }
     for (final entry in map.entries) {
@@ -83,22 +92,70 @@ class DeepMergeStrategy implements MergeStrategy {
       if (value is Map) {
         _flattenInto(path, value, out);
       } else {
-        out[path] = value;
+        out.add((path: path, value: value, type: const LwwRegister()));
       }
     }
   }
 
   @override
-  Map<String, dynamic> unflatten(Map<String, Object?> fields) {
+  Map<String, dynamic> unflatten(Iterable<FieldValue> rows) {
     final root = <String, dynamic>{};
-    for (final entry in fields.entries) {
-      final parts = entry.key.split(pathSeparator);
+    for (final row in rows) {
+      final parts = row.path.split(pathSeparator);
       var node = root;
       for (var i = 0; i < parts.length - 1; i++) {
         node = (node[parts[i]] ??= <String, dynamic>{}) as Map<String, dynamic>;
       }
-      node[parts.last] = entry.value;
+      node[parts.last] = row.value;
     }
     return root;
   }
+}
+
+/// A [MergeStrategy] that decomposes a document per top-level field and assigns
+/// a [CrdtType] to named paths.
+///
+/// Pass a [schema] mapping field paths to their type:
+///
+/// ```dart
+/// SchemaMergeStrategy({'qty': PnCounter(), 'tags': OrSet()})
+/// ```
+///
+/// `qty` merges as a counter and `tags` as an observed-remove set; every other
+/// field falls back to [LwwRegister], so an untyped document behaves exactly as
+/// it would under [base] (a [ShallowMergeStrategy] by default).
+///
+/// Decomposition and reconstruction are delegated to [base]; this strategy only
+/// layers the type assignment on top, so per-field records still line up with
+/// [base]'s field paths.
+class SchemaMergeStrategy implements MergeStrategy {
+  /// Creates a schema-driven merge strategy.
+  ///
+  /// [schema] maps a field path (as produced by [base]) to its [CrdtType].
+  /// Paths absent from [schema] use [LwwRegister]. [base] controls how the
+  /// document is split into fields and defaults to [ShallowMergeStrategy].
+  const SchemaMergeStrategy(
+    this.schema, {
+    this.base = const ShallowMergeStrategy(),
+  });
+
+  /// Field path → [CrdtType]. Paths not listed here default to [LwwRegister].
+  final Map<String, CrdtType> schema;
+
+  /// The strategy that decides how the document is split into fields.
+  final MergeStrategy base;
+
+  @override
+  Iterable<FieldSpec> fields(Map<String, dynamic> document) =>
+      base.fields(document).map(
+            (f) => (
+              path: f.path,
+              value: f.value,
+              type: schema[f.path] ?? const LwwRegister(),
+            ),
+          );
+
+  @override
+  Map<String, dynamic> unflatten(Iterable<FieldValue> rows) =>
+      base.unflatten(rows);
 }

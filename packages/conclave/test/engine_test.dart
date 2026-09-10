@@ -98,8 +98,8 @@ class _CountingTable implements CrdtTable {
 
   @override
   Future<void> put(String table, String key, Object? value,
-          {bool isDeleted = false}) =>
-      _inner.put(table, key, value, isDeleted: isDeleted);
+          {bool isDeleted = false, CrdtType crdtType = const LwwRegister()}) =>
+      _inner.put(table, key, value, isDeleted: isDeleted, crdtType: crdtType);
 
   @override
   Future<CrdtChangeset> changeset(String table, {String? sinceHlc}) =>

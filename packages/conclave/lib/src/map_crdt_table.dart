@@ -1,6 +1,7 @@
 import 'package:crdt/crdt.dart';
 import 'package:crdt/map_crdt.dart';
 
+import 'crdt/crdt_type.dart';
 import 'ports/crdt_table.dart';
 
 /// In-memory [CrdtTable] backed by the `crdt` package's `MapCrdt`.
@@ -27,12 +28,16 @@ class MapCrdtTable implements CrdtTable {
         'use Collection.compact for a rebuild-based approach.',
       );
 
+  /// [crdtType] is ignored: the `crdt` package's `MapCrdt` record shape has no
+  /// slot for it, and this table is kept for tests only, where every field
+  /// merges last-write-wins. A persistent engine records the type instead.
   @override
   Future<void> put(
     String table,
     String key,
     Object? value, {
     bool isDeleted = false,
+    CrdtType crdtType = const LwwRegister(),
   }) =>
       _crdt.put(table, key, value, isDeleted);
 
