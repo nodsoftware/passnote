@@ -7,6 +7,7 @@ dev_dependencies:
 workspace:
   - packages/conclave
   - packages/conclave_crypto
+  - packages/conclave_generator
   - packages/conclave_lan
   - packages/conclave_flutter
   - examples/quickstart
@@ -28,6 +29,16 @@ melos:
 
     format:
       run: dart format --output=none --set-exit-if-changed .
+
+    # Regenerates every package that uses conclave_generator (annotated
+    # document models). Generated *.g.dart files are checked in; CI runs this
+    # and fails on drift.
+    generate:
+      exec:
+        concurrency: 1
+      run: dart run build_runner build --delete-conflicting-outputs
+      packageFilters:
+        dependsOn: build_runner
 
     # Runs each package's tests with the runner it needs (Flutter packages
     # cannot be tested with `dart test`), then checks nothing slipped through.

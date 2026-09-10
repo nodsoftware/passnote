@@ -5,32 +5,27 @@ import 'package:conclave_flutter/conclave_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-// 2. Define a model and codec
+part 'main.g.dart';
 
+// 2. Define a model — the codec is generated
+
+@Document()
 class Item {
   const Item({required this.id, required this.name, this.done = false});
 
+  @DocumentId()
   final String id;
+
   final String name;
   final bool done;
 
   Item copyWith({String? name, bool? done}) =>
       Item(id: id, name: name ?? this.name, done: done ?? this.done);
-
-  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'done': done};
-
-  factory Item.fromJson(Map<String, dynamic> json) => Item(
-        id: json['id'] as String,
-        name: json['name'] as String,
-        done: (json['done'] as bool?) ?? false,
-      );
 }
 
-final itemCodec = JsonCodec<Item>(
-  toMap: (i) => i.toJson(),
-  fromMap: Item.fromJson,
-  idOf: (i) => i.id,
-);
+// `dart run build_runner build` generates _$ItemCodec from the annotations:
+// toMap/fromMap over the fields, with `id` as the document id.
+final itemCodec = _$ItemCodec;
 
 // 3. Open Conclave and 4. open a database with a passphrase
 

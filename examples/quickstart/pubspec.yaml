@@ -15,4 +15,6 @@ dependencies:
   provider: ^6.1.4
 
 dev_dependencies:
+  build_runner: ^2.15.0
+  conclave_generator: ^0.1.0
   lints: ^4.0.0

@@ -5,6 +5,7 @@
 /// bindings and batteries-included setup live in `package:conclave_flutter`.
 library conclave;
 
+export 'src/annotations.dart';
 export 'src/codec.dart';
 export 'src/collection.dart';
 export 'src/crdt/crdt_type.dart';

@@ -27,6 +27,12 @@ jobs:
 
       - run: melos bootstrap
 
+      # Regenerate the annotated document models (conclave_generator) and fail
+      # on drift: generated *.g.dart files are checked in and must match their
+      # committed sources.
+      - run: melos run generate
+      - run: git diff --exit-code
+
       - run: melos run format
 
       - run: melos run analyze

@@ -175,6 +175,11 @@
     `doc_id` / `field_path` columns generated from `key`, and an index on
     `(collection, doc_id)` that also makes single-document reads an index
     lookup instead of a scan.
+- Added the `@Document()`, `@DocumentId()`, and `@Crdt(...)` annotations. With
+  the new `conclave_generator` dev dependency, one annotated class generates
+  its codec, its document-id extractor, and its per-field CRDT schema in one
+  pass — no hand-written maps, and the schema can never drift from the codec.
+  Hand-written `JsonCodec`s keep working unchanged.
 - Added an optional written recovery phrase, off by default. Opt in with
   `Conclave.builder(...).recovery(enabled: true)` (or `recoveryEnabled` on
   `ConclaveConfig` plus a `recoveryIdentity:` derivation on

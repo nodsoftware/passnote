@@ -5,12 +5,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'item.dart';
 import 'shopping_cubit.dart';
 
-final _codec = JsonCodec<Item>(
-  toMap: (i) => i.toJson(),
-  fromMap: Item.fromJson,
-  idOf: (i) => i.id,
-);
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -25,7 +19,7 @@ Future<void> main() async {
   const passphrase =
       'legal winner thank year wave sausage worth useful legal winner thank yellow';
   final db = await conclave.openDatabase('home', passphrase: passphrase);
-  final items = db.collection<Item>('items', _codec);
+  final items = db.collection<Item>('items', Item.codec);
 
   runApp(_ShoppingApp(items: items));
 }

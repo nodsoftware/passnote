@@ -23,29 +23,38 @@ flutter pub get
 
 ## 2. Define a model and codec
 
-A collection stores typed documents. You describe how to (de)serialise a
-document and how to extract its stable id via a `Codec`:
+A collection stores typed documents. Annotate a plain class and let
+`package:conclave_generator` generate its `Codec` — the (de)serialisation, the
+document id, and the per-field CRDT schema, kept in sync by construction:
 
 ```dart
+part 'main.g.dart';
+
+@Document()
 class Item {
   const Item({required this.id, required this.name, this.done = false});
 
+  @DocumentId()
   final String id;
+
   final String name;
   final bool done;
 
   Item copyWith({String? name, bool? done}) =>
       Item(id: id, name: name ?? this.name, done: done ?? this.done);
-
-  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'done': done};
-
-  factory Item.fromJson(Map<String, dynamic> json) => Item(
-        id: json['id'] as String,
-        name: json['name'] as String,
-        done: (json['done'] as bool?) ?? false,
-      );
 }
 
+// `dart run build_runner build` generates:
+final itemCodec = _$ItemCodec;
+```
+
+Add the generator to `dev_dependencies` (`build_runner` and
+`conclave_generator`) and run `dart run build_runner build` after changing the
+model. Fields annotated `@Crdt(PnCounter())` or `@Crdt(OrSet())` merge as a
+counter or a set; unannotated fields merge last-write-wins. A hand-written
+codec keeps working for exotic shapes:
+
+```dart
 final itemCodec = JsonCodec<Item>(
   toMap: (i) => i.toJson(),
   fromMap: Item.fromJson,
