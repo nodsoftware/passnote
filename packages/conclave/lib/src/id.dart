@@ -10,7 +10,8 @@ final Random _rng = Random.secure();
 /// this generator never produces one.
 String newId() {
   final ts = DateTime.now().microsecondsSinceEpoch;
-  final r = _rng.nextInt(1 << 32);
-  final r2 = _rng.nextInt(1 << 32);
+  // 2^32 as a literal: `1 << 32` wraps to 0 when compiled to JavaScript.
+  final r = _rng.nextInt(0x100000000);
+  final r2 = _rng.nextInt(0x100000000);
   return '$ts-${r.toRadixString(16)}${r2.toRadixString(16)}';
 }
