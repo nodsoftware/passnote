@@ -85,6 +85,9 @@ class _CountingTable implements CrdtTable {
   int valueCalls = 0;
 
   @override
+  String get nodeId => _inner.nodeId;
+
+  @override
   Future<Map<String, Object?>> liveFields(String table, String prefix) {
     liveFieldsCalls++;
     return _inner.liveFields(table, prefix);

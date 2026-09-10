@@ -35,6 +35,21 @@ void main() {
     dispose: dispose,
   );
 
+  // The typed layer must preserve the base contract and add the per-type
+  // merge rules, over this engine.
+  runCrdtTableConformance(
+    'TypedCrdtTable over SqliteCrdtTable',
+    (_) async => TypedCrdtTable(await SqliteCrdtTable.open(freshPath())),
+    supportsCompaction: true,
+    dispose: (t) => ((t as TypedCrdtTable).inner as SqliteCrdtTable).close(),
+  );
+
+  runCrdtTypeConformance(
+    'SqliteCrdtTable',
+    (_) => SqliteCrdtTable.open(freshPath()),
+    dispose: dispose,
+  );
+
   group('SqliteCrdtTable persistence', () {
     test('data and node id survive a close and reopen', () async {
       final path = freshPath();

@@ -14,9 +14,9 @@
 /// The hierarchy is [sealed] so a later sequence or text CRDT can be added
 /// without changing the [MergeStrategy] interface.
 ///
-/// The merge algorithms for [OrSet] and [PnCounter] are not wired yet; today
-/// every type merges last-write-wins. The type is still recorded on write so the
-/// dispatch can be added without a data migration.
+/// The merge itself happens in `TypedCrdtTable`, the layer that wraps every
+/// collection's storage engine; the engine only records the type's [tag]
+/// alongside the record.
 sealed class CrdtType {
   /// Const base constructor for the sealed hierarchy.
   const CrdtType();
@@ -54,8 +54,11 @@ final class LwwRegister extends CrdtType {
 /// survive a merge, and an add wins over a concurrent remove that did not
 /// observe it.
 ///
-/// The merge algorithm lands in a later task; declaring the type now lets the
-/// engine record it per field.
+/// The field holds a list. Every add is tagged with an id unique to the device
+/// that made it; removing an element tombstones the add ids the remover could
+/// see, so an add it never observed survives. The resolved list is de-duplicated
+/// and sorted by the elements' JSON encoding, so converged replicas read
+/// identical lists.
 final class OrSet extends CrdtType {
   /// Creates an observed-remove set type.
   const OrSet();
@@ -67,8 +70,11 @@ final class OrSet extends CrdtType {
 /// Positive/negative counter: the value is the sum of every peer's signed
 /// deltas, so concurrent increments on different devices all count.
 ///
-/// The merge algorithm lands in a later task; declaring the type now lets the
-/// engine record it per field.
+/// The field holds a number. Each device accumulates its own positive and
+/// negative contributions, and a merge takes the element-wise maximum of the
+/// per-device sub-counters. The value can only change through
+/// `Collection.increment`; a `put` that would set it to a different number
+/// throws.
 final class PnCounter extends CrdtType {
   /// Creates a positive/negative counter type.
   const PnCounter();

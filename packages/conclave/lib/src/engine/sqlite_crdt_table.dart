@@ -81,6 +81,13 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
   @override
   bool get isPersistent => true;
 
+  /// The node id persisted in `crdt_meta`, stable across restarts. Created on
+  /// the first [init] of a fresh database. Throws [StateError] before [init].
+  @override
+  String get nodeId => _db == null
+      ? (throw StateError('SqliteCrdtTable.init() first'))
+      : _nodeId;
+
   @override
   set snapshotInterval(Duration value) => _snapshotInterval = value;
 

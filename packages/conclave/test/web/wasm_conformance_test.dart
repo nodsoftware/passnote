@@ -16,4 +16,10 @@ void main() {
     supportsCompaction: true,
     dispose: (t) => (t as SqliteCrdtTable).close(),
   );
+
+  runCrdtTypeConformance(
+    'SqliteCrdtTable (wasm)',
+    (_) => SqliteCrdtTable.open(':memory:'),
+    dispose: (t) => (t as SqliteCrdtTable).close(),
+  );
 }

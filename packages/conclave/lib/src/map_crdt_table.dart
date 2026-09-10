@@ -16,6 +16,9 @@ class MapCrdtTable implements CrdtTable {
   final MapCrdt _crdt;
 
   @override
+  String get nodeId => _crdt.nodeId;
+
+  @override
   bool get isPersistent => false;
 
   @override
@@ -29,8 +32,9 @@ class MapCrdtTable implements CrdtTable {
       );
 
   /// [crdtType] is ignored: the `crdt` package's `MapCrdt` record shape has no
-  /// slot for it, and this table is kept for tests only, where every field
-  /// merges last-write-wins. A persistent engine records the type instead.
+  /// slot for it. Typed values are self-describing (they carry their own type
+  /// tag), so the `TypedCrdtTable` layer above still merges them correctly; a
+  /// persistent engine records the type as well.
   @override
   Future<void> put(
     String table,

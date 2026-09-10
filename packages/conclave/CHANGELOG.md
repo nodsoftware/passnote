@@ -123,9 +123,27 @@
     `SqliteCrdtTable` records it in a new `crdt_type` column (schema
     `user_version` 2; a v1 database is migrated in place and its rows default to
     `lww`). `MapCrdtTable` accepts and ignores it.
-  - The merge algorithms for `OrSet` and `PnCounter` are not wired yet — every
-    type still merges last-write-wins. The type is recorded so dispatch can be
-    added without a data migration.
+- Fixed `newId()` crashing on the web: its random bound was written as
+  `1 << 32`, which wraps to 0 when compiled to JavaScript.
+- The `OrSet` and `PnCounter` merge algorithms are wired: typed fields now
+  merge by their CRDT rule instead of last-write-wins. `TypedCrdtTable` (on the
+  advanced library) wraps every collection's engine and does the work — the
+  engine itself stays a plain record store, so any `CrdtTable` implementation
+  gets typed fields for free. Typed states are self-describing on the wire and
+  at rest, so a peer or engine that does not store the `crdt_type` tag still
+  merges them correctly.
+  - An `OrSet` field holds a list. A put adds the elements that joined the
+    list and removes the ones that left it; concurrent edits on other devices
+    are preserved, and an add wins over a remove that did not observe it.
+  - A `PnCounter` field holds a number that only changes through the new
+    `Collection.increment(documentId, fieldPath, by:)` — each device
+    accumulates its own deltas, so concurrent increments all count. The first
+    put seeds the counter; a later put whose number differs from the counter's
+    value throws `ArgumentError`.
+  - The `CrdtTable` port gains `nodeId`, the stable replica id the typed layer
+    keys counter contributions by.
+  - `runCrdtTypeConformance` joins the conformance suite: the typed behavioural
+    contract, run over both shipped engines.
 
 ## 0.1.0
 

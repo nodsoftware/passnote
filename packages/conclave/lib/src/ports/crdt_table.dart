@@ -6,11 +6,12 @@ import '../crdt/crdt_type.dart';
 ///
 /// A [CrdtTable] stores a set of records, each identified by a string key and
 /// carrying an opaque value, a tombstone flag (`isDeleted`), a Hybrid Logical
-/// Clock (HLC) timestamp, and a [CrdtType]. The [CrdtType] selects the merge
-/// rule for the record: for [LwwRegister] — the default, and the only rule
-/// wired today — HLC ordering decides, so when two peers hold different values
-/// for the same key the record with the higher HLC wins on merge
-/// (last-write-wins).
+/// Clock (HLC) timestamp, and a [CrdtType]. At this layer every record merges
+/// last-write-wins: when two peers hold different values for the same key the
+/// record with the higher HLC wins on merge. The richer [CrdtType] merge rules
+/// ([OrSet], [PnCounter]) are layered on top by `TypedCrdtTable`, which wraps
+/// any implementation of this port — an engine only records the type and treats
+/// the value as opaque.
 ///
 /// ## Tombstones
 ///
@@ -57,6 +58,16 @@ import '../crdt/crdt_type.dart';
 /// `crdt` package's `MapCrdt`. Swap it for a disk-backed implementation to
 /// bound memory use on large or long-lived collections.
 abstract interface class CrdtTable {
+  /// The identifier of this replica, as stamped into the node component of the
+  /// HLCs this table generates.
+  ///
+  /// A persistent engine must keep it stable across restarts — the typed merge
+  /// layer keys each node's counter contributions by it. The in-memory
+  /// [MapCrdtTable] generates a fresh one per instance, which is fine for its
+  /// tests-only lifetime. For a persistent engine, must be readable once [init]
+  /// has run.
+  String get nodeId;
+
   /// Whether this table owns its own durability.
   ///
   /// When true, [Collection] will not call [init] during startup (and will
@@ -89,9 +100,10 @@ abstract interface class CrdtTable {
   /// observe the deletion.
   ///
   /// [crdtType] is the merge rule recorded for this record. It defaults to
-  /// [LwwRegister] (last-write-wins), which is also the only rule wired today;
-  /// an engine that cannot store the type may ignore it. A persistent engine
-  /// must record it so merge dispatch can be added without a data migration.
+  /// [LwwRegister] (last-write-wins). An engine stores the tag and treats the
+  /// value as opaque — the type-aware merge itself happens in `TypedCrdtTable`,
+  /// above this port. An in-memory engine that cannot store the type may ignore
+  /// it (typed values are self-describing); a persistent engine must record it.
   Future<void> put(
     String table,
     String key,

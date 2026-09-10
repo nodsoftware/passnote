@@ -298,3 +298,195 @@ void runCrdtTableConformance(
     });
   });
 }
+
+/// Behavioural contract of the typed layer ([TypedCrdtTable]) over a
+/// [CrdtTable] implementation.
+///
+/// Call it once per engine, with the same [make] and [dispose] passed to
+/// [runCrdtTableConformance]; the suite wraps each fresh table in
+/// [TypedCrdtTable] itself. Every case must hold over every engine — the typed
+/// merge rules live entirely in the decorator.
+void runCrdtTypeConformance(
+  String description,
+  FutureOr<CrdtTable> Function(String table) make, {
+  FutureOr<void> Function(CrdtTable table)? dispose,
+}) {
+  const t = 'items';
+
+  final created = <CrdtTable>[];
+
+  Future<TypedCrdtTable> fresh() async {
+    final inner = await Future.sync(() => make(t));
+    final table = TypedCrdtTable(inner);
+    await table.init();
+    created.add(inner);
+    return table;
+  }
+
+  /// Exchanges full changesets both ways so [a] and [b] converge.
+  Future<void> syncBoth(TypedCrdtTable a, TypedCrdtTable b) async {
+    await a.merge(await b.changeset(t));
+    await b.merge(await a.changeset(t));
+  }
+
+  tearDown(() async {
+    if (dispose != null) {
+      for (final table in created) {
+        await dispose(table);
+      }
+    }
+    created.clear();
+  });
+
+  group('$description typed conformance', () {
+    test('exposes a stable, non-empty node id', () async {
+      final table = await fresh();
+      expect(table.nodeId, isNotEmpty);
+      expect(table.nodeId, table.nodeId);
+    });
+
+    test('an LwwRegister put passes through unchanged', () async {
+      final table = await fresh();
+      await table.put(t, 'a', 'apple');
+      await table.put(t, 'a', 'apricot');
+      expect(await table.value(t, 'a'), 'apricot');
+    });
+
+    group('PnCounter', () {
+      test('a put seeds the counter and value resolves to a number', () async {
+        final table = await fresh();
+        await table.put(t, 'qty', 3, crdtType: const PnCounter());
+        expect(await table.value(t, 'qty'), 3);
+      });
+
+      test('increment accumulates signed deltas', () async {
+        final table = await fresh();
+        await table.increment(t, 'qty', 2);
+        await table.increment(t, 'qty', 5);
+        await table.increment(t, 'qty', -3);
+        expect(await table.value(t, 'qty'), 4);
+      });
+
+      test('a put with the current value is a no-op', () async {
+        final table = await fresh();
+        await table.increment(t, 'qty', 2);
+        final before = table.maxHlc(t);
+        await table.put(t, 'qty', 2, crdtType: const PnCounter());
+        expect(table.maxHlc(t), before);
+      });
+
+      test('a put that would change the value throws', () async {
+        final table = await fresh();
+        await table.increment(t, 'qty', 2);
+        expect(
+          () => table.put(t, 'qty', 7, crdtType: const PnCounter()),
+          throwsArgumentError,
+        );
+      });
+
+      test('increment on a non-counter record throws', () async {
+        final table = await fresh();
+        await table.put(t, 'name', 'milk');
+        expect(() => table.increment(t, 'name', 1), throwsArgumentError);
+      });
+
+      test('concurrent increments on two replicas sum after convergence',
+          () async {
+        final a = await fresh();
+        final b = await fresh();
+        await a.increment(t, 'qty', 3);
+        await b.increment(t, 'qty', 4);
+
+        await syncBoth(a, b);
+
+        expect(await a.value(t, 'qty'), 7);
+        expect(await b.value(t, 'qty'), 7);
+      });
+
+      test('converged replicas go quiescent', () async {
+        final a = await fresh();
+        final b = await fresh();
+        await a.increment(t, 'qty', 3);
+        await b.increment(t, 'qty', 4);
+        await syncBoth(a, b);
+        await syncBoth(a, b);
+
+        final before = a.maxHlc(t);
+        await a.merge(await b.changeset(t));
+        expect(a.maxHlc(t), before);
+      });
+    });
+
+    group('OrSet', () {
+      test(
+          'a put stores the membership; value resolves sorted and de-duplicated',
+          () async {
+        final table = await fresh();
+        await table.put(t, 'tags', ['milk', 'eggs', 'milk'],
+            crdtType: const OrSet());
+        expect(await table.value(t, 'tags'), ['eggs', 'milk']);
+      });
+
+      test('a put removes elements that left the list', () async {
+        final table = await fresh();
+        await table.put(t, 'tags', ['milk', 'eggs'], crdtType: const OrSet());
+        await table.put(t, 'tags', ['eggs'], crdtType: const OrSet());
+        expect(await table.value(t, 'tags'), ['eggs']);
+      });
+
+      test('a put with the same membership is a no-op', () async {
+        final table = await fresh();
+        await table.put(t, 'tags', ['milk'], crdtType: const OrSet());
+        final before = table.maxHlc(t);
+        await table.put(t, 'tags', ['milk'], crdtType: const OrSet());
+        expect(table.maxHlc(t), before);
+      });
+
+      test('concurrent add and remove of different elements both take effect',
+          () async {
+        final a = await fresh();
+        final b = await fresh();
+        await a.put(t, 'tags', ['milk'], crdtType: const OrSet());
+        await syncBoth(a, b);
+
+        // Concurrently: A adds eggs, B removes milk.
+        await a.put(t, 'tags', ['milk', 'eggs'], crdtType: const OrSet());
+        await b.put(t, 'tags', <String>[], crdtType: const OrSet());
+        await syncBoth(a, b);
+
+        expect(await a.value(t, 'tags'), ['eggs']);
+        expect(await b.value(t, 'tags'), ['eggs']);
+      });
+
+      test('an add wins over a remove that did not observe it', () async {
+        final a = await fresh();
+        final b = await fresh();
+        await a.put(t, 'tags', ['milk'], crdtType: const OrSet());
+        await syncBoth(a, b);
+
+        // Concurrently: B removes the milk it observed; A removes and re-adds
+        // milk, minting an add tag B never saw.
+        await b.put(t, 'tags', <String>[], crdtType: const OrSet());
+        await a.put(t, 'tags', <String>[], crdtType: const OrSet());
+        await a.put(t, 'tags', ['milk'], crdtType: const OrSet());
+        await syncBoth(a, b);
+
+        expect(await a.value(t, 'tags'), ['milk']);
+        expect(await b.value(t, 'tags'), ['milk']);
+      });
+
+      test('converged replicas go quiescent', () async {
+        final a = await fresh();
+        final b = await fresh();
+        await a.put(t, 'tags', ['milk'], crdtType: const OrSet());
+        await b.put(t, 'tags', ['eggs'], crdtType: const OrSet());
+        await syncBoth(a, b);
+        await syncBoth(a, b);
+
+        final before = a.maxHlc(t);
+        await a.merge(await b.changeset(t));
+        expect(a.maxHlc(t), before);
+      });
+    });
+  });
+}

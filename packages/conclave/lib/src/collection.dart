@@ -4,10 +4,12 @@ import 'dart:convert';
 import 'package:crdt/crdt.dart';
 
 import 'codec.dart';
+import 'crdt/crdt_type.dart';
 import 'map_crdt_table.dart';
 import 'merge_strategies.dart';
 import 'ports/crdt_table.dart';
 import 'ports/merge_strategy.dart';
+import 'typed_crdt_table.dart';
 
 /// A typed, queryable set of documents backed by a per-collection [CrdtTable].
 ///
@@ -43,7 +45,7 @@ class Collection<T> {
   })  : _merge = merge,
         // A synchronous placeholder so [length] / [maxHlc] are safe before the
         // real engine is built in [_ready]. Reads against it just return empty.
-        _engine = MapCrdtTable(_name),
+        _engine = TypedCrdtTable(MapCrdtTable(_name)),
         _onLocalChange = onLocalChange,
         _onRemoteConflict = onRemoteConflict,
         _index = _Index(indexedFields),
@@ -57,7 +59,10 @@ class Collection<T> {
         ) {
     _ready = _serialize(() async {
       if (engine != null) {
-        _engine = await Future.sync(engine);
+        // The typed layer gives OrSet / PnCounter fields their merge
+        // semantics over any engine the factory produces.
+        final built = await Future.sync(engine);
+        _engine = built is TypedCrdtTable ? built : TypedCrdtTable(built);
       }
       if (_engine.isPersistent) await _engine.init();
       await _rebuildIndex();
@@ -72,7 +77,7 @@ class Collection<T> {
   final String _name;
   final Codec<T> _codec;
   final MergeStrategy _merge;
-  CrdtTable _engine;
+  TypedCrdtTable _engine;
   final void Function()? _onLocalChange;
   final void Function(String documentId)? _onRemoteConflict;
 
@@ -271,6 +276,13 @@ class Collection<T> {
   /// tombstoned. The document's existence register is (re)marked live so that a
   /// concurrent delete on another node is reconciled last-write-wins. Awaits the
   /// initial storage load before writing.
+  ///
+  /// Fields the strategy types as [OrSet] hold a list; a put adds the elements
+  /// that joined the list and removes the ones that left it, so concurrent
+  /// edits on other devices are preserved. Fields typed as [PnCounter] hold a
+  /// number that can only change through [increment]: the first put seeds the
+  /// counter with the document's starting number, and a later put whose number
+  /// differs from the counter's current value throws [ArgumentError].
   Future<void> put(T value) async {
     await _ready;
     await _serialize(() async {
@@ -304,7 +316,42 @@ class Collection<T> {
         }
       }
       if (_index.isActive) {
-        _index.reindex(id, {for (final s in specs) s.path: s.value});
+        // Read the fields back rather than indexing the written specs: for a
+        // typed field the engine's resolved value (a merged set, a counter
+        // total) is what queries must match, not the value the caller passed.
+        _index.reindex(id, await _fieldsForDoc(id));
+      }
+    });
+    _onLocalChange?.call();
+  }
+
+  /// Adds [by] (which may be negative) to the [PnCounter] field at [fieldPath]
+  /// of the document identified by [documentId].
+  ///
+  /// This is the only way to change a counter's value. Each device accumulates
+  /// its own deltas, so concurrent increments on different devices all count:
+  /// after convergence the counter is the sum of every device's contributions.
+  ///
+  /// The document must exist (throws [StateError] otherwise); its existence
+  /// register is refreshed like [put] does, so an increment competes with a
+  /// concurrent delete last-write-wins. The field must be typed [PnCounter] by
+  /// the collection's [MergeStrategy] — incrementing a field that holds
+  /// anything else throws [ArgumentError]. Awaits the initial storage load
+  /// before writing.
+  Future<void> increment(String documentId, String fieldPath,
+      {num by = 1}) async {
+    await _ready;
+    await _serialize(() async {
+      if (await _engine.value(_name, documentId) == null) {
+        throw StateError(
+          'Cannot increment "$fieldPath": no document "$documentId" in '
+          '"$_name".',
+        );
+      }
+      await _engine.put(_name, documentId, true);
+      await _engine.increment(_name, '$documentId$_sep$fieldPath', by);
+      if (_index.isActive) {
+        _index.reindex(documentId, await _fieldsForDoc(documentId));
       }
     });
     _onLocalChange?.call();
@@ -466,7 +513,7 @@ class Collection<T> {
       if (reclaimed == 0) return;
 
       // Rebuild engine with the survivor set.
-      final newEngine = MapCrdtTable(_name);
+      final newEngine = TypedCrdtTable(MapCrdtTable(_name));
       if (survivors.isNotEmpty) {
         await newEngine.merge({_name: survivors});
       }
