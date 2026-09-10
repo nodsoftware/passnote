@@ -7,6 +7,12 @@
   and `package:conclave_lan`, and absorbs `conclaveBuilder` from the former
   `conclave` umbrella package (which is removed). A Flutter app depends on
   `conclave_flutter` alone.
+- Added `CollectionNotifier.query(query)`: a notifier over a watched
+  `CollectionQuery` that rebuilds only when the query's result changes and
+  whose cost per change is bounded by the result, not the collection. The
+  default constructor still mirrors the whole collection and re-decodes it on
+  every change; prefer the query form for filtered, sorted, or paginated
+  screens.
 
 ## 0.1.0
 

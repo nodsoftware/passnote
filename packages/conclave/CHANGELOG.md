@@ -175,6 +175,17 @@
     `doc_id` / `field_path` columns generated from `key`, and an index on
     `(collection, doc_id)` that also makes single-document reads an index
     lookup instead of a scan.
+- Added `CollectionQuery.watch()`, the bounded-cost reactive read. It emits
+  the query result after the initial load and again whenever a change — local
+  or synced — alters the result's contents or order. Each change signal
+  re-runs the indexed, windowed query and re-reads at most the result's
+  documents; at most `limit` documents are decoded per emission, and a change
+  that leaves the result identical emits nothing. The sample is taken at a
+  write-consistent point, so a watcher never sees a document with only some of
+  its fields written. The bare `Collection.watch()` is unchanged and now
+  documents its cost honestly: the whole collection is decoded on every
+  change; prefer a watched query for any filtered, sorted, or paginated
+  screen.
 
 ## 0.1.0
 

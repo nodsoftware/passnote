@@ -126,6 +126,46 @@ void main() {
       expect(notifications, equals(0));
     });
   });
+
+  group('CollectionNotifier.query', () {
+    Future<void> settle() async {
+      for (var i = 0; i < 20; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+    }
+
+    test('mirrors the query result and notifies only when it changes',
+        () async {
+      final collection = Collection.create<_Item>(
+        'items',
+        _Item.codec,
+        merge: const ShallowMergeStrategy(),
+      );
+      await collection.put(const _Item('a', 'Apples'));
+      await collection.put(const _Item('b', 'Bananas'));
+
+      final notifier = CollectionNotifier.query(
+        collection.query().where('name', isEqualTo: 'Apples'),
+      );
+      addTearDown(notifier.dispose);
+      await settle();
+      expect(notifier.items.map((i) => i.id), equals(['a']));
+
+      var notifications = 0;
+      notifier.addListener(() => notifications++);
+
+      // Outside the watched result: no rebuild.
+      await collection.put(const _Item('c', 'Cherries'));
+      await settle();
+      expect(notifications, equals(0));
+
+      // Entering the result: one rebuild with the new page.
+      await collection.put(const _Item('d', 'Apples'));
+      await settle();
+      expect(notifications, greaterThan(0));
+      expect(notifier.items.map((i) => i.id), equals(['a', 'd']));
+    });
+  });
 }
 
 class _Item {

@@ -100,6 +100,13 @@ class Collection<T> {
   final Map<StreamController<List<T>>, StreamSubscription<void>?> _watcherSubs =
       {};
 
+  /// Maps each open watch controller to the closure that recomputes and emits
+  /// its snapshot — `all()` for [watch], the query page for
+  /// [CollectionQuery.watch] — so engine events and [compact] drive every
+  /// watcher the same way.
+  final Map<StreamController<List<T>>, Future<void> Function()>
+      _watcherRefresh = {};
+
   late final Future<void> _ready;
 
   // Serialises every mutating CRDT operation (restore, put, delete, merge). The
@@ -334,28 +341,45 @@ class Collection<T> {
   /// Returns a stream that emits the current document list once the initial
   /// storage load completes, then on every subsequent change.
   ///
+  /// Every emission is the full collection: **O(collection) decoded documents
+  /// per change**, on every local put and every synced remote change. For a
+  /// screen that shows a filtered or paginated slice, prefer
+  /// `query()...watch()` ([CollectionQuery.watch]), whose cost per change is
+  /// bounded by the page.
+  ///
   /// The stream completes (done, not error) when the database is closed via
   /// [dispose], [Database.close], or [Database.leave].
-  Stream<List<T>> watch() {
+  Stream<List<T>> watch() => _watchStream((controller) async {
+        final snapshot = await all();
+        if (!controller.isClosed) controller.add(snapshot);
+      });
+
+  /// The shared plumbing under [watch] and [CollectionQuery.watch]: a
+  /// controller whose [refresh] runs once after the initial load and then on
+  /// every engine change event, and which [compact] can re-point at a
+  /// replacement engine.
+  Stream<List<T>> _watchStream(
+      Future<void> Function(StreamController<List<T>>) refresh) {
     // `_engine.watch` is a broadcast stream that drops events while it has no
     // listener. The engine subscription waits for [_ready] so it binds the real
     // engine (which [_ready] may build asynchronously); the first snapshot is
     // emitted immediately after, so no change is missed.
     late final StreamController<List<T>> controller;
     StreamSubscription<void>? sub;
+    Future<void> boundRefresh() => refresh(controller);
     controller = StreamController<List<T>>(
       onListen: () {
         _ready.then((_) {
-          sub = _engine.watch(_name).listen((_) {
-            all().then((snap) => controller.add(snap));
-          });
+          sub = _engine.watch(_name).listen((_) => boundRefresh());
           _watcherSubs[controller] = sub;
-          all().then((snap) => controller.add(snap));
+          _watcherRefresh[controller] = boundRefresh;
+          boundRefresh();
         });
       },
       onCancel: () async {
         await sub?.cancel();
         _watcherSubs.remove(controller);
+        _watcherRefresh.remove(controller);
         _watchers.remove(controller);
       },
       onPause: () => sub?.pause(),
@@ -381,6 +405,7 @@ class Collection<T> {
     }
     _watchers.clear();
     _watcherSubs.clear();
+    _watcherRefresh.clear();
     await _engine.close();
   }
 
@@ -413,9 +438,11 @@ class Collection<T> {
       if (_engine.isPersistent) {
         reclaimed = await _engine.compact(_name, horizon: horizon);
         if (reclaimed > 0) {
-          final snapshot = await all();
-          for (final c in _watchers) {
-            c.add(snapshot);
+          // Not awaited: a query watcher's refresh samples through
+          // [_serialize], and compact is the serialized action right now —
+          // awaiting it here would deadlock the chain on itself.
+          for (final refresh in _watcherRefresh.values.toList()) {
+            unawaited(refresh());
           }
         }
         return;
@@ -476,23 +503,23 @@ class Collection<T> {
         await newEngine.merge({_name: survivors});
       }
 
-      // Re-point watchers.
+      // Re-point watchers at the replacement engine.
       for (final entry in _watcherSubs.entries) {
         final controller = entry.key;
         await entry.value?.cancel();
-        final newSub = newEngine
-            .watch(_name)
-            .listen((_) => all().then((snap) => controller.add(snap)));
-        _watcherSubs[controller] = newSub;
+        final refresh = _watcherRefresh[controller];
+        _watcherSubs[controller] =
+            newEngine.watch(_name).listen((_) => refresh?.call());
       }
 
       // Swap engine.
       _engine = newEngine;
 
-      // Emit fresh snapshot so watchers see the post-compact state.
-      final snapshot = await all();
-      for (final c in _watchers) {
-        c.add(snapshot);
+      // Emit fresh snapshots so watchers see the post-compact state. Not
+      // awaited: a query watcher's refresh samples through [_serialize], and
+      // compact is the serialized action right now.
+      for (final refresh in _watcherRefresh.values.toList()) {
+        unawaited(refresh());
       }
     });
     return reclaimed;

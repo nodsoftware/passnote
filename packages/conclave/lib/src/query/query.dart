@@ -186,15 +186,72 @@ class CollectionQuery<T> {
   /// [QueryPage.nextCursor] is `null` when this page ends the result set (it
   /// returned fewer documents than [limit], or the query has no limit).
   Future<QueryPage<T>> page() async {
+    _requireFieldRows();
+    await _collection._ready;
+    final (rows, fieldsByDoc) = await _fetch();
+    final items = _decode(rows, fieldsByDoc);
+    final last = rows.isNotEmpty ? rows.last : null;
+    final nextCursor = (_limit != null && rows.length == _limit && last != null)
+        ? QueryCursor(orderValue: last.orderValue, docId: last.docId)
+        : null;
+    return QueryPage._(items, nextCursor);
+  }
+
+  /// Watches the query: emits its result after the initial load, then again
+  /// whenever a change — local or synced — alters the result's contents or
+  /// order.
+  ///
+  /// Cost per change is bounded by the query, not the collection: each engine
+  /// change signal re-runs the (indexed, windowed) query and re-reads at most
+  /// the result's documents; decoding happens only when the result actually
+  /// changed, so at most [limit] documents are decoded per emission. A change
+  /// that leaves the result identical emits nothing — [Collection.watch], by
+  /// contrast, decodes and emits the whole collection on every change.
+  ///
+  /// The cursor window ([startAfter]) is honoured, so one stream can watch one
+  /// page. The stream completes when the database is closed.
+  Stream<List<T>> watch() {
+    _requireFieldRows();
+    List<String>? lastFingerprint;
+    var running = false;
+    var dirty = false;
+    return _collection._watchStream((controller) async {
+      // Coalesce bursts: one recompute at a time, and a signal that arrives
+      // mid-recompute queues exactly one more.
+      if (running) {
+        dirty = true;
+        return;
+      }
+      running = true;
+      try {
+        do {
+          dirty = false;
+          // Sample through the write chain: a put writes a document's field
+          // records one at a time, each firing a change event, and an
+          // unserialised read between two of them would see (and decode) a
+          // half-written document.
+          late (List<QueryRow>, Map<String, Map<String, Object?>>) sample;
+          await _collection._serialize(() async => sample = await _fetch());
+          final (rows, fieldsByDoc) = sample;
+          final fingerprint = _fingerprint(rows, fieldsByDoc);
+          if (_sameFingerprint(lastFingerprint, fingerprint)) continue;
+          lastFingerprint = fingerprint;
+          final items = _decode(rows, fieldsByDoc);
+          if (!controller.isClosed) controller.add(items);
+        } while (dirty);
+      } finally {
+        running = false;
+      }
+    });
+  }
+
+  /// Runs the compiled query and the batched materialisation read: the
+  /// matching rows in order, and the raw resolved fields of their documents.
+  ///
+  /// One batched read materialises the whole result: decode cost scales with
+  /// the page, and a scanning engine walks its table once, not once per hit.
+  Future<(List<QueryRow>, Map<String, Map<String, Object?>>)> _fetch() async {
     final c = _collection;
-    await c._ready;
-    if (c._merge is ObjectMergeStrategy) {
-      throw ArgumentError(
-        'Collection "${c._name}" uses ObjectMergeStrategy, which stores each '
-        'document as a single record with no field rows to query. Use '
-        'ShallowMergeStrategy, DeepMergeStrategy, or SchemaMergeStrategy.',
-      );
-    }
     final spec = QuerySpec(
       predicates: _predicates,
       orderByPath: _orderByPath,
@@ -206,21 +263,53 @@ class CollectionQuery<T> {
       after: _after,
     );
     final rows = await c._engine.queryDocIds(c._name, spec);
-    // One batched read materialises the whole page: decode cost scales with
-    // the page, and a scanning engine walks its table once, not once per hit.
     final fieldsByDoc =
         await c._engine.docFields(c._name, [for (final row in rows) row.docId]);
-    final items = <T>[];
-    for (final row in rows) {
-      final fields = fieldsByDoc[row.docId];
-      if (fields == null || fields.isEmpty) continue;
-      items.add(c._codec.fromMap(c._merge.unflatten(Collection._rows(fields))));
+    return (rows, fieldsByDoc);
+  }
+
+  List<T> _decode(
+      List<QueryRow> rows, Map<String, Map<String, Object?>> fieldsByDoc) {
+    final c = _collection;
+    return [
+      for (final row in rows)
+        if (fieldsByDoc[row.docId] case final fields? when fields.isNotEmpty)
+          c._codec.fromMap(c._merge.unflatten(Collection._rows(fields))),
+    ];
+  }
+
+  /// A canonical, order-sensitive summary of a fetched result — one string
+  /// per row, from the raw (undecoded) fields — used by [watch] to skip
+  /// emissions when nothing the query can see has changed.
+  static List<String> _fingerprint(
+      List<QueryRow> rows, Map<String, Map<String, Object?>> fieldsByDoc) {
+    return [
+      for (final row in rows)
+        '${row.docId}\x1F${jsonEncode([
+              for (final path
+                  in (fieldsByDoc[row.docId] ?? const {}).keys.toList()..sort())
+                [path, fieldsByDoc[row.docId]![path]],
+            ])}',
+    ];
+  }
+
+  static bool _sameFingerprint(List<String>? a, List<String> b) {
+    if (a == null || a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
     }
-    final last = rows.isNotEmpty ? rows.last : null;
-    final nextCursor = (_limit != null && rows.length == _limit && last != null)
-        ? QueryCursor(orderValue: last.orderValue, docId: last.docId)
-        : null;
-    return QueryPage._(items, nextCursor);
+    return true;
+  }
+
+  /// Queries need per-field records; [ObjectMergeStrategy] produces none.
+  void _requireFieldRows() {
+    if (_collection._merge is ObjectMergeStrategy) {
+      throw ArgumentError(
+        'Collection "${_collection._name}" uses ObjectMergeStrategy, which '
+        'stores each document as a single record with no field rows to query. '
+        'Use ShallowMergeStrategy, DeepMergeStrategy, or SchemaMergeStrategy.',
+      );
+    }
   }
 
   /// Rejects paths that cannot be a flattened field path: the reserved unit
