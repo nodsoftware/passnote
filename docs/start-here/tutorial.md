@@ -97,6 +97,13 @@ The first device to open a database founds its device group and holds its
 group key. Other devices join by pairing (step 7), not by retyping the
 passphrase.
 
+On every later launch, reopen without asking for the passphrase again; the
+derived key was stored in the OS keychain by `openDatabase`:
+
+```dart
+final db = await conclave.reopenDatabase('home');
+```
+
 ## 5. Read and write
 
 ```dart
@@ -135,6 +142,13 @@ In widgets, use `CollectionNotifier` (or `CollectionNotifier.query` for a
 bounded slice) instead of hand-managing subscriptions.
 
 ## 7. Pair a second device
+
+!!! note "Real devices need OS permissions first"
+    Local discovery is gated by every platform: an Info.plist entry and an
+    entitlement on iOS, manifest permissions on Android, sandbox
+    entitlements on macOS. A missing one fails silently. Do
+    [Set up platform permissions](../guides/set-up-platforms.md) once per
+    platform; simulators are more permissive than devices.
 
 Run the app on a second device on the same network. On the device that already
 has the data, create a one-time nine-digit code and show it:
@@ -176,5 +190,8 @@ Add an item on either device. It appears on the other within a moment.
   [Clocks and merge](../concepts/clocks-and-merge.md).
 
 Next: pick per-field merge behaviour in
-[Choose field types](../guides/choose-field-types.md), or read the
-[data model](../concepts/data-model.md).
+[Choose field types](../guides/choose-field-types.md), write your first
+convergence test with [Test your app](../guides/test-your-app.md), or read
+the [data model](../concepts/data-model.md). If the two devices never found
+each other, [Troubleshoot sync](../guides/troubleshoot-sync.md) walks the
+usual causes.

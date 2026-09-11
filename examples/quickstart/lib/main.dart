@@ -54,6 +54,14 @@ Future<void> main() async {
   runApp(ShoppingList(items: items));
 }
 
+// 4b. On every later launch: reopen without the passphrase
+
+Future<Database> reopenOnNextLaunch(Conclave conclave) {
+  // The derived key was stored in the key store (the OS keychain in
+  // production) by openDatabase, so later launches skip the passphrase.
+  return conclave.reopenDatabase('home');
+}
+
 // 5. Read and write a collection
 
 Future<void> seed(Collection<Item> items) async {

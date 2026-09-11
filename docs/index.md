@@ -67,3 +67,7 @@ flowchart LR
 - [Tutorial](start-here/tutorial.md): empty app to two synced devices.
 - [Concepts](concepts/data-model.md): the data model, clocks, sync, identity.
 - [Security](security.md): what is protected, and the boundaries.
+- [Limits](reference/limits.md): honest numbers on group size and data
+  volume.
+- [API reference](https://pub.dev/documentation/conclave_flutter/latest/):
+  generated dartdoc for every symbol, per package on pub.dev.

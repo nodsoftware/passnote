@@ -19,12 +19,15 @@ nav = [
   ] },
   { "Guides" = [
     "guides/index.md",
+    "guides/set-up-platforms.md",
     "guides/pair-a-device.md",
     "guides/revoke-a-device.md",
     "guides/choose-field-types.md",
     "guides/query-and-paginate.md",
     "guides/run-on-the-web.md",
     "guides/recover-from-a-lost-passphrase.md",
+    "guides/troubleshoot-sync.md",
+    "guides/test-your-app.md",
     "guides/contributing.md",
   ] },
   { "Concepts" = [
@@ -40,6 +43,7 @@ nav = [
     "reference/transports.md",
     "reference/wire-protocol.md",
     "reference/sqlite-schema.md",
+    "reference/limits.md",
     "reference/crypto-vectors.md",
   ] },
   { "Security" = "security.md" },

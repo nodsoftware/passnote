@@ -6,8 +6,11 @@ sees plaintext.
 
 ## LanTransport (mDNS, native)
 
-The default on iOS, Android, macOS, Windows, and Linux. Zero configuration:
-devices on the same network find each other.
+The default on iOS, Android, macOS, Windows, and Linux. Zero configuration
+in code: devices on the same network find each other. Each OS gates local
+network access, though; do
+[Set up platform permissions](../guides/set-up-platforms.md) once per
+platform you ship to.
 
 ```dart
 import 'package:conclave_lan/discovery.dart';
