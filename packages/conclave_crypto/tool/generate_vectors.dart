@@ -70,7 +70,10 @@ Future<void> main() async {
     (9, 5, bytesOf(64, 3)),
   ]) {
     final cipher = XChaChaPoly1305Cipher(bytesOf(32, keySeed));
+    // This generator is the producer of the published test vectors, the one
+    // job the test-only nonce seam exists for.
     final frame =
+        // ignore: invalid_use_of_visible_for_testing_member
         await cipher.encryptWithNonce(plaintext, bytesOf(24, nonceSeed));
     xchachaCases.add({
       'key': hex(bytesOf(32, keySeed)),
@@ -91,14 +94,14 @@ Future<void> main() async {
     w: bytesOf(32, 0x11),
     proverId: utf8.encode('client'),
     verifierId: utf8.encode('server'),
-    scalarOverride: BigInt.parse('0x' + hex(bytesOf(32, 0x21))),
+    scalarOverride: BigInt.parse('0x${hex(bytesOf(32, 0x21))}'),
   );
   final verifier = Spake2.start(
     role: Spake2Role.verifier,
     w: bytesOf(32, 0x11),
     proverId: utf8.encode('client'),
     verifierId: utf8.encode('server'),
-    scalarOverride: BigInt.parse('0x' + hex(bytesOf(32, 0x31))),
+    scalarOverride: BigInt.parse('0x${hex(bytesOf(32, 0x31))}'),
   );
   final proverResult = prover.finish(verifier.outboundMessage);
   final verifierResult = verifier.finish(prover.outboundMessage);
@@ -124,6 +127,8 @@ Future<void> main() async {
   // derives from a recovery phrase so the whole case is reproducible.
   final recipient =
       await DeviceIdentity.fromRecoveryPhrase(mnemonic24, salt: 'vectors:v1');
+  // Same justification as encryptWithNonce above: vectors need fixed inputs.
+  // ignore: invalid_use_of_visible_for_testing_member
   final wrapped = await recipient.wrapForWithEphemeralSeed(
     await recipient.publicKey,
     bytesOf(32, 0x55),
@@ -187,7 +192,7 @@ Future<void> main() async {
 
 void _write(Directory dir, String name, Map<String, Object> content) {
   File('${dir.path}/$name').writeAsStringSync(
-    const JsonEncoder.withIndent('  ').convert(content) + '\n',
+    '${const JsonEncoder.withIndent('  ').convert(content)}\n',
   );
 }
 
