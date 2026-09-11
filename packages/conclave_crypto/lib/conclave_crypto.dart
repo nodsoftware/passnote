@@ -1,5 +1,6 @@
-/// AES-GCM cipher, BIP39 mnemonic generation, and PBKDF2 key derivation
-/// for Conclave.
+/// Crypto for Conclave: the XChaCha20-Poly1305 cipher, Argon2id key
+/// derivation from a BIP39 passphrase, X25519/Ed25519 device identity, and
+/// SPAKE2 pairing. AES-GCM and PBKDF2 variants are available as alternatives.
 library conclave_crypto;
 
 export 'src/aes_gcm_cipher.dart';
