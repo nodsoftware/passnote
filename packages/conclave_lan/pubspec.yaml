@@ -1,5 +1,5 @@
 name: conclave_lan
-version: 0.1.0
+version: 1.0.0
 description: >-
   Transports for Conclave: WebSocket (web-safe, with a reference relay) and
   mDNS LAN discovery (native).
@@ -11,7 +11,7 @@ environment:
   sdk: ^3.6.0
 
 dependencies:
-  conclave: ^0.1.0
+  conclave: ^1.0.0
   mdns_dart: ^2.2.1
   web: ^1.1.0
 

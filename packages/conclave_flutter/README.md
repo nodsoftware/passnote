@@ -18,7 +18,7 @@ an OS-keychain key store and a `ChangeNotifier` that mirrors a collection.
 
 ```yaml
 dependencies:
-  conclave_flutter: ^0.1.0
+  conclave_flutter: ^1.0.0
 ```
 
 ## Usage

@@ -31,7 +31,7 @@ provides the key-derivation and mnemonic helpers installed by
 
 ```yaml
 dependencies:
-  conclave_crypto: ^0.1.0
+  conclave_crypto: ^1.0.0
 ```
 
 ## Usage

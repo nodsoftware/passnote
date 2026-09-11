@@ -12,11 +12,11 @@ dev dependency:
 
 ```yaml
 dependencies:
-  conclave_flutter: ^0.1.0
+  conclave_flutter: ^1.0.0
 
 dev_dependencies:
   build_runner: ^2.15.0
-  conclave_generator: ^0.1.0
+  conclave_generator: ^1.0.0
 ```
 
 `conclave_flutter` brings the whole library: the engine, the crypto, the

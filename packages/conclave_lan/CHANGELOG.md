@@ -1,29 +1,14 @@
 # Changelog
 
-## Unreleased
+## 1.0.0
 
-- Added `WebSocketTransport`: a transport over explicit `ws(s)://` addresses,
-  for browsers and peers outside mDNS reach. It dials one or more addresses
-  (a peer's listener or a relay), accepts inbound connections on native
-  platforms (`listenPort:`), and reconnects with exponential backoff. The
-  wire protocol multiplexes many peers over one connection, so a relay is
-  just another address; payloads stay end-to-end encrypted either way.
-- Added `WebSocketRelay` (`package:conclave_lan/relay.dart`) and the
-  `dart run conclave_lan:relay` runner: a reference frame relay that routes
-  addressed envelopes between its clients. It sees node ids, public room tags,
-  and ciphertext — never plaintext. No auth, no persistence: a reference, not
-  a product.
-- **Breaking:** the main `package:conclave_lan/conclave_lan.dart` entry is now
-  web-safe (no `dart:io`): it exports `WebSocketTransport` and `FrameCodec`.
-  `LanTransport` (mDNS discovery, native only) moved to
-  `package:conclave_lan/discovery.dart`.
+First release.
 
-## 0.1.0
-
-First public version.
-
-- LAN `Transport` that discovers same-app peers over mDNS / DNS-SD and exchanges
-  frames over WebSocket connections.
-- One connection per peer pair (the lexicographically smaller node id dials), a
-  15-second WebSocket heartbeat, and exponential-backoff reconnect.
-- A socket-bound loopback integration test, excluded from the default run.
+- `LanTransport` (`package:conclave_lan/discovery.dart`, native only):
+  zero-configuration peer discovery and sync over mDNS on the local network.
+- `WebSocketTransport` (web-safe): sync over explicit `ws(s)://` addresses,
+  with inbound listening on native platforms and reconnection with
+  exponential backoff.
+- `WebSocketRelay` (`package:conclave_lan/relay.dart` and `bin/relay.dart`):
+  a self-hostable reference relay that routes ciphertext between peers that
+  cannot reach each other directly. It never holds keys.

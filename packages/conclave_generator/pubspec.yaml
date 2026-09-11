@@ -1,9 +1,10 @@
 name: conclave_generator
-version: 0.1.0
+version: 1.0.0
 description: >-
   Code generator for Conclave document models: one @Document annotation yields
   the codec, the document-id extractor, and the per-field CRDT schema.
-publish_to: none
+homepage: https://github.com/nodsoftware/conclave
+repository: https://github.com/nodsoftware/conclave
 resolution: workspace
 
 environment:
@@ -12,7 +13,7 @@ environment:
 dependencies:
   analyzer: '>=8.0.0 <15.0.0'
   build: '>=2.4.2 <5.0.0'
-  conclave: ^0.1.0
+  conclave: ^1.0.0
   source_gen: '>=2.0.0 <5.0.0'
 
 dev_dependencies:

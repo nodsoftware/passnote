@@ -32,7 +32,7 @@ adapters.
 
 ```yaml
 dependencies:
-  conclave: ^0.1.0
+  conclave: ^1.0.0
 ```
 
 ## Usage

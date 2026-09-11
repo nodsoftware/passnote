@@ -1,5 +1,5 @@
 name: conclave
-version: 0.1.0
+version: 1.0.0
 description: >-
   End-to-end encrypted, local-first CRDT sync engine for Dart: port interfaces,
   the SQLite-backed engine, typed collections, device identity, the wire

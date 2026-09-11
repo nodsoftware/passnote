@@ -53,7 +53,7 @@ Add the Flutter package (it pulls in the rest):
 
 ```yaml
 dependencies:
-  conclave_flutter: ^0.1.0
+  conclave_flutter: ^1.0.0
 ```
 
 Then follow the [tutorial](docs/start-here/tutorial.md): model, builder,

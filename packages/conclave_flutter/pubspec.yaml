@@ -1,5 +1,5 @@
 name: conclave_flutter
-version: 0.1.0
+version: 1.0.0
 description: "Conclave for Flutter: the full library plus keychain key store, collection notifier, and batteries-included setup."
 homepage: https://github.com/nodsoftware/conclave
 repository: https://github.com/nodsoftware/conclave
@@ -10,9 +10,9 @@ environment:
   flutter: ^3.27.0
 
 dependencies:
-  conclave: ^0.1.0
-  conclave_crypto: ^0.1.0
-  conclave_lan: ^0.1.0
+  conclave: ^1.0.0
+  conclave_crypto: ^1.0.0
+  conclave_lan: ^1.0.0
   flutter:
     sdk: flutter
   flutter_secure_storage: ^9.2.4

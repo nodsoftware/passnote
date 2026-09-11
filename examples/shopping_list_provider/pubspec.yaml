@@ -9,14 +9,14 @@ environment:
   flutter: ^3.27.0
 
 dependencies:
-  conclave_flutter: ^0.1.0
+  conclave_flutter: ^1.0.0
   flutter:
     sdk: flutter
   provider: ^6.1.4
 
 dev_dependencies:
   build_runner: ^2.15.0
-  conclave_generator: ^0.1.0
+  conclave_generator: ^1.0.0
   flutter_test:
     sdk: flutter
   lints: ^4.0.0

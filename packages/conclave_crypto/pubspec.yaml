@@ -1,6 +1,8 @@
 name: conclave_crypto
-version: 0.1.0
-description: AES-GCM encryption, BIP39 mnemonic generation, and PBKDF2 key derivation for Conclave.
+version: 1.0.0
+description: >-
+  Crypto for Conclave: XChaCha20-Poly1305, Argon2id key derivation from a
+  BIP39 passphrase, X25519/Ed25519 device identity, and SPAKE2 pairing.
 homepage: https://github.com/nodsoftware/conclave
 repository: https://github.com/nodsoftware/conclave
 resolution: workspace
@@ -10,7 +12,7 @@ environment:
 
 dependencies:
   bip39: ^1.0.6
-  conclave: ^0.1.0
+  conclave: ^1.0.0
   crypto: ^3.0.6
   cryptography: ^2.7.0
   meta: ^1.18.0

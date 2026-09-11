@@ -28,7 +28,7 @@ frames; a transport never sees plaintext.
 
 ```yaml
 dependencies:
-  conclave_lan: ^0.1.0
+  conclave_lan: ^1.0.0
 ```
 
 ## Usage
