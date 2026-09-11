@@ -1,6 +1,6 @@
 # conclave_generator
 
-Code generator for [Conclave](../conclave) document models: one annotation
+Code generator for [Conclave](https://github.com/nodsoftware/conclave) document models: one annotation
 yields the codec, the document id extractor, and the per-field CRDT schema —
 no hand-written maps, and the three can never drift apart.
 

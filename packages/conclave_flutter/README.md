@@ -1,16 +1,22 @@
 # conclave_flutter
 
-Flutter-specific adapters for [Conclave](https://github.com/nodsoftware/conclave):
-an OS-keychain key store and a `ChangeNotifier` that mirrors a collection.
+The Flutter entry point for
+[Conclave](https://github.com/nodsoftware/conclave), the end-to-end
+encrypted, server-less, local-first sync engine. One dependency: it
+re-exports the full `conclave`, `conclave_crypto`, and `conclave_lan`
+surfaces and adds the Flutter pieces.
 
 ## What's inside
 
+- **`conclaveBuilder(appId:, salt:)`** — batteries-included setup: SQLite
+  with SQLCipher at rest, mDNS LAN transport, the OS keychain,
+  XChaCha20-Poly1305, and SPAKE2 pairing, each overridable before `.open()`.
 - **`KeychainKeyStore`** — a `KeyStore` backed by the platform secure storage
   (iOS/macOS Keychain, Android Keystore-wrapped storage, etc.) via
   [`flutter_secure_storage`](https://pub.dev/packages/flutter_secure_storage).
   Per-database keys are stored namespaced so they never collide.
-- **`CollectionNotifier<T>`** — a `ChangeNotifier` that subscribes to
-  `Collection.watch()` and rebuilds dependent widgets on every local or synced
+- **`CollectionNotifier<T>`** — a `ChangeNotifier` over a collection or a
+  collection query that rebuilds dependent widgets on every local or synced
   change. Works with Provider, `ListenableBuilder`, or any
   `ChangeNotifier`-based state management.
 
@@ -25,6 +31,15 @@ dependencies:
 
 ```dart
 import 'package:conclave_flutter/conclave_flutter.dart';
+
+final conclave = await conclaveBuilder(appId: 'shopping', salt: 'shopping:v1').open();
+final db = await conclave.openDatabase('home', passphrase: words);
+final items = db.collection<Item>('items', Item.codec);
+```
+
+With Provider:
+
+```dart
 import 'package:provider/provider.dart';
 
 ChangeNotifierProvider(
@@ -37,13 +52,13 @@ ChangeNotifierProvider(
 );
 ```
 
-`KeychainKeyStore` is wired automatically by the
-[`conclave`](https://pub.dev/packages/conclave) umbrella's `conclaveBuilder`; pass it
-to `Conclave.open` if you wire adapters yourself.
+The [tutorial](https://nodsoftware.github.io/conclave/start-here/tutorial/)
+walks from an empty app to two paired devices in eight steps.
 
 ## Examples
 
 See the runnable apps in the repository:
-[`shopping_list_provider`](https://github.com/nodsoftware/conclave/tree/main/examples/shopping_list_provider)
+[`quickstart`](https://github.com/nodsoftware/conclave/tree/main/examples/quickstart),
+[`shopping_list_provider`](https://github.com/nodsoftware/conclave/tree/main/examples/shopping_list_provider),
 and
 [`shopping_list_bloc`](https://github.com/nodsoftware/conclave/tree/main/examples/shopping_list_bloc).
