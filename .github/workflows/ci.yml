@@ -41,6 +41,15 @@ jobs:
       # a test/ dir was picked up by one of them.
       - run: melos run test
 
+      # Every package must stay publishable at all times. (pana runs after
+      # publication on pub.dev; it cannot score the dependent packages before
+      # `conclave` exists there.)
+      - name: Publish dry-run
+        run: |
+          for p in conclave conclave_crypto conclave_lan conclave_generator conclave_flutter; do
+            (cd "packages/$p" && flutter pub publish --dry-run)
+          done
+
       # Web: prove conclave and conclave_crypto compile to JS (no dart:io
       # leak), then run the CrdtTable conformance suite against the wasm engine
       # in headless Chrome.

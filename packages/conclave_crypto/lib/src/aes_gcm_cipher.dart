@@ -18,7 +18,7 @@ import 'package:cryptography/cryptography.dart' hide Cipher;
 /// 16-byte GCM authentication tag makes [decrypt] fail closed for any frame
 /// not produced with the same 256-bit key — this is what authenticates peers.
 ///
-/// The default cipher is [XChaChaPoly1305Cipher]; this remains available for
+/// The default cipher is [XChaChaPoly1305Cipher]; this is available for
 /// callers who need AES specifically.
 class AesGcmCipher implements Cipher {
   /// Creates a cipher bound to a 32-byte (256-bit) [key].

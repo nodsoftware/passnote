@@ -1,0 +1,42 @@
+# Publishes every package to pub.dev when a release tag is pushed.
+#
+# Authentication is GitHub OIDC (no long-lived secrets): each package on
+# pub.dev is configured for automated publishing from this repository with
+# the tag pattern `v{{version}}`, and the job's `id-token: write` permission
+# lets `pub` exchange the Actions token. Packages publish in dependency
+# order so pub.dev can resolve each one as it lands.
+name: Publish
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+
+jobs:
+  publish:
+    if: github.repository == 'nodsoftware/conclave'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.1
+          cache: true
+      - run: flutter pub get
+      - name: Publish conclave
+        run: flutter pub publish --force
+        working-directory: packages/conclave
+      - name: Publish conclave_crypto
+        run: flutter pub publish --force
+        working-directory: packages/conclave_crypto
+      - name: Publish conclave_lan
+        run: flutter pub publish --force
+        working-directory: packages/conclave_lan
+      - name: Publish conclave_generator
+        run: flutter pub publish --force
+        working-directory: packages/conclave_generator
+      - name: Publish conclave_flutter
+        run: flutter pub publish --force
+        working-directory: packages/conclave_flutter

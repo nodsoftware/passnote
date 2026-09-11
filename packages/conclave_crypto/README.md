@@ -13,7 +13,7 @@ provides the key-derivation and mnemonic helpers installed by
 - **`XChaChaPoly1305Cipher`**: the default `Cipher`, using XChaCha20-Poly1305.
   Frame layout is `nonce (24) ‖ ciphertext ‖ tag (16)`, with a fresh random
   192-bit nonce per message. Authentication failures surface as
-  `CipherAuthError`. `AesGcmCipher` remains available for callers who need AES.
+  `CipherAuthError`. `AesGcmCipher` is available for callers who need AES.
 - **`DeviceIdentity`**: the X25519 + Ed25519 device keypair behind pairing,
   key wrapping, and revocation, including `fromRecoveryPhrase` for the
   recovery flow.
