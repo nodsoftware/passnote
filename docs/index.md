@@ -62,8 +62,8 @@ flowchart LR
 
 ## Next steps
 
-- [Getting started](getting-started.md) — install, `openDefault`, first
+- [Getting started](start-here/tutorial.md) — install, `openDefault`, first
   collection.
-- [Concepts](concepts/databases-keys.md) — databases, keys, collections, sync.
+- [Concepts](concepts/data-model.md) — databases, keys, collections, sync.
 - [Security](security.md) — the threat model and its limits. **Read this before
   shipping.**

@@ -46,7 +46,7 @@ final items = db.collection<Item>(
 );
 ```
 
-`MergeStrategy` is a [port](../adapters/transport.md), so you can also supply
+`MergeStrategy` is a [port](../reference/transports.md), so you can also supply
 your own implementation. Three are built in:
 
 | Strategy | Granularity | Concurrent edits to one document |
@@ -196,7 +196,7 @@ await sub.cancel();
 
 !!! tip "Flutter"
     Don't subscribe by hand in widgets — use
-    [`CollectionNotifier`](../adapters/storage.md), a `ChangeNotifier` that wraps
+    [`CollectionNotifier`](../reference/transports.md), a `ChangeNotifier` that wraps
     `watch()` and integrates with Provider, `ListenableBuilder`, or any
     `ChangeNotifier`-based state management.
 
@@ -210,4 +210,4 @@ Collections are CRDTs with Hybrid Logical Clock arbitration:
   winner for each conflicting record on every device — convergence is
   deterministic regardless of strategy.
 
-See [Sync & CRDTs](sync-and-crdt.md) for how this works on the wire.
+See [Sync & CRDTs](sync.md) for how this works on the wire.

@@ -16,7 +16,7 @@ timestamp.
 - Edits to the **same** record key are resolved **last-write-wins**.
 
 A document is split into one or more such records by the collection's
-[merge strategy](collections.md#merge-strategies). With the default
+[merge strategy](data-model.md). With the default
 `ObjectMergeStrategy` a document is a single record (whole-document LWW); with
 `ShallowMergeStrategy` or `DeepMergeStrategy` each field becomes its own record,
 so concurrent edits to different fields of one document both survive.

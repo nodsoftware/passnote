@@ -13,18 +13,32 @@ repo_name = "nodsoftware/conclave"
 
 nav = [
   { "Home" = "index.md" },
-  { "Getting started" = "getting-started.md" },
-  { "Concepts" = [
-    "concepts/databases-keys.md",
-    "concepts/collections.md",
-    "concepts/sync-and-crdt.md",
+  { "Start here" = [
+    "start-here/index.md",
+    "start-here/tutorial.md",
   ] },
-  { "Adapters" = [
-    "adapters/storage.md",
-    "adapters/transport.md",
+  { "Guides" = [
+    "guides/index.md",
+  ] },
+  { "Concepts" = [
+    "concepts/data-model.md",
+    "concepts/clocks-and-merge.md",
+    "concepts/sync.md",
+    "concepts/identity.md",
+    "concepts/glossary.md",
+  ] },
+  { "Reference" = [
+    "reference/builder.md",
+    "reference/ports.md",
+    "reference/transports.md",
+    "reference/wire-protocol.md",
+    "reference/sqlite-schema.md",
   ] },
   { "Security" = "security.md" },
 ]
+
+# getting-started.md is intentionally NOT in nav: it is a stub redirect kept at
+# the old URL, pointing to start-here/tutorial.md.
 
 [project.theme]
 variant = "modern"

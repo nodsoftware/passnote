@@ -58,6 +58,14 @@ jobs:
         run: dart test -P web
         working-directory: packages/conclave_lan
 
+      # Docs: build the site with the pinned Zensical and fail on any broken
+      # internal link.
+      - name: Docs build and link check
+        run: |
+          pip install zensical==0.0.60
+          zensical build
+          dart run tool/check_doc_links.dart
+
       # Asserts the disk-backed engine's resident memory stays bounded as the
       # dataset grows, and that MapCrdtTable does not (the contrast).
       - name: Memory bounds benchmark
