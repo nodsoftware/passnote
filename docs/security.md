@@ -1,6 +1,6 @@
 # Security
 
-Conclave is built so that **the encryption key — and therefore the passphrase —
+Conclave is built so that **the encryption key (and therefore the passphrase)
 is the only thing that protects your data**. This page describes what Conclave
 defends against, what it does not, and the limits you must respect when shipping.
 
@@ -12,7 +12,7 @@ defends against, what it does not, and the limits you must respect when shipping
 
 - **Confidentiality at rest and in transit.** Every document is encrypted with
   **XChaCha20-Poly1305** before it is written to disk or sent over the network.
-  Keys are derived from a passphrase via BIP39 → Argon2id and never leave the
+  Keys are derived from a passphrase via BIP39 then Argon2id and never leave the
   device. On Flutter, keys are stored in the OS keychain
   (`flutter_secure_storage`).
 - **Integrity and authenticity of data.** XChaCha20-Poly1305 is authenticated
@@ -28,12 +28,12 @@ defends against, what it does not, and the limits you must respect when shipping
 
 - **The passphrase is everything.** Anyone who learns the passphrase can read and
   write the data. Share it only over a trusted channel; treat it like a password.
-  There is no recovery and no server-side revocation — rotating means choosing a
+  There is no recovery and no server-side revocation; rotating means choosing a
   new passphrase and re-pairing devices.
 - **Custom passphrases weaken the model.** Conclave's security assumes a
   high-entropy passphrase. The generated BIP39 mnemonic (default 24 words,
-  256-bit) provides this. If you supply your own passphrase string, its entropy —
-  not the KDF work factor — sets the security ceiling. A human-memorable
+  256-bit) provides this. If you supply your own passphrase string, its
+  entropy (not the KDF work factor) sets the security ceiling. A human-memorable
   phrase can be brute-forced regardless of the Argon2id cost. Prefer the
   generated mnemonic; if you must accept user input, require a BIP39 mnemonic or
   a long random string.
@@ -65,8 +65,8 @@ defends against, what it does not, and the limits you must respect when shipping
 | --- | --- |
 | Symmetric cipher | XChaCha20-Poly1305 (24-byte random nonce, 16-byte tag) |
 | Frame layout | `nonce ‖ ciphertext ‖ tag` |
-| Key derivation | BIP39 seed → Argon2id (19 MiB, 2 passes, 1 lane); PBKDF2-HMAC-SHA256 available for FIPS |
-| Passphrase | BIP39 mnemonic, 128–256 bits of entropy (12–24 words) |
+| Key derivation | BIP39 seed, then Argon2id (19 MiB, 2 passes, 1 lane); PBKDF2-HMAC-SHA256 available for FIPS |
+| Passphrase | BIP39 mnemonic, 128 to 256 bits of entropy (12–24 words) |
 | Room tag | truncated SHA-256 of the key with a domain-separation label |
 | Nonce policy | a fresh random 192-bit nonce per message |
 

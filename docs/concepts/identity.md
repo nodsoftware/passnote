@@ -1,146 +1,114 @@
-# Databases & keys
+# Identity and keys
 
-Conclave is organised into three nested concepts:
+!!! abstract "In plain terms"
+    Every device has its own keypair that never leaves it. The data itself is
+    encrypted with one shared group key, which is sealed individually to each
+    device. New devices join with a short one-time code; a lost device is
+    revoked by rotating the group key, after which it can read nothing new.
 
-```mermaid
-flowchart TD
-  Conclave["Conclave (app handle)"] --> DB1["Database 'home'"]
-  Conclave --> DB2["Database 'work'"]
-  DB1 --> C1["Collection 'items'"]
-  DB1 --> C2["Collection 'tags'"]
-```
+## How it works
 
-- A **`Conclave`** is the app-level handle. There is one per app, created via
-  `openDefault` (or `Conclave.open` for custom wiring). It owns exactly one
-  transport and any number of databases.
-- A **`Database`** is one shared, encrypted dataset, identified by a local id and
-  unlocked by a passphrase.
-- A **`Collection<T>`** is a typed, queryable set of documents inside a database.
+### What the passphrase does
 
-## Passphrases, keys, and rooms
+Opening a database takes a passphrase (a BIP39 word list by default). Two
+things derive from it, per app `salt`:
 
-Each database is unlocked by a **passphrase** — a BIP39 mnemonic. From the
-passphrase Conclave derives two things:
-
-1. **An AES-256 encryption key**, via BIP39 seed → PBKDF2-HMAC-SHA256. This key
-   encrypts everything at rest and on the wire. It never leaves the device.
-2. **A room tag**, a short opaque identifier derived from the key. Devices that
-   derive the same key advertise and join the same "room" over mDNS. The room
-   tag reveals nothing about the key or the data.
+1. **The roster key**, via BIP39 seed then Argon2id. It encrypts the device
+   [roster](glossary.md#roster) and control traffic, and everything else in
+   the legacy mode below.
+2. **The [room tag](glossary.md#room-tag)**, the public discovery identifier.
+   It is a one-way hash: seeing it reveals nothing and grants nothing.
 
 ```mermaid
 flowchart LR
   P["Passphrase<br/>(BIP39 words)"] --> S["BIP39 seed"]
-  S -->|PBKDF2-HMAC-SHA256<br/>+ app salt| K["AES-256 key"]
-  K --> Cipher["Encrypt / decrypt"]
-  K -->|SHA-256 + truncate| Room["Room tag<br/>(discovery)"]
+  S -->|Argon2id + app salt| K["Roster key"]
+  K --> RC["Roster + control<br/>encryption"]
+  K -->|one-way hash| Room["Room tag<br/>(discovery)"]
 ```
 
-The same passphrase always derives the same key for a given `appId`/`salt`, so
-entering it on a second device reconstructs the identical key and joins the same
-room — that is the entire pairing mechanism.
+The passphrase is not the data key. User data is encrypted with the group key
+below, so knowing the passphrase alone is not enough to read a group's data:
+a device must also be admitted to the roster.
 
-## Generating and sharing a passphrase
+### Device keypairs and the group key
 
-Generate a passphrase on one device and have the user enter it on the others:
+Each installation generates an identity: an X25519 key-exchange keypair and an
+Ed25519 signing keypair, stored in the OS keychain. The private halves never
+leave the device.
+
+The first device to open a database *founds* its group: it generates a random
+**[group key](glossary.md#group-key)** and seals ("wraps") it to its own
+public key. The wrap lives in the roster, a reserved synced collection
+(`__conclave_devices`) holding one record per device plus each device's
+wrapped key at the current [key epoch](glossary.md#key-epoch). User
+collections are encrypted with the group key, at rest (SQLCipher) and on the
+wire.
+
+### Pairing
+
+A new device joins with a one-time nine-digit code:
 
 ```dart
-final words = conclave.generatePassphrase().join(' ');
-// Show `words` to the user. On the other device:
-final db = await conclave.openDatabase('home', passphrase: words);
+// Sponsor (any device that has the data):
+final code = await conclave.startPairing('home');
+// Joiner:
+final db = await conclave.pairWith('home', PairingCode.parse(input));
 ```
 
-The word count is configurable through `PassphrasePolicy` (12/15/18/21/24 words,
-mapping to 128–256 bits of entropy; 24 is the default):
+Under the code runs a [PAKE](glossary.md#pake) (SPAKE2): both sides prove they
+hold the same code without revealing it and derive a private channel. The
+sponsor then admits the joiner to the roster and seals the group key to the
+joiner's public key. A wrong code fails visibly; the sponsor disarms the code
+after three failed attempts; an eavesdropper who misses the code learns
+nothing.
+
+### Revocation
 
 ```dart
-final conclave = await openDefault(
-  appId: 'shopping',
-  salt: 'shopping:v1',
-  passphrase: const PassphrasePolicy(words: 12),
-);
+await conclave.revokeDevice('home', deviceId);
 ```
 
-## Multiple databases
+Revoking generates a fresh group key at the next epoch, seals it to every
+remaining device, re-encrypts the local store, and marks the device revoked in
+the roster. Peers adopt the new key as the roster syncs. The revoked device
+keeps whatever it already had (nothing can erase a copy it holds), but every
+new write is under a key it will never receive. Two devices revoking different
+peers at the same time converge: the surviving device with the lowest id
+performs one final rotation covering both.
 
-A single `Conclave` can hold several databases, each with its own passphrase and
-therefore its own key and room. Databases are fully isolated: even when two
-databases sync over the same peer connection, a peer that lacks a database's key
-cannot read — or detect — its traffic.
+### Forward secrecy
 
-```dart
-final home = await conclave.openDatabase('home', passphrase: homeWords);
-final work = await conclave.openDatabase('work', passphrase: workWords);
-```
+Each pair of devices additionally runs a per-connection
+[ratchet](glossary.md#ratchet): message keys derive from a hash chain seeded
+by the group key and per-session randomness, each key is used once and wiped.
+Someone who records traffic today and steals a device next month cannot
+decrypt the recording. Ratchet handshakes are tagged with the key generation
+they belong to, so sessions never pair across a rotation.
 
-## The `appId` and `salt`
+### Optional recovery phrase
 
-- **`appId`** namespaces discovery and storage. Only apps sharing an `appId`
-  discover one another; storage keys are prefixed with it.
-- **`salt`** is a stable, app-specific string folded into key derivation. The
-  same passphrase with a different salt produces a different key, so the salt
-  pins your keys to your app. Use something like `"myapp:v1"` and keep it
-  constant — changing it invalidates every previously derived key.
+By default there is no back door: lose every device and the data is gone,
+which is a legitimate product choice. Apps can opt in
+(`.recovery(enabled: true)`) to a 24-word recovery phrase:
+`enableRecovery` registers a keypair derived from the phrase as a virtual
+roster member with its own wrap, and `recoverFrom(phrase, passphrase:)` on a
+fresh install re-derives that keypair, syncs the roster from any reachable
+peer, and unwraps the group key. A phrase is withdrawn like any device, with
+`revokeDevice`. See the
+[recovery guide](../guides/recover-from-a-lost-passphrase.md).
 
-## Closing
+## Edge cases and guarantees
 
-`conclave.close()` closes all open databases and stops the transport. An
-individual database can be removed with `db.leave()`, which stops syncing it and
-drops its local encryption key.
-
-## Rotating the passphrase
-
-To change a database's passphrase (e.g. after a compromise or as routine key
-hygiene) call `rotatePassphrase`:
-
-```dart
-await conclave.rotatePassphrase(
-  'home',
-  oldPassphrase: oldWords,
-  newPassphrase: newWords,
-);
-```
-
-This re-encrypts every blob in the local store with the new key, then updates
-the `KeyStore`. If the database is currently open it is closed first — call
-`openDatabase` with the new passphrase, or `reopenDatabase`, to resume.
-
-### Peer isolation
-
-Changing the passphrase changes the room tag (it is derived from the key, not
-from a stable identifier). After rotation the calling node broadcasts and listens
-in a different room, so it can no longer communicate with peers still on the
-old key. Those peers continue syncing among themselves unaffected.
-
-To re-establish sync all devices must be rotated to the same new passphrase. The
-order does not matter — each device rotates independently, and after they all
-reopen in the new room the normal CRDT sync converges any changes made in the
-meantime.
-
-### Crash safety
-
-If the process is interrupted (process kill, power loss) the caller has three
-recovery paths:
-
-**`openDatabase` with the old passphrase** — the partial rotation is reversed;
-every blob is re-encrypted back to the old key and the old key stays primary.
-
-**`openDatabase` with the new passphrase** — the rotation is completed;
-remaining old-key blobs are re-encrypted with the new key and the new key is
-promoted.
-
-**`reopenDatabase` without a passphrase** — the rotation is always **completed
-forward**. This is critical for security: a crash during rotation must not
-silently revert on app restart, otherwise a compromised peer would never be
-isolated.
-
-All three paths are idempotent and safe to retry. Use `hasPendingRotation` to detect a prior crash before opening.
-
-The crash-safety mechanism works because:
-1. Both keys are stored in the `KeyStore` (`rotate_backup` + `rotate_new`)
-   before re-encryption starts.
-2. The re-encryption loop handles partial progress — a blob already encrypted
-   with the target key is decrypted with that same key and re-encrypted (a
-   no-op).
-3. Only after every blob is confirmed re-encrypted is the appropriate key
-   promoted to primary, then the backup entries removed.
+- **No identity configured** (a custom `Conclave.lowLevel` without one): the
+  roster does not exist and the passphrase-derived key encrypts everything.
+  This is the legacy single-key mode; the builder always configures an
+  identity.
+- **A device with no wrap opens in `DeviceState.needsPairing`.** It can sync
+  the roster but cannot open user collections until admitted. This is a state,
+  not an error.
+- **Roster changes are CRDT rows** and converge like any data, including
+  concurrent admissions and revocations.
+- **The room tag is public by design.** A network observer learns that some
+  Conclave database exists and sees frame sizes and timing, nothing more. See
+  [Security](../security.md).

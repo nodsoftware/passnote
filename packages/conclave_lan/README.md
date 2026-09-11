@@ -1,20 +1,28 @@
 # conclave_lan
 
-LAN transport for [Conclave](https://github.com/nodsoftware/conclave): mDNS service
-discovery plus WebSocket data connections, in pure Dart. This is the default
-transport used by the [`conclave`](https://pub.dev/packages/conclave) umbrella's
-`conclaveBuilder`.
+Transports for [Conclave](https://github.com/nodsoftware/conclave): mDNS LAN
+discovery (native) and WebSockets (everywhere, including the browser), plus a
+reference relay. `LanTransport` is the default installed by
+`conclave_flutter`'s `conclaveBuilder`.
 
-It implements the `Transport` port from `conclave`, discovering same-app
-peers on the local network and exchanging already-encrypted frames between them.
+Both implement the `Transport` port from `conclave` and move already-encrypted
+frames; a transport never sees plaintext.
 
 ## What's inside
 
-- **`LanTransport`** — advertises `_conclave-<appId>._tcp` over mDNS, browses for
-  peers, and connects them over WebSocket. Exactly one connection forms per pair
-  (the lexicographically smaller node id dials), with ping/pong health checks and
-  exponential-backoff reconnect.
-- **`FrameCodec`** — length-prefixed binary encoding of `(room, bytes)` frames.
+- **`LanTransport`** (`package:conclave_lan/discovery.dart`, native only):
+  advertises `_conclave-<appId>._tcp` over mDNS, browses for peers, and
+  connects them over WebSocket. Exactly one connection forms per pair (the
+  smaller node id dials), with ping/pong health checks and exponential-backoff
+  reconnect.
+- **`WebSocketTransport`** (the main, web-safe entry): dials explicit
+  `ws(s)://` addresses (a peer's listener or a relay) and, on native
+  platforms, accepts inbound connections. One connection can multiplex many
+  peers.
+- **`WebSocketRelay`** (`package:conclave_lan/relay.dart`) and the
+  `dart run conclave_lan:relay` runner: a reference frame relay that routes
+  addressed envelopes and can read only node ids, room tags, and ciphertext.
+- **`FrameCodec`**: binary encoding of `(room, bytes)` frames.
 
 ## Install
 
@@ -34,9 +42,10 @@ final transport = LanTransport();
 
 ## Scope and limits
 
-- **LAN-only.** No NAT traversal, relay, or internet sync — devices must share a
-  local network.
-- The transport ships opaque, encrypted bytes; it knows nothing about CRDTs or
+- `LanTransport` is LAN-only: no NAT traversal or internet sync; devices must
+  share a network. `WebSocketTransport` reaches anything you can address,
+  including through the relay.
+- A transport ships opaque, encrypted bytes; it knows nothing about CRDTs or
   keys.
 
 ## Testing
@@ -48,5 +57,6 @@ is tagged `integration` and excluded from the default unit run:
 dart test --run-skipped -t integration packages/conclave_lan
 ```
 
-`FrameCodec` has fast, socket-free unit tests that always run. See
-[Transport adapters](https://nodsoftware.github.io/conclave/adapters/transport/).
+The WebSocket transport and relay have loopback tests that always run, plus a
+headless-Chrome test where a browser peer converges with a native one. See
+[Transports](https://nodsoftware.github.io/conclave/reference/transports/).

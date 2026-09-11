@@ -1,101 +1,86 @@
-# Sync & CRDTs
+# Sync
 
-Conclave keeps every device's copy of a database identical without a central
-server. This page explains how — the CRDT model, Hybrid Logical Clocks, and the
-wire protocol.
+!!! abstract "In plain terms"
+    Devices find each other, agree on a protocol version, and push changes to
+    each other as they happen. A periodic background exchange compares
+    fingerprints of what each side holds and repairs any gap, however old. All
+    of it travels encrypted; none of it needs a server.
 
-## Conflict-free replicated data
+## How it works
 
-Each collection is backed by a **CRDT** (Conflict-free Replicated Data Type). A
-CRDT is a data structure whose replicas can be updated independently and merged
-in any order, always arriving at the same result. Conclave models each
-collection as a map from **record key** to value, where every record carries a
-timestamp.
+### Connecting
 
-- Edits to **different** record keys are independent and both survive a merge.
-- Edits to the **same** record key are resolved **last-write-wins**.
+When two devices meet on the transport, each sends a handshake: the
+[wire versions](glossary.md#wire-version) it speaks, optional capabilities,
+and its device public key. Sync starts on the highest version both share. If
+there is none (one app is too old), a `PeerIncompatible` event is emitted on
+`Conclave.events` and nothing further is exchanged, so the app can tell the
+user to update. After a successful handshake the pair also establishes its
+forward-secrecy [ratchet](glossary.md#ratchet); see
+[Identity](identity.md).
 
-A document is split into one or more such records by the collection's
-[merge strategy](data-model.md). With the default
-`ObjectMergeStrategy` a document is a single record (whole-document LWW); with
-`ShallowMergeStrategy` or `DeepMergeStrategy` each field becomes its own record,
-so concurrent edits to different fields of one document both survive.
-
-## Hybrid Logical Clocks
-
-"Last write" needs a notion of time that survives clock skew and offline edits.
-Conclave uses a **Hybrid Logical Clock (HLC)**: a timestamp combining wall-clock
-time with a logical counter and a node id. HLCs are:
-
-- **Monotonic** — they never go backwards on a node, even if the wall clock does.
-- **Causally ordered** — if edit A happened-before B, then `hlc(A) < hlc(B)`.
-- **Total** — the node id breaks ties, so every device picks the *same* winner
-  for concurrent same-key edits.
-
-Each record stores the HLC of its last modification. Merging two records keeps
-the one with the higher HLC.
-
-## The wire protocol
-
-When two peers connect, they reconcile state with three message types, all
-encrypted end-to-end before they touch the network:
+### Push, then catch up
 
 ```mermaid
 sequenceDiagram
   participant A as Device A
   participant B as Device B
-  A->>B: hello (node id)
-  B->>A: hello (node id)
-  B->>A: state (per-collection HLC watermarks)
-  A->>B: state (per-collection HLC watermarks)
-  B->>A: delta (records newer than A's watermarks)
-  A->>B: delta (records newer than B's watermarks)
+  A->>B: handshake (versions, capabilities)
+  B->>A: handshake
+  A->>B: hello
+  B->>A: state (per-collection watermarks)
+  A->>B: delta frames (records newer than B's watermarks)
   Note over A,B: steady state
-  A->>B: delta (records changed locally)
+  A->>B: delta (each local change, as it happens)
 ```
 
-1. **hello** — on connect, each side sends its node id. (The room is a transport
-   frame field, not part of the payload, so it never appears here.)
-2. **state** — each side replies with its per-collection HLC *watermarks* (the
-   highest HLC it holds per collection), telling the peer how far behind it is.
-3. **delta** — each side then sends the records newer than the other's
-   watermarks: a fast catch-up with no full transfer. Thereafter every local
-   `put`/`delete` broadcasts just the changed records to connected peers.
+- Every local `put`, `delete`, or `increment` broadcasts just the changed
+  records to connected peers, immediately.
+- On connect (and on demand), a `hello` asks the peer for its per-collection
+  [watermarks](glossary.md#watermark); everything newer flows back as deltas.
+- A large [changeset](glossary.md#changeset) streams as bounded frames of at
+  most 500 records, split only on document boundaries, so a receiver never
+  sees half a document and no single frame grows unbounded.
+- Frames to each peer travel through an ordered send window
+  (`maxInFlightFrames`, default 16). A slow receiver makes the sender pause at
+  the bound instead of buffering without limit.
 
-A fourth message, **poke**, exists for manual re-syncs (see below).
+### Anti-entropy and reconciliation
 
-Received changesets are merged into the local CRDT and persisted. Crucially,
-merging a remote changeset does **not** re-broadcast it, so deltas don't echo
-around the network.
+Push can lose a frame: a flaky link, a device asleep at the wrong moment, the
+inbound rate limiter. Every few minutes (`antiEntropyInterval`, default 3
+minutes, `Duration.zero` disables) each database runs a repair exchange with
+its peers.
 
-## Offline and reconnect
+With peers that support it, the exchange is
+[range reconciliation](glossary.md#range-reconciliation): the devices compare
+fingerprints of [HLC](glossary.md#hlc) ranges and recursively split any range
+that differs, until the exact differing records are found and shipped. This
+finds *any* difference in a few round trips, including a record older than
+both watermarks, which a watermark exchange alone could never notice.
+Identical devices exchange only fingerprints, a few hundred bytes.
 
-Because every device holds a full local copy, all reads and writes work offline.
-On reconnect the hello/state exchange replays exactly the edits each side missed,
-and HLC arbitration guarantees both sides converge to the same state —
-regardless of the order in which messages arrive.
+With a peer that lacks the capability, the exchange falls back to the plain
+hello/state/delta round.
 
-## Manual re-sync
+### Offline and reconnect
 
-Call [`forceSync`][force-sync] on any node to reconcile with all connected peers:
+Every device holds a full copy, so reads and writes never wait for the
+network. On reconnect, the handshake and catch-up run again and both sides
+converge. `Conclave.forceSync()` triggers the full exchange on demand, for a
+pull-to-refresh gesture.
 
-```dart
-await conclave.forceSync();
-```
+## Edge cases and guarantees
 
-Under the hood it sends two messages to each peer:
-
-1. **hello** — pushes this node's records *to* the peer.
-2. **poke** — the peer replies with its own hello, pulling the peer's records
-   *back*.
-
-After both exchanges, both sides converge on the union of their changes. Use
-forceSync for pull-to-refresh, after recovering from a rate-limit window, or any
-time you want to guarantee convergence outside the normal sync cycle.
-
-## Encryption boundary
-
-The CRDT and protocol operate on plaintext records in memory. Everything below —
-both the on-disk blobs and every frame on the wire — is AES-256-GCM encrypted
-with the database's key. A peer without the key sees only opaque ciphertext and
-an opaque room tag. See [Security](../security.md) for the full threat model.
+- **Convergence does not depend on message order or timing.** Deltas may
+  arrive duplicated or interleaved; merging is idempotent and commutative.
+- **Received changes are never re-broadcast**, so deltas cannot echo around
+  the group.
+- **Malformed frames are dropped, never crash.** The binary decoder returns
+  null for anything it cannot parse (fuzzed in CI), and a frame that fails
+  authentication is discarded.
+- **Rate limiting is a guard, not a boundary.** A peer exceeding
+  `maxInboundFramesPerSecond` (default 100) has its excess frames dropped;
+  anti-entropy repairs whatever that loses.
+- **An incompatible peer costs nothing.** After the `PeerIncompatible` event
+  its frames are ignored; there is no retry loop.

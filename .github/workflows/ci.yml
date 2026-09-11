@@ -66,6 +66,17 @@ jobs:
           zensical build
           dart run tool/check_doc_links.dart
 
+      # House style: at most 2 em-dashes per docs page (commas, parentheses,
+      # or sentence breaks carry the rest).
+      - name: Docs em-dash ceiling
+        run: |
+          fail=0
+          for f in $(find docs -name '*.md'); do
+            n=$(grep -o "—" "$f" | wc -l)
+            if [ "$n" -gt 2 ]; then echo "$f has $n em-dashes (max 2)"; fail=1; fi
+          done
+          exit $fail
+
       # Asserts the disk-backed engine's resident memory stays bounded as the
       # dataset grows, and that MapCrdtTable does not (the contrast).
       - name: Memory bounds benchmark

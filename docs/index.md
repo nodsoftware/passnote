@@ -1,18 +1,20 @@
 # Conclave
 
-**End-to-end encrypted, server-less, local-first CRDT sync engine for Dart and
-Flutter.**
+**End-to-end encrypted, server-less, local-first sync for Dart and Flutter.**
 
-Conclave lets a group of devices share a live, mergeable dataset over the local
-network — with no server, no account, and no plaintext ever leaving the device.
-Pairing is a passphrase; everything else is automatic.
+Conclave lets a small group of devices share a live, mergeable dataset with no
+server and no account. Every device holds a full copy and works offline; new
+devices join with a short one-time code; a lost device can be revoked. No
+plaintext ever leaves a device.
 
 ```dart
-import 'package:conclave/conclave.dart';
+final conclave = await conclaveBuilder(
+  appId: 'shopping',
+  salt: 'shopping:v1',
+).open();
 
-final conclave = await openDefault(appId: 'shopping', salt: 'shopping:v1');
-final list = await conclave.openDatabase('home', passphrase: words);
-final items = list.collection<Item>('items', itemCodec);
+final db = await conclave.openDatabase('home', passphrase: words);
+final items = db.collection<Item>('items', Item.codec);
 
 await items.put(Item(id: newId(), name: 'Milk'));
 items.watch().listen((all) => print('now ${all.length} items'));
@@ -20,50 +22,48 @@ items.watch().listen((all) => print('now ${all.length} items'));
 
 ## Why Conclave
 
-- **End-to-end encrypted.** Every byte at rest and on the wire is encrypted with
-  AES-256-GCM. The encryption key is derived from a passphrase and never leaves
-  the device. Peers that don't hold the key can't read — or even identify — your
-  data.
-- **Server-less.** Devices discover each other over mDNS and sync directly over
-  WebSocket on the LAN. There is nothing to deploy and nothing to pay for.
-- **Local-first.** Every device holds a full local copy and works fully offline.
-  Edits made while disconnected merge automatically on reconnect.
-- **Conflict-free.** State is modelled as CRDTs with Hybrid Logical Clock
-  arbitration: concurrent edits to different documents both survive; concurrent
-  edits to the same document resolve to the same deterministic winner on every
-  device.
-- **Ports & adapters.** The engine depends only on small interfaces. Swap
-  storage (Sembast, Hive, your own), transport, key store, or cipher without
+- **End-to-end encrypted.** XChaCha20-Poly1305 on every byte, at rest
+  (SQLCipher) and on the wire, with keys that never leave the devices and a
+  forward-secrecy ratchet on every connection.
+- **Real device membership.** Each device has its own keypair. Joining is a
+  nine-digit code over a PAKE; leaving is a revocation that rotates the group
+  key away from the lost device. No shared password to rotate by hand.
+- **Server-less.** Devices find each other over the local network (or an
+  explicit WebSocket address, for browsers) and sync directly. Nothing to
+  deploy, nothing to breach centrally.
+- **Local-first.** Reads and writes never wait for the network. Concurrent
+  edits merge deterministically; counters add up and sets keep everyone's
+  changes when you ask for it.
+- **Self-healing sync.** Changes push immediately; a periodic fingerprint
+  exchange finds and repairs any gap, however old, in a few round trips.
+- **Small, swappable parts.** Storage, transport, key store, cipher, identity,
+  and PAKE are ports with production adapters; replace any of them without
   touching app code.
 
 ## How it fits together
 
 ```mermaid
 flowchart LR
-  App["Your app"] --> C["Conclave (umbrella)"]
-  C --> Core["conclave<br/>engine + CRDT"]
-  C --> Crypto["conclave_crypto<br/>AES-GCM, BIP39, PBKDF2"]
-  C --> Sembast["conclave_sembast<br/>storage"]
-  C --> Lan["conclave_lan<br/>mDNS + WebSocket"]
-  C --> Flutter["conclave_flutter<br/>keychain + notifier"]
+  App["Your app"] --> F["conclave_flutter<br/>builder + platform glue"]
+  F --> Core["conclave<br/>engine, CRDTs, protocol"]
+  F --> Crypto["conclave_crypto<br/>XChaCha20, Argon2id, SPAKE2"]
+  F --> Lan["conclave_lan<br/>mDNS + WebSocket"]
+  Gen["conclave_generator<br/>codecs from annotations"] -. build_runner .-> App
 ```
 
 ## Packages
 
-| Package                                                   | Purpose                                              |
-| --------------------------------------------------------- | ---------------------------------------------------- |
-| [`conclave`](https://pub.dev/packages/conclave)           | Umbrella + `openDefault` batteries-included wiring   |
-| [`conclave`](https://pub.dev/packages/conclave) | Pure-Dart engine, CRDT collections, ports, protocol  |
-| `conclave_crypto`                                         | AES-256-GCM cipher, BIP39 passphrases, PBKDF2        |
-| `conclave_sembast`                                        | Sembast-backed `BlobStore`                           |
-| `conclave_hive`                                           | Hive-backed `BlobStore`                              |
-| `conclave_lan`                                            | LAN transport (mDNS discovery + WebSocket frames)    |
-| `conclave_flutter`                                        | Keychain key store + `CollectionNotifier`            |
+| Package | Purpose |
+| --- | --- |
+| `conclave_flutter` | The entry point for Flutter apps: `conclaveBuilder`, keychain key store, notifiers. Re-exports everything below. |
+| `conclave` | The pure-Dart engine: collections, CRDTs, queries, the sync protocol, the SQLite store. |
+| `conclave_crypto` | XChaCha20-Poly1305, Argon2id, BIP39, SPAKE2, the device identity. |
+| `conclave_lan` | Transports: mDNS LAN discovery (native) and WebSockets (everywhere), plus the reference relay. |
+| `conclave_generator` | Generates codecs and CRDT schemas from `@Document()` annotations. |
 
 ## Next steps
 
-- [Getting started](start-here/tutorial.md) — install, `openDefault`, first
-  collection.
-- [Concepts](concepts/data-model.md) — databases, keys, collections, sync.
-- [Security](security.md) — the threat model and its limits. **Read this before
-  shipping.**
+- [Start here](start-here/index.md): what Conclave is, in one screen.
+- [Tutorial](start-here/tutorial.md): empty app to two synced devices.
+- [Concepts](concepts/data-model.md): the data model, clocks, sync, identity.
+- [Security](security.md): what is protected, and the boundaries.

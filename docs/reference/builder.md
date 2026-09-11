@@ -1,3 +1,63 @@
 # The builder
 
-This page is being written for v1.0.
+`conclaveBuilder(appId:, salt:)` (from `conclave_flutter`) returns a
+`ConclaveBuilder` with the production pieces installed; chain overrides, then
+`await .open()`. Each override may be set at most once.
+
+```dart
+final conclave = await conclaveBuilder(appId: 'shopping', salt: 'shopping:v1')
+    .passphrase(words: 12)
+    .compactionHorizon(const Duration(days: 60))
+    .open();
+```
+
+Pure-Dart apps use `Conclave.builder(appId:, salt:)` from `package:conclave`
+after installing defaults with `ConclaveBuilder.installDefaults`, or skip the
+builder entirely with `Conclave.lowLevel` (every dependency passed explicitly;
+see [Ports](ports.md)).
+
+## Overrides
+
+| Method | Default | Purpose |
+| --- | --- | --- |
+| `.engine(factory)` | SQLite files (SQLCipher at rest) | Storage per collection. `MapCrdtTable.new` selects in-memory, unpersisted. |
+| `.transport(factory)` | `LanTransport` (mDNS, native only) | How peers are found and frames move. `WebSocketTransport` for web or explicit addresses; see [Transports](transports.md). |
+| `.keyStore(factory)` | OS keychain | Where derived keys and the device identity persist. |
+| `.cipher(factory)` | XChaCha20-Poly1305 | The authenticated cipher, built per key. |
+| `.identity(factory)` | X25519 + Ed25519 device identity | The device keypair backing pairing and revocation. |
+| `.pake(factory)` | SPAKE2 (P-256, RFC 9382) | The exchange behind the pairing code. |
+| `.recovery(enabled:)` | `false` | Opt in to the recovery phrase APIs. |
+| `.passphrase(words:, strictness:)` | 24 words, `warn` | Generated passphrase length; whether non-mnemonic passphrases are rejected. |
+| `.compactionHorizon(duration)` | 30 days | How old a tombstone must be before `compact` removes it. |
+| `.maxInboundFramesPerSecond(n)` | 100 | Per-peer inbound rate limit. |
+
+## ConclaveConfig
+
+`Conclave.lowLevel` takes the same knobs as a `ConclaveConfig`:
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `appId` | required | Namespaces discovery and storage. |
+| `salt` | required | Stable app-specific key-derivation salt (`"myapp:v1"`). Changing it invalidates every derived key. |
+| `passphrasePolicy` | 24 words, `warn` | See `.passphrase()`. |
+| `compactionHorizon` | 30 days | See `.compactionHorizon()`. |
+| `maxInboundFramesPerSecond` | 100 | See `.maxInboundFramesPerSecond()`. |
+| `snapshotInterval` | 30 minutes | How often the disk engine writes its recovery snapshot; `Duration.zero` disables. |
+| `antiEntropyInterval` | 3 minutes | How often the repair exchange runs; `Duration.zero` disables. |
+| `maxInFlightFrames` | 16 | Send-window bound per peer. |
+| `recoveryEnabled` | `false` | See `.recovery()`. |
+
+## Main handle operations
+
+| Member | Purpose |
+| --- | --- |
+| `openDatabase(id, passphrase:)` | Open (or create) a database; stores the derived key for `reopenDatabase`. |
+| `reopenDatabase(id)` | Reopen without the passphrase, using the stored key. |
+| `forget(id)` | Drop the stored key and stop syncing the database. |
+| `generatePassphrase()` | A fresh BIP39 word list per the policy. |
+| `startPairing(id)` / `pairWith(id, code)` / `cancelPairing()` | The pairing flow. |
+| `devices(id)` / `renameDevice` / `revokeDevice` | Roster management. |
+| `enableRecovery(id)` / `recoverFrom(id, phrase, passphrase:)` | The opt-in recovery phrase. |
+| `forceSync()` | Full exchange with every connected peer, now. |
+| `events` | `PeerAppeared`, `PeerDisappeared`, `PeerIncompatible`, `StoreRecovered`. |
+| `close()` | Close every database and stop the transport. |

@@ -1,8 +1,8 @@
 # conclave
 
 The pure-Dart engine behind
-[Conclave](https://github.com/nodsoftware/conclave) — an end-to-end encrypted,
-local-first CRDT sync engine. CRDT-backed collections, the SQLite storage
+[Conclave](https://github.com/nodsoftware/conclave), an end-to-end encrypted,
+local-first CRDT sync engine: CRDT-backed collections, the SQLite storage
 engine, device identity, the port interfaces, and the wire protocol. No Flutter
 dependency.
 
@@ -15,18 +15,18 @@ adapters.
 
 ## What's inside
 
-- **`Conclave` / `Database` / `Collection<T>`** — the app handle, an encrypted
+- **`Conclave` / `Database` / `Collection<T>`**: the app handle, an encrypted
   shared dataset, and typed queryable document sets.
-- **`Conclave.builder(...)`** — staged configuration; `Conclave.lowLevel` and
+- **`Conclave.builder(...)`**: staged configuration; `Conclave.lowLevel` and
   `package:conclave/engine.dart` are the advanced surface.
-- **Ports** — `CrdtTable`, `Cipher`, `KeyStore`, `Transport`, `MergeStrategy`,
+- **Ports**: `CrdtTable`, `Cipher`, `KeyStore`, `Transport`, `MergeStrategy`,
   `Identity`, `Pake`. The engine depends only on these interfaces.
-- **Engine** — `SqliteCrdtTable` (SQLite, SQLCipher at rest, wasm on the web);
+- **Engine**: `SqliteCrdtTable` (SQLite, SQLCipher at rest, wasm on the web);
   `MapCrdtTable` for tests.
-- **Identity** — per-device keypairs, PAKE pairing, group-key wrap and rotation,
+- **Identity**: per-device keypairs, PAKE pairing, group-key wrap and rotation,
   a forward-secrecy ratchet.
-- **`Codec` / `JsonCodec`** — typed document (de)serialisation.
-- **In-memory transport** — `InMemoryTransport` over an `InMemoryBus` for tests.
+- **`Codec` / `JsonCodec`**: typed document (de)serialisation.
+- **In-memory transport**: `InMemoryTransport` over an `InMemoryBus` for tests.
 
 ## Install
 
@@ -55,4 +55,4 @@ Backends implementing the ports are published separately: `conclave_crypto`
 ## Documentation
 
 See the [Conclave documentation](https://nodsoftware.github.io/conclave/), in
-particular [Sync & CRDTs](https://nodsoftware.github.io/conclave/concepts/sync-and-crdt/).
+particular [Sync](https://nodsoftware.github.io/conclave/concepts/sync/).
