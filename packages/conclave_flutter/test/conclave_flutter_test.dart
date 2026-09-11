@@ -82,6 +82,9 @@ void main() {
     late Collection<_Item> collection;
 
     setUp(() {
+      // A bare collection without a database is exactly what this unit test
+      // needs; the engine-internal factory is the intended seam for that.
+      // ignore: invalid_use_of_internal_member
       collection = Collection.create<_Item>('items', _Item.codec);
     });
 
@@ -136,6 +139,7 @@ void main() {
 
     test('mirrors the query result and notifies only when it changes',
         () async {
+      // ignore: invalid_use_of_internal_member
       final collection = Collection.create<_Item>(
         'items',
         _Item.codec,

@@ -14,11 +14,13 @@ sealed class PeerEvent {
 
 /// Emitted when a new peer connects.
 final class PeerConnected extends PeerEvent {
+  /// Creates the event.
   const PeerConnected(super.peer);
 }
 
 /// Emitted when a peer disconnects or becomes unreachable.
 final class PeerLost extends PeerEvent {
+  /// Creates the event.
   const PeerLost(super.peer);
 }
 
@@ -28,6 +30,7 @@ final class PeerLost extends PeerEvent {
 /// multiplexing; possessing the room tag is never sufficient to decrypt the
 /// payload.
 class Frame {
+  /// Creates a frame.
   const Frame(this.room, this.bytes);
 
   /// Public discovery tag for the target database.
@@ -39,6 +42,7 @@ class Frame {
 
 /// A [Frame] received from [from].
 class InboundFrame {
+  /// Creates a received frame.
   const InboundFrame(this.from, this.frame);
 
   /// The peer that sent this frame.

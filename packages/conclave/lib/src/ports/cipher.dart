@@ -17,6 +17,7 @@ abstract interface class Cipher {
 
 /// Thrown when decryption fails due to an incorrect key or tampered ciphertext.
 class CipherAuthError implements Exception {
+  /// Creates the error.
   const CipherAuthError();
 
   @override

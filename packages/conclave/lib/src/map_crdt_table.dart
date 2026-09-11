@@ -13,6 +13,7 @@ import 'query/scan_query.dart';
 /// `Conclave.builder(...).engine(MapCrdtTable.new)`; the default engine is
 /// disk-backed (`SqliteCrdtTable`).
 class MapCrdtTable implements CrdtTable {
+  /// Creates an empty in-memory table named [table].
   MapCrdtTable(String table) : _crdt = MapCrdt([table]);
 
   final MapCrdt _crdt;

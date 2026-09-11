@@ -1,4 +1,5 @@
 import 'package:conclave/conclave.dart';
+import 'package:conclave/engine.dart';
 import 'package:test/test.dart';
 
 /// Authenticating XOR cipher: the keyed two-byte marker lets `decrypt` fail

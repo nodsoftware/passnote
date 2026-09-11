@@ -26,6 +26,7 @@ part 'builder.dart';
 /// key. The in-memory engine has nothing to validate against, so it does not
 /// currently throw this.
 class WrongPassphraseException implements Exception {
+  /// Creates the exception.
   const WrongPassphraseException();
 
   @override
@@ -40,6 +41,7 @@ class WrongPassphraseException implements Exception {
 /// The exception is thrown **before** any key derivation or storage write, so
 /// no keys are written to the [KeyStore] on rejection.
 class WeakPassphraseException implements Exception {
+  /// Creates the exception.
   const WeakPassphraseException();
 
   @override
@@ -68,6 +70,7 @@ enum PassphraseStrictness {
 /// 12 = 128 bit, 15 = 160 bit, 18 = 192 bit, 21 = 224 bit, 24 = 256 bit
 /// (default).
 class PassphrasePolicy {
+  /// Creates a policy.
   const PassphrasePolicy({
     this.words = 24,
     this.strictness = PassphraseStrictness.warn,
@@ -85,6 +88,7 @@ class PassphrasePolicy {
 
 /// Top-level configuration for a [Conclave] instance.
 class ConclaveConfig {
+  /// Creates a configuration.
   const ConclaveConfig({
     required this.appId,
     required this.salt,
@@ -164,6 +168,7 @@ sealed class ConclaveEvent {
 
 /// A peer became reachable on the transport.
 final class PeerAppeared extends ConclaveEvent {
+  /// Creates the event.
   const PeerAppeared(this.peer);
 
   /// The peer that connected.
@@ -172,6 +177,7 @@ final class PeerAppeared extends ConclaveEvent {
 
 /// A peer stopped being reachable.
 final class PeerDisappeared extends ConclaveEvent {
+  /// Creates the event.
   const PeerDisappeared(this.peer);
 
   /// The peer that disconnected.
@@ -208,6 +214,7 @@ final class PeerIncompatible extends ConclaveEvent {
 /// from peers was triggered automatically. The unreadable file is kept at
 /// [quarantinePath] for inspection.
 final class StoreRecovered extends ConclaveEvent {
+  /// Creates the event.
   const StoreRecovered({
     required this.databaseId,
     required this.collection,

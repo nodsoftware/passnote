@@ -1,4 +1,5 @@
 import 'package:conclave/conclave.dart';
+import 'package:conclave/engine.dart';
 import 'package:test/test.dart';
 
 /// Pass-through cipher: these tests check roster sync and group-key resolution,

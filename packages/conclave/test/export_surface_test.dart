@@ -1,11 +1,45 @@
 // Guards the two public libraries. `conclave.dart` is the app-facing
 // surface; `engine.dart` is the advanced surface. A symbol moving between them
 // (task 39) should break this test on purpose.
+import 'dart:io';
+
 import 'package:conclave/conclave.dart' as api;
 import 'package:conclave/engine.dart' as engine;
 import 'package:test/test.dart';
 
 void main() {
+  test('the frozen library exports exactly the curated allow list', () {
+    // Semver freeze (VERSIONING.md): adding an export here is a deliberate
+    // API decision; removing or renaming one after v1.0.0 is a major version.
+    const allowList = [
+      "export 'src/annotations.dart';",
+      "export 'src/codec.dart';",
+      "export 'src/collection.dart';",
+      "export 'src/conclave.dart';",
+      "export 'src/crdt/crdt_type.dart';",
+      "export 'src/database.dart';",
+      "export 'src/id.dart';",
+      "export 'src/identity/device_roster.dart'",
+      "export 'src/merge_strategies.dart';",
+      "export 'src/ports/cipher.dart';",
+      "export 'src/ports/crdt_table.dart';",
+      "export 'src/ports/identity.dart';",
+      "export 'src/ports/key_store.dart';",
+      "export 'src/ports/merge_strategy.dart';",
+      "export 'src/ports/pake.dart';",
+      "export 'src/ports/query.dart';",
+      "export 'src/ports/transport.dart';",
+    ];
+    final lines = File('lib/conclave.dart')
+        .readAsLinesSync()
+        .where((l) => l.startsWith('export '))
+        .map((l) => l.trim())
+        .toList();
+    expect(lines, allowList,
+        reason: 'lib/conclave.dart export set changed: update the allow list '
+            'only as a deliberate semver decision');
+  });
+
   test('conclave.dart surfaces the app-facing API', () {
     // Builder entry and its config types.
     expect(api.Conclave.builder, isA<Function>());

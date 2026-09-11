@@ -93,6 +93,9 @@ List<int> ratchetKeyTag(List<int> groupKey) => sha256
     .bytes
     .sublist(0, 8);
 
+/// Derives the shared ratchet root for one peer pair from the group key and
+/// both sides' session nonces. Deterministic and symmetric: both peers compute
+/// the same root from the same inputs.
 List<int> deriveRatchetRoot({
   required List<int> groupKey,
   required List<int> nonceA,

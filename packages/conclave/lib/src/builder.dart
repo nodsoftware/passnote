@@ -180,6 +180,8 @@ final class ConclaveBuilder {
     return this;
   }
 
+  /// Overrides the PAKE behind pairing codes. Default: the umbrella's
+  /// SPAKE2 (P-256, RFC 9382).
   ConclaveBuilder pake(Pake Function() factory) {
     _once('pake', _pake != null);
     _pake = factory;

@@ -1,8 +1,7 @@
 import 'dart:async';
 
 import 'package:conclave/conclave.dart';
-import 'package:conclave/engine.dart'
-    show RangeDigest, RangeDigestBuilder, RangeProbe, Reconciler;
+import 'package:conclave/engine.dart';
 import 'package:crdt/crdt.dart' show Hlc;
 import 'package:test/test.dart';
 

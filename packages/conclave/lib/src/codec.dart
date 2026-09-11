@@ -25,6 +25,7 @@ abstract interface class Codec<T> {
 /// );
 /// ```
 class JsonCodec<T> implements Codec<T> {
+  /// Creates a codec from the three functions.
   const JsonCodec({
     required Map<String, dynamic> Function(T) toMap,
     required T Function(Map<String, dynamic>) fromMap,

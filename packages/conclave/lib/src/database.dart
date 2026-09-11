@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:meta/meta.dart';
 
 import 'dart:math';
 
@@ -391,6 +392,7 @@ class Database {
   /// Returns `false` when the roster holds no wrap for [recovery] yet — the
   /// caller drives sync and retries. Throws [StateError] when [recovery]'s
   /// roster entry has been revoked. Called by [Conclave.recoverFrom].
+  @internal
   Future<bool> adoptRecovery(
     Identity recovery, {
     required String label,
@@ -482,6 +484,7 @@ class Database {
   ///
   /// [autoFound] founds the group key when this device is demonstrably alone
   /// (no connected peers) and no device has founded it yet — the first-run path.
+  @internal
   Future<void> initDeviceRoster(
     Identity identity, {
     required bool autoFound,
@@ -506,6 +509,7 @@ class Database {
 
   /// Called when a peer has just connected (or when [Conclave.openDatabase]
   /// discovers already-connected peers).
+  @internal
   Future<void> onPeerConnected(PeerId peer) async {
     if (_incompatiblePeers.contains(peer)) return;
     _peers.add(peer);
@@ -516,6 +520,7 @@ class Database {
 
   /// Called when a peer has disconnected. Drops the transport session so a
   /// reconnect derives a fresh ratchet chain.
+  @internal
   void onPeerLost(PeerId peer) {
     _peers.remove(peer);
     _sessions.remove(peer)?.dispose();
@@ -596,6 +601,7 @@ class Database {
   /// Tries the roster/control cipher, then the data cipher; a frame that
   /// decrypts with neither (a revoked device's traffic after rotation) is
   /// dropped. Returns `true` if the frame was handled.
+  @internal
   Future<bool> handleFrame(PeerId from, List<int> frame) async {
     // An incompatible peer's frames are swallowed: addressed to us, not
     // processable, never an error loop.
@@ -628,6 +634,7 @@ class Database {
   }
 
   /// Dispatches an already-decrypted protocol message.
+  @internal
   Future<void> handlePlaintext(PeerId from, List<int> plaintext) async {
     final msg = decodeMessage(plaintext);
     if (msg == null) return;
@@ -977,6 +984,7 @@ class Database {
 
   /// Builds a database handle. Called by [Conclave] once the key has been
   /// derived and stored.
+  @internal
   static Future<Database> open({
     required String id,
     required String room,

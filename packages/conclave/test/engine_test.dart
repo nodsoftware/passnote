@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:conclave/conclave.dart';
+import 'package:conclave/engine.dart';
 import 'package:crdt/crdt.dart' show CrdtChangeset, Hlc;
 import 'package:test/test.dart';
 

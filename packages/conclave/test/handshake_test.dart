@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:conclave/conclave.dart';
-import 'package:conclave/engine.dart' show negotiate, supportedWireVersions;
+import 'package:conclave/engine.dart';
 import 'package:test/test.dart';
 
 class _XorCipher implements Cipher {

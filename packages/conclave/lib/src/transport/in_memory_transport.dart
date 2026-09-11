@@ -9,6 +9,7 @@ import 'in_memory_bus.dart';
 /// sockets. This is the foundation of every engine-level test and is also
 /// usable for multi-isolate apps sharing a bus over ports.
 class InMemoryTransport implements Transport {
+  /// Creates a transport attached to [InMemoryBus].
   InMemoryTransport(this._bus);
 
   final InMemoryBus _bus;

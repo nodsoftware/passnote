@@ -1,4 +1,5 @@
 import 'package:conclave/conclave.dart';
+import 'package:conclave/engine.dart';
 import 'package:test/test.dart';
 
 /// XOR cipher, fast and deterministic — the wire is not what these tests check.

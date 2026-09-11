@@ -4,6 +4,7 @@ library;
 import 'dart:async';
 
 import 'package:conclave/conclave.dart';
+import 'package:conclave/engine.dart';
 import 'package:conclave_lan/conclave_lan.dart';
 import 'package:conclave_lan/relay.dart';
 import 'package:test/test.dart';

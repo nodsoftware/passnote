@@ -11,6 +11,7 @@ sealed class ProtocolMessage {
 ///
 /// The peer responds with a [StateMessage] for each room it also has open.
 final class HelloMessage extends ProtocolMessage {
+  /// Creates the message.
   const HelloMessage({required this.node});
 
   /// [NodeId] of the sending instance.
@@ -22,6 +23,7 @@ final class HelloMessage extends ProtocolMessage {
 /// The receiver replies with a [DeltaMessage] for each collection that has
 /// records newer than the advertised watermark.
 final class StateMessage extends ProtocolMessage {
+  /// Creates the message.
   const StateMessage({required this.cols});
 
   /// Map of collection name → max modified-HLC string (empty = no records).
@@ -30,6 +32,7 @@ final class StateMessage extends ProtocolMessage {
 
 /// Carries CRDT records for one collection to the peer.
 final class DeltaMessage extends ProtocolMessage {
+  /// Creates the message.
   const DeltaMessage({required this.col, required this.records});
 
   /// Target collection name.
@@ -46,6 +49,7 @@ final class DeltaMessage extends ProtocolMessage {
 /// [HelloMessage] → [StateMessage] → [DeltaMessage] exchange so that data
 /// the receiver has but the sender is missing flows back.
 final class PokeMessage extends ProtocolMessage {
+  /// Creates the message.
   const PokeMessage();
 }
 
@@ -57,6 +61,7 @@ final class PokeMessage extends ProtocolMessage {
 /// makes the peer incompatible — observable as a `PeerIncompatible` event —
 /// and nothing further is exchanged with it.
 final class HandshakeMessage extends ProtocolMessage {
+  /// Creates the message.
   const HandshakeMessage({
     required this.node,
     required this.versions,
@@ -86,6 +91,7 @@ final class HandshakeMessage extends ProtocolMessage {
 /// records for these ranges" (answered with ordinary [DeltaMessage]s). See
 /// `Reconciler` for the exchange.
 final class ReconcileMessage extends ProtocolMessage {
+  /// Creates the message.
   const ReconcileMessage({
     required this.col,
     this.probes = const [],
@@ -108,6 +114,7 @@ final class ReconcileMessage extends ProtocolMessage {
 /// rotation), always under the roster/control cipher — it bootstraps the
 /// ratchet, so it is never itself ratcheted.
 final class RatchetHelloMessage extends ProtocolMessage {
+  /// Creates the message.
   const RatchetHelloMessage({
     required this.node,
     required this.nonce,

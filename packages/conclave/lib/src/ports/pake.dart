@@ -38,6 +38,7 @@ abstract interface class PakeSession {
 
 /// The output of a completed [Pake] run.
 class PakeResult {
+  /// Creates a completed exchange result.
   const PakeResult({
     required this.sharedSecret,
     required this.localConfirmation,

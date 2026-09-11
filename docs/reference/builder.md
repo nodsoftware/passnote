@@ -11,6 +11,8 @@ final conclave = await conclaveBuilder(appId: 'shopping', salt: 'shopping:v1')
     .open();
 ```
 
+The frozen surface and its guarantees are described in
+[`VERSIONING.md`](https://github.com/nodsoftware/conclave/blob/main/VERSIONING.md).
 Pure-Dart apps use `Conclave.builder(appId:, salt:)` from `package:conclave`
 after installing defaults with `ConclaveBuilder.installDefaults`, or skip the
 builder entirely with `Conclave.lowLevel` (every dependency passed explicitly;

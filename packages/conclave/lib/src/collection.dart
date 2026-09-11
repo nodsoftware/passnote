@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:crdt/crdt.dart';
+import 'package:meta/meta.dart';
 
 import 'codec.dart';
 import 'crdt/crdt_type.dart';
@@ -530,14 +531,17 @@ class Collection<T> {
   // Not part of the application-facing surface.
 
   /// The collection's table name inside the CRDT.
+  @internal
   String get name => _name;
 
   /// The runtime type of this collection's [MergeStrategy]. Used by [Database]
   /// to detect a mismatched `merge:` argument on a repeated `collection()` call.
+  @internal
   Type get mergeType => _merge.runtimeType;
 
   /// The highest modified-HLC seen in this collection as a string, or the
   /// empty string when the collection is empty.
+  @internal
   String get maxHlc => _engine.maxHlc(_name);
 
   /// Returns records modified after [sinceHlc] (or all records when null) in
@@ -562,6 +566,7 @@ class Collection<T> {
   /// Summarises this collection's records in the half-open HLC range
   /// `(fromHlc, toHlc]` for range reconciliation. Reads through the write
   /// chain, so a digest never spans a half-written document.
+  @internal
   Future<RangeDigest> rangeDigest({String? fromHlc, String? toHlc}) async {
     late RangeDigest result;
     await _serialize(
@@ -573,6 +578,7 @@ class Collection<T> {
 
   /// Merges a [CrdtChangeset] received from a peer and persists the result.
   /// Does NOT trigger [onLocalChange] — remote changes must not be re-broadcast.
+  @internal
   Future<void> mergeChangeset(CrdtChangeset changeset) async {
     await _ready;
     await _serialize(() async {
@@ -675,6 +681,7 @@ class Collection<T> {
   /// [engine] builds the backing [CrdtTable]. It runs once, during the initial
   /// load, and may be async (a disk-backed engine opens a file). When omitted,
   /// the collection uses an in-memory [MapCrdtTable] and is not persisted.
+  @internal
   static Collection<T> create<T>(
     String name,
     Codec<T> codec, {

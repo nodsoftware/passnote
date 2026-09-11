@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:conclave/conclave.dart';
+import 'package:conclave/engine.dart';
 import 'package:test/test.dart';
 
 void main() {

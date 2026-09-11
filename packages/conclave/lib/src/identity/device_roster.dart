@@ -30,6 +30,7 @@ enum DeviceState {
 
 /// A device in a database's roster, as reported by `Database.devices()`.
 class DeviceInfo {
+  /// Creates a device summary.
   const DeviceInfo({
     required this.id,
     required this.label,
@@ -70,6 +71,7 @@ sealed class DeviceRosterEntry {
 
 /// A paired device: its public identity plus human-facing metadata.
 final class DeviceRecord extends DeviceRosterEntry {
+  /// Creates a roster record.
   const DeviceRecord({
     required this.deviceId,
     required this.publicKey,
@@ -108,6 +110,7 @@ final class DeviceRecord extends DeviceRosterEntry {
 
 /// The group key, sealed to one device at one key epoch.
 final class WrappedGroupKey extends DeviceRosterEntry {
+  /// Creates a wrap row.
   const WrappedGroupKey({
     required this.deviceId,
     required this.keyEpoch,
@@ -134,6 +137,7 @@ final class WrappedGroupKey extends DeviceRosterEntry {
 /// record by last-write-wins, and [DeviceRoster.reconcile] re-rotates if that
 /// leaves a revoked device holding a usable wrap.
 final class KeyRotation extends DeviceRosterEntry {
+  /// Creates a rotation row.
   const KeyRotation({
     required this.keyEpoch,
     required this.byDeviceId,
@@ -216,6 +220,7 @@ final Codec<DeviceRosterEntry> deviceRosterCodec = JsonCodec<DeviceRosterEntry>(
 ///
 /// Not exported. [Database] owns one when an [Identity] is configured.
 class DeviceRoster {
+  /// Creates the orchestrator over the reserved roster [Collection].
   DeviceRoster(this._collection, this._identity);
 
   final Collection<DeviceRosterEntry> _collection;

@@ -132,6 +132,11 @@ Read [`docs/security.md`](docs/security.md) for what Conclave protects and
 where its boundaries are, and [`SECURITY.md`](SECURITY.md) for reporting a
 vulnerability privately. Conclave has not yet had an independent audit.
 
+## Versioning
+
+Semver from v1.0.0; see [`VERSIONING.md`](VERSIONING.md) for what each surface
+(frozen API, advanced library, wire protocol, storage schema) guarantees.
+
 ## License
 
 See [`LICENSE`](LICENSE).

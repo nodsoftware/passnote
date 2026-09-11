@@ -50,6 +50,7 @@ class RangeRequest {
 /// still-unresolved subranges, ship its own records for the leaf ranges, and
 /// ask for the peer's records there.
 class ReconcilePlan {
+  /// Creates an empty plan; [Reconciler.handleProbes] fills it.
   ReconcilePlan();
 
   /// Subranges to probe back at the next depth.

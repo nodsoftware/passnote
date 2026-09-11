@@ -94,7 +94,6 @@ List<int> _argonSalt(String salt) => crypto.sha256
     .bytes
     .sublist(0, 16);
 
-
 /// Computes the public, non-reversible discovery tag for a database [key].
 ///
 /// The tag is `base32(SHA-256(key ‖ "conclave-room"))` truncated to 16

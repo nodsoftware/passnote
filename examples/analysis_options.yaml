@@ -1,0 +1,9 @@
+# The examples are applications, not libraries: the public-member doc rule
+# that gates the packages does not apply here.
+include: package:lints/recommended.yaml
+
+linter:
+  rules:
+    - always_declare_return_types
+    - prefer_final_locals
+    - unawaited_futures

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:conclave/conclave.dart';
+import 'package:conclave/engine.dart';
 import 'package:test/test.dart';
 
 /// A deterministic stand-in for a real PAKE. Not secure — it exists to exercise

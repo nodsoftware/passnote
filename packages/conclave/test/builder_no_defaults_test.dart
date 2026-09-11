@@ -1,4 +1,5 @@
 import 'package:conclave/conclave.dart';
+import 'package:conclave/engine.dart';
 import 'package:test/test.dart';
 
 // Runs in its own isolate, so ConclaveBuilder has no defaults installed here.

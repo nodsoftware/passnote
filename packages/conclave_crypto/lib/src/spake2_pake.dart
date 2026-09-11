@@ -7,6 +7,7 @@ import 'spake2.dart';
 /// Maps the port's initiator/responder roles onto SPAKE2's prover ("A") and
 /// verifier ("B"): the initiator is the prover and sends first.
 class Spake2Pake implements Pake {
+  /// Creates the adapter.
   const Spake2Pake();
 
   @override

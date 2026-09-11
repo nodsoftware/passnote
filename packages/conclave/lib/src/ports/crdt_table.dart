@@ -320,6 +320,7 @@ enum CrdtRecoverySource {
 /// What [CrdtTable.recoveries] reports when [CrdtTable.init] rebuilds an
 /// unreadable local store.
 class CrdtRecovery {
+  /// Creates the report.
   const CrdtRecovery({required this.source, required this.quarantinePath});
 
   /// Whether the store was restored from a snapshot or reset to empty.

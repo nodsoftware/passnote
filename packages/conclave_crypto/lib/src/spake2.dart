@@ -30,7 +30,10 @@ enum Spake2Role {
 
 /// Thrown when a peer's SPAKE2 message is not a valid group element.
 class Spake2ProtocolError implements Exception {
+  /// Creates the error with its diagnostic [message].
   const Spake2ProtocolError(this.message);
+
+  /// What went wrong, for diagnostics only.
   final String message;
   @override
   String toString() => 'Spake2ProtocolError: $message';
@@ -43,6 +46,7 @@ class Spake2ProtocolError implements Exception {
 /// verify the value it sends against [expectedPeerConfirmation] with
 /// [spake2ConstantTimeEquals] before trusting the key.
 class Spake2Result {
+  /// Creates a completed exchange result.
   const Spake2Result({
     required this.sharedSecret,
     required this.localConfirmation,

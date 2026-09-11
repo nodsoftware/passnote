@@ -55,7 +55,10 @@ class PairingCode {
 /// Raised when the sponsor rejects a join: wrong code, too many tries, or the
 /// code was already used.
 class PairingRejected implements Exception {
+  /// Creates the rejection with its human-readable [reason].
   const PairingRejected(this.reason);
+
+  /// Why the sponsor refused the join.
   final String reason;
   @override
   String toString() => 'PairingRejected: $reason';
@@ -63,6 +66,7 @@ class PairingRejected implements Exception {
 
 /// Raised when a join does not complete within the allowed time.
 class PairingTimeout implements Exception {
+  /// Creates the timeout.
   const PairingTimeout();
   @override
   String toString() => 'PairingTimeout: the other device did not respond';
@@ -72,15 +76,24 @@ class PairingTimeout implements Exception {
 /// collection. The database room tag derives from it, and the device's own
 /// wrapped group key arrives by normal sync once it opens the database.
 class PairingBundle {
+  /// Creates the bundle.
   const PairingBundle({required this.rosterKey});
+
+  /// The key that unlocks the reserved roster collection.
   final List<int> rosterKey;
 }
 
-/// Callbacks the coordinator needs from [Conclave].
+/// Sends one rendezvous frame to a peer (backed by the transport).
 typedef PairingFrameSender = Future<void> Function(PeerId to, Frame frame);
+
+/// The currently connected peers, for broadcasting the joiner's hello.
 typedef PairingPeerSource = Set<PeerId> Function();
+
+/// Derives a key from a passphrase and salt (the app's KDF).
 typedef PairingKeyDeriver = Future<List<int>> Function(
     String passphrase, String salt);
+
+/// Admits an authenticated joiner to the roster.
 typedef PairingAdmit = Future<void> Function(DevicePublicKey joiner);
 
 /// Drives the pairing exchange over the [Transport], on both sides.
@@ -89,6 +102,7 @@ typedef PairingAdmit = Future<void> Function(DevicePublicKey joiner);
 /// The sponsor calls [arm]; the joiner calls [join]. [Conclave] feeds rendezvous
 /// frames to [handleFrame] and routes by [rendezvousRoom].
 class PairingCoordinator {
+  /// Creates the coordinator; one per [Conclave].
   PairingCoordinator({
     required String appId,
     required Pake pake,

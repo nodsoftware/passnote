@@ -5,6 +5,7 @@ import 'dart:convert';
 ///
 /// The private halves never leave the device that owns them (see [Identity]).
 class DevicePublicKey {
+  /// Creates a public identity from its two keys.
   const DevicePublicKey({
     required this.keyExchange,
     required this.signing,
@@ -52,6 +53,7 @@ class DevicePublicKey {
 /// Produced by [Identity.wrapFor] and consumed by [Identity.unwrap] on the
 /// target device. Opaque to everyone else.
 class WrappedKey {
+  /// Creates a wrap from its parts.
   const WrappedKey({
     required this.ephemeralPublicKey,
     required this.nonce,
