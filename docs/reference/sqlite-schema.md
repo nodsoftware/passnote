@@ -29,20 +29,13 @@ expression index per path declared in `indexedFields`
 (`json_extract(value, '$'), doc_id` filtered to that collection and path),
 which serves query equality predicates.
 
-## Migrations
+## Schema version
 
-The schema version lives in `PRAGMA user_version`; each migration runs in one
-transaction (version bump included), so an interrupted migration reopens at
-the old version, never half-applied.
-
-| Version | Adds |
-| --- | --- |
-| 1 | `crdt_records`, the HLC index, `crdt_meta`. |
-| 2 | The `crdt_type` column (existing rows default `'lww'`). |
-| 3 | The virtual `doc_id` / `field_path` columns and the doc index. |
-
-Virtual generated columns are computed on read: no backfill, no write-path
-change.
+The schema version lives in `PRAGMA user_version` (currently **1**). Schema
+creation, and any future migration, runs in one transaction with the version
+bump included, so an interrupted step reopens at the old version, never
+half-applied. The virtual `doc_id` / `field_path` columns are computed on
+read: they cost nothing on the write path.
 
 ## Corruption recovery
 

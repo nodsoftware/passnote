@@ -122,8 +122,8 @@ void main() {
       expect(await b.value('items', 'b'), 'banana');
     });
 
-    test('a v0 database is migrated to the current schema on open', () async {
-      // A schema-less file with user_version 0, as a pre-migration store.
+    test('a schema-less file gets the schema on open and reopens', () async {
+      // A fresh open creates the schema; a second open finds it in place.
       final path = freshPath();
       final legacy = await SqliteCrdtTable.open(path);
       await legacy.close();

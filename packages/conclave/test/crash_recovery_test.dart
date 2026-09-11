@@ -190,12 +190,12 @@ void main() {
     expect(await t2.value('c', 'phantom'), isNull);
   });
 
-  group('an interrupted migration is never left half-applied', () {
-    test('a rolled-back migration reopens at the old version and completes',
+  group('an interrupted schema step is never left half-applied', () {
+    test('a rolled-back schema step reopens at the old version and completes',
         () async {
       final path = '${tmp.path}/mig_rollback.sqlite';
 
-      // Crash mid-migration: create a table but never bump user_version or
+      // Crash mid-step: create a table but never bump user_version or
       // commit.
       final raw = sqlite3.open(path);
       raw.execute('BEGIN');
@@ -231,7 +231,7 @@ void main() {
       final after = sqlite3.open(path);
       expect(
         after.select('PRAGMA user_version').first['user_version'],
-        3,
+        1,
       );
       after.dispose();
     });
@@ -245,7 +245,7 @@ void main() {
       final check = sqlite3.open(path);
       expect(
         check.select('PRAGMA user_version').first['user_version'],
-        3,
+        1,
       );
       check.dispose();
 

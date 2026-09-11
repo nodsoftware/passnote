@@ -1,10 +1,5 @@
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:conclave/conclave.dart';
 import 'package:conclave/engine.dart';
-import 'package:crdt/crdt.dart' show Hlc;
-import 'package:sqlite3/sqlite3.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -106,61 +101,6 @@ void main() {
 
       final rebuilt = await coll.get('i1');
       expect(rebuilt, equals({'id': 'i1', 'qty': 5, 'name': 'flour'}));
-    });
-  });
-
-  group('migration', () {
-    late Directory tmp;
-
-    setUp(() => tmp = Directory.systemTemp.createTempSync('conclave_migrate'));
-    tearDown(() => tmp.deleteSync(recursive: true));
-
-    test('a v1 database gains crdt_type = lww on open', () async {
-      final path = '${tmp.path}/legacy.sqlite';
-      final hlc = Hlc.now('legacynode').toString();
-
-      // Build a database in the pre-per-field-types shape: no crdt_type column,
-      // user_version = 1, one record.
-      final raw = sqlite3.open(path);
-      raw.execute('''
-        CREATE TABLE crdt_records (
-          collection TEXT NOT NULL,
-          key        TEXT NOT NULL,
-          value      TEXT NOT NULL,
-          is_deleted INTEGER NOT NULL DEFAULT 0,
-          hlc        TEXT NOT NULL,
-          hlc_key    TEXT NOT NULL,
-          PRIMARY KEY (collection, key)
-        )
-      ''');
-      raw.execute(
-        'CREATE INDEX idx_crdt_hlc ON crdt_records (collection, hlc_key)',
-      );
-      raw.execute(
-          'CREATE TABLE crdt_meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)');
-      raw.execute(
-        'INSERT INTO crdt_records '
-        '(collection, key, value, is_deleted, hlc, hlc_key) '
-        'VALUES (?, ?, ?, 0, ?, ?)',
-        ['c', 'old', jsonEncode('kept'), hlc, hlc],
-      );
-      raw.execute('PRAGMA user_version = 1');
-      raw.dispose();
-
-      final table = await SqliteCrdtTable.open(path);
-      addTearDown(table.close);
-
-      final rows = (await table.changeset('c'))['c']!;
-      expect(rows.single['key'], equals('old'));
-      expect(rows.single['value'], equals('kept'));
-      expect(rows.single['crdt_type'], equals('lww'));
-
-      await table.close();
-      final check = sqlite3.open(path);
-      final version =
-          check.select('PRAGMA user_version').first['user_version'] as int;
-      check.dispose();
-      expect(version, equals(3));
     });
   });
 }
