@@ -15,7 +15,7 @@ things derive from it, per app `salt`:
 
 1. **The roster key**, via BIP39 seed then Argon2id. It encrypts the device
    [roster](glossary.md#roster) and control traffic, and everything else in
-   the legacy mode below.
+   the single-key mode below.
 2. **The [room tag](glossary.md#room-tag)**, the public discovery identifier.
    It is a one-way hash: seeing it reveals nothing and grants nothing.
 
@@ -102,7 +102,7 @@ peer, and unwraps the group key. A phrase is withdrawn like any device, with
 
 - **No identity configured** (a custom `Conclave.lowLevel` without one): the
   roster does not exist and the passphrase-derived key encrypts everything.
-  This is the legacy single-key mode; the builder always configures an
+  This is the single-key mode; the builder always configures an
   identity.
 - **A device with no wrap opens in `DeviceState.needsPairing`.** It can sync
   the roster but cannot open user collections until admitted. This is a state,
