@@ -116,6 +116,8 @@ class ConclaveConfig {
 
   /// Max inbound frames per second per peer before rate limiting kicks in.
   ///
+  /// The budget is per peer and per [Conclave] instance: a peer syncing
+  /// several databases with this instance shares one budget across them.
   /// Frames from a peer that exceed this rate are silently dropped. This is a
   /// defence-in-depth measure against a misbehaving or flooded peer; under the
   /// LAN-only threat model a trusted-key peer is already inside the trust
@@ -764,7 +766,7 @@ class Conclave {
   /// current one-second sliding window.
   bool _isRateLimited(PeerId peer) {
     final now = DateTime.now().millisecondsSinceEpoch;
-    final window = 1000;
+    const window = 1000;
     final maxFrames = _config.maxInboundFramesPerSecond;
 
     final timestamps = _inboundTimestamps.putIfAbsent(peer, () => []);

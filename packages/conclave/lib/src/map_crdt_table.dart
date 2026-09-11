@@ -151,8 +151,8 @@ class MapCrdtTable implements CrdtTable {
 
   @override
   String maxHlc(String table) {
-    final cs = _crdt.getChangeset(onlyTables: [table]);
-    if (cs.isEmpty) return '';
+    final changeset = _crdt.getChangeset(onlyTables: [table]);
+    if (changeset.isEmpty) return '';
     return _crdt.getLastModified().toString();
   }
 

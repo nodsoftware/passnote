@@ -449,8 +449,8 @@ class Collection<T> {
       }
 
       final cutoff = DateTime.now().subtract(horizon);
-      final cs = await _engine.changeset(_name);
-      final allRows = cs[_name] ?? const [];
+      final changeset = await _engine.changeset(_name);
+      final allRows = changeset[_name] ?? const [];
       if (allRows.isEmpty) return;
 
       // Phase 1 — identify tombstoned existence registers beyond the horizon.

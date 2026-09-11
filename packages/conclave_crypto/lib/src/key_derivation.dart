@@ -94,20 +94,6 @@ List<int> _argonSalt(String salt) => crypto.sha256
     .bytes
     .sublist(0, 16);
 
-/// Returns a function that masks a document id under [key] using
-/// HMAC-SHA256 encoded as unpadded URL-safe base64.
-///
-/// The masked id is used as the suffix of per-document blob keys
-/// (`"<collection>/d/<mask(docId)>"`), hiding document ids from anyone with
-/// read access to the raw storage while still allowing prefix-based enumeration
-/// of all blobs in a collection.
-String Function(String docId) createIdMasker(List<int> key) {
-  final hmac = crypto.Hmac(crypto.sha256, key);
-  return (String docId) {
-    final digest = hmac.convert(utf8.encode(docId));
-    return base64Url.encode(digest.bytes).replaceAll('=', '');
-  };
-}
 
 /// Computes the public, non-reversible discovery tag for a database [key].
 ///

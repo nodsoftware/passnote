@@ -46,8 +46,10 @@ class PairingCode {
   /// The bytes fed to the PAKE as the shared secret.
   List<int> get secretBytes => utf8.encode(digits);
 
+  /// Redacted: the code is a secret. Read [display] deliberately for the
+  /// pairing UI; a stray log of the object must not leak it.
   @override
-  String toString() => display;
+  String toString() => 'PairingCode(*** *** ***)';
 }
 
 /// Raised when the sponsor rejects a join: wrong code, too many tries, or the

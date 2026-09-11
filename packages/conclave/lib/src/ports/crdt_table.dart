@@ -21,8 +21,8 @@ import 'query.dart';
 /// Deleting a record never removes it from storage: [put] with
 /// `isDeleted: true` soft-deletes the record by setting its tombstone flag.
 /// Tombstones are included in [changeset] output so that peers receive and
-/// apply deletes, not just writes. A compaction pass (see [Collection.compact],
-/// Task 02) may physically remove tombstones that are old enough to be safe.
+/// apply deletes, not just writes. A compaction pass ([Collection.compact])
+/// may physically remove tombstones that are old enough to be safe.
 ///
 /// ## Changesets and sync
 ///
