@@ -139,7 +139,7 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
     } catch (_) {
       // Unreadable enough that quick_check itself failed.
     }
-    db.dispose();
+    db.close();
     return null;
   }
 
@@ -189,7 +189,7 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
     }
     _watchers.clear();
     await _recoveries.close();
-    _db?.dispose();
+    _db?.close();
     _db = null;
   }
 

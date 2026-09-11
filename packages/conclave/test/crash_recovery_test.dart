@@ -52,7 +52,7 @@ void _expectUnreadable(String path) {
   try {
     final db = sqlite3.open(path);
     final result = db.select('PRAGMA quick_check');
-    db.dispose();
+    db.close();
     expect(
       result.first.values.first,
       isNot('ok'),
@@ -180,7 +180,7 @@ void main() {
       "(collection, key, value, is_deleted, hlc, hlc_key) "
       "VALUES ('c', 'phantom', '\"nope\"', 0, 'z', 'z')",
     );
-    raw.dispose();
+    raw.close();
 
     final t2 = await SqliteCrdtTable.open(path);
     addTearDown(t2.close);
@@ -205,7 +205,7 @@ void main() {
         'is_deleted INTEGER NOT NULL DEFAULT 0, hlc TEXT NOT NULL, '
         'hlc_key TEXT NOT NULL, PRIMARY KEY (collection, key))',
       );
-      raw.dispose();
+      raw.close();
 
       // Before the engine sees it: old version, and the object is gone.
       final check = sqlite3.open(path);
@@ -220,7 +220,7 @@ void main() {
         ),
         isEmpty,
       );
-      check.dispose();
+      check.close();
 
       final t = await SqliteCrdtTable.open(path);
       addTearDown(t.close);
@@ -233,7 +233,7 @@ void main() {
         after.select('PRAGMA user_version').first['user_version'],
         1,
       );
-      after.dispose();
+      after.close();
     });
 
     test('an already-migrated store reopens without re-migrating', () async {
@@ -247,7 +247,7 @@ void main() {
         check.select('PRAGMA user_version').first['user_version'],
         1,
       );
-      check.dispose();
+      check.close();
 
       final t2 = await SqliteCrdtTable.open(path);
       addTearDown(t2.close);
