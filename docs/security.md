@@ -1,63 +1,81 @@
 # Security
 
-Conclave is built so that **the encryption key (and therefore the passphrase)
-is the only thing that protects your data**. This page describes what Conclave
-defends against, what it does not, and the limits you must respect when shipping.
+Conclave encrypts everything, everywhere, with modern primitives and real
+device membership. Data is protected by authenticated end-to-end encryption
+(XChaCha20-Poly1305); keys derive with Argon2id and never leave the devices;
+each device carries its own keypair; pairing is authenticated by a
+[PAKE](concepts/glossary.md#pake); a lost device is revoked by rotating the
+group key; every connection runs a forward-secrecy
+[ratchet](concepts/glossary.md#ratchet); the local store is SQLCipher
+ciphertext; any tampered or wrong-key frame fails closed; and discovery uses a
+one-way [room tag](concepts/glossary.md#room-tag) that reveals nothing.
 
-!!! danger "Read this before shipping"
-    Conclave has **not** been independently security-audited. Treat the
-    guarantees below as best-effort engineering, not a certified guarantee.
+!!! note "Audit status"
+    An independent third-party audit is planned and has not happened yet. The
+    design and its test suite are open; if you find a weakness, use the
+    [private reporting process](https://github.com/nodsoftware/conclave/blob/main/SECURITY.md).
 
 ## What Conclave protects
 
-- **Confidentiality at rest and in transit.** Every document is encrypted with
-  **XChaCha20-Poly1305** before it is written to disk or sent over the network.
-  Keys are derived from a passphrase via BIP39 then Argon2id and never leave the
-  device. On Flutter, keys are stored in the OS keychain
-  (`flutter_secure_storage`).
-- **Integrity and authenticity of data.** XChaCha20-Poly1305 is authenticated
-  encryption: a tampered or truncated frame fails authentication and is dropped
-  (`CipherAuthError`). A peer cannot forge or silently alter records without the
-  key.
-- **Membership by key possession.** Devices join a "room" only by deriving the
-  same key from the same passphrase. The room tag broadcast over mDNS is a
-  one-way function of the key and reveals nothing about it or the data. Peers
-  without the key cannot read or even identify a database's traffic.
+- **Confidentiality, at rest and in transit.** Every record is encrypted with
+  XChaCha20-Poly1305 before it touches disk or network. User data travels
+  under the [group key](concepts/glossary.md#group-key); the device
+  [roster](concepts/glossary.md#roster) under a key derived from the
+  passphrase (BIP39 seed, then Argon2id). On Flutter, keys live in the OS
+  keychain.
+- **Integrity and authenticity.** Authenticated encryption everywhere: a
+  tampered, truncated, or wrong-key frame fails authentication and is dropped.
+  Malformed frames cannot crash a device either; the decoder is fail-closed
+  and fuzzed in CI.
+- **Membership you can manage.** Each device has an X25519 + Ed25519 keypair
+  whose private halves never leave it. Joining requires a live pairing: a
+  nine-digit one-time code runs a PAKE, so guesses cost one visible failure
+  each and the sponsor stops after three. Revoking a device rotates the group
+  key to everyone else; the revoked device can read nothing written after.
+- **Yesterday's traffic, tomorrow's theft.** Each connection encrypts every
+  frame with a one-use key from a hash chain and destroys the previous key.
+  Recording traffic now and stealing a device later does not decrypt the
+  recording.
+- **Unlinkable discovery.** The room tag peers advertise is a one-way hash.
+  It grants no access and reveals nothing about keys or content.
+- **At-rest opacity.** SQLCipher encrypts the whole database file: schema, row
+  counts, and content are all ciphertext to whoever has only the file.
 
-## What Conclave does **not** protect
+## Boundaries and design choices
 
-- **The passphrase is everything.** Anyone who learns the passphrase can read and
-  write the data. Share it only over a trusted channel; treat it like a password.
-  There is no recovery and no server-side revocation; rotating means choosing a
-  new passphrase and re-pairing devices.
-- **Custom passphrases weaken the model.** Conclave's security assumes a
-  high-entropy passphrase. The generated BIP39 mnemonic (default 24 words,
-  256-bit) provides this. If you supply your own passphrase string, its
-  entropy (not the KDF work factor) sets the security ceiling. A human-memorable
-  phrase can be brute-forced regardless of the Argon2id cost. Prefer the
-  generated mnemonic; if you must accept user input, require a BIP39 mnemonic or
-  a long random string.
-- **LAN-only, by design.** Discovery and sync happen over the local network
-  (mDNS + WebSocket). Conclave does not traverse NAT, relay through a server, or
-  sync over the internet. Devices must share a network to sync.
-- **Metadata on the local network.** A network observer can see that *some*
-  Conclave service exists, its room tag, and the size/timing of encrypted
-  frames. The room tag does not reveal the key or contents, but traffic analysis
-  of volume and timing is possible.
-- **Compromised devices.** Conclave protects data between devices, not against a
-  device that is already compromised. If an attacker controls the OS or has the
-  unlocked keychain, they have the key.
-- **Replay.** Conclave does not add an anti-replay nonce at the protocol layer.
-  Replaying a captured encrypted frame is **harmless**: deltas are CRDT records
-  reconciled last-write-wins by HLC, so a replayed (older or equal) record never
-  overwrites a newer value — it is idempotent. A replayed frame cannot forge new
-  data (it is authenticated by the key it was encrypted under).
-- **Denial of service.** A malicious peer on the LAN can attempt to flood
-  connections. Conclave applies **per-peer inbound rate limiting**
-  (`ConclaveConfig.maxInboundFramesPerSecond`, default 100/s) to stop a single
-  noisy peer from starving the event loop. This is defence-in-depth, **not** a
-  security boundary: a peer with the key is already inside the trust boundary.
-  Conclave does not authenticate peers beyond key possession.
+Each of these is a deliberate scope decision, stated with its reason.
+
+- **The passphrase still matters.** It protects the device roster and seeds
+  discovery. A generated 24-word mnemonic (256-bit) makes it unguessable; if
+  you accept a user-chosen passphrase, its entropy sets that ceiling, not the
+  KDF cost. Since data is under the group key and membership needs a pairing
+  or the roster, a leaked passphrase alone does not hand over the data, but
+  treat it as sensitive anyway.
+- **No recovery, unless you opt in.** By default, losing every device means
+  losing the data; nothing is escrowed anywhere, which is the point. Apps that
+  want a way back enable the
+  [recovery phrase](guides/recover-from-a-lost-passphrase.md), which is a
+  deliberate, visible trade.
+- **Reachability is a transport choice.** mDNS discovery is LAN-only by
+  design: the trust story is simplest when sync happens on networks you are
+  on. `WebSocketTransport` reaches further with explicit addresses or a
+  self-hosted relay; the relay routes ciphertext and is never trusted with
+  keys.
+- **Metadata is visible to the network.** An observer sees that a Conclave
+  service exists, its opaque room tag, and the sizes and timing of encrypted
+  frames. Traffic analysis of volume and timing is possible; contents are not.
+- **A compromised device is out of scope.** Conclave protects data between
+  devices. An attacker who controls a device's OS or unlocked keychain has
+  that device's keys, exactly as with any end-to-end encrypted system. Your
+  remedy is revocation from a surviving device.
+- **Replay is harmless by construction.** There is no anti-replay nonce
+  because none is needed: records merge idempotently by
+  [HLC](concepts/glossary.md#hlc), so a replayed frame changes nothing and
+  forges nothing.
+- **Rate limiting is hygiene, not a boundary.** A noisy peer's excess frames
+  are dropped (`maxInboundFramesPerSecond`, default 100/s) so it cannot starve
+  the event loop. Authorisation comes from keys, not from rate limits, and a
+  keyed peer is inside the trust boundary by definition.
 
 ## Cryptographic details
 
@@ -65,42 +83,28 @@ defends against, what it does not, and the limits you must respect when shipping
 | --- | --- |
 | Symmetric cipher | XChaCha20-Poly1305 (24-byte random nonce, 16-byte tag) |
 | Frame layout | `nonce ‖ ciphertext ‖ tag` |
-| Key derivation | BIP39 seed, then Argon2id (19 MiB, 2 passes, 1 lane); PBKDF2-HMAC-SHA256 available for FIPS |
-| Passphrase | BIP39 mnemonic, 128 to 256 bits of entropy (12–24 words) |
-| Room tag | truncated SHA-256 of the key with a domain-separation label |
-| Nonce policy | a fresh random 192-bit nonce per message |
+| Passphrase KDF | BIP39 seed, then Argon2id (19 MiB, 2 passes, 1 lane); PBKDF2-HMAC-SHA256 available for FIPS |
+| Device identity | X25519 (key agreement) + Ed25519 (signatures) |
+| Key wrap | X25519 ephemeral agreement, HKDF-SHA256, AES-256-GCM |
+| Pairing | SPAKE2 over P-256 (RFC 9382), nine-digit one-time code |
+| Forward secrecy | HKDF/HMAC-SHA256 hash-chain ratchet, one key per frame |
+| At rest | SQLCipher (whole-file) |
+| Room tag | truncated SHA-256 of key material, domain-separated |
 
-## At-rest storage layout
-
-With per-document persistence (the default), the storage layout is:
-
-- **Blob values** are XChaCha20-Poly1305 ciphertext.
-- **Collection names** appear as plaintext storage keys (`"<collection>/d/<blinded-id>"`).
-- **Document ids and field paths** are **blinded** via keyed HMAC-SHA256 so they do
-  not appear in plaintext on disk.
-
-An attacker with disk access can still observe:
-
-- The **number of documents** per collection (one blob per document).
-- The approximate **size of each document** (per-blob ciphertext length).
-- **Which documents change over time** (update patterns from blob rewrites).
-
-This is acceptable under the LAN-only threat model (an attacker with disk access
-already controls the device), but it is stated honestly here so you can evaluate
-your own threat model.
+Published test vectors for the primitives accompany the crypto package (see
+the repository's `packages/conclave_crypto/test/`).
 
 ## Recommendations
 
-- Use the default 24-word passphrase (256-bit entropy) unless you have a strong
-  reason not to.
-- Choose a stable, app-specific `salt` (e.g. `"myapp:v1"`) and never reuse it
+- Use the generated 24-word passphrase unless you have a strong reason not to.
+- Choose a stable, app-specific `salt` (like `"myapp:v1"`) and never reuse it
   across unrelated apps.
-- Show the generated passphrase to the user once and instruct them to share it
-  only over a trusted channel.
+- Show pairing codes and recovery phrases to the user once; never store them.
+- Revoke lost devices promptly, from any surviving device.
 - Do not log plaintext documents or derived keys.
 
 ## Reporting a vulnerability
 
-Please report security issues privately rather than opening a public issue. See
-[`SECURITY.md`](https://github.com/nodsoftware/conclave/blob/main/SECURITY.md) in the
-repository for the disclosure process.
+Report privately, not in a public issue. See
+[`SECURITY.md`](https://github.com/nodsoftware/conclave/blob/main/SECURITY.md)
+for the process.

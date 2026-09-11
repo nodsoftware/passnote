@@ -23,29 +23,28 @@ Conclave is pre-1.0 (`0.x`). Security fixes are applied to the latest released
 
 ## Threat model summary
 
-Conclave provides end-to-end encryption between devices on a local network. The
-**passphrase is the root of all security**: anyone who has it can read and write
-the data, and there is no server-side revocation or recovery.
+Conclave provides authenticated end-to-end encryption between a group of
+devices, with per-device identity keys, PAKE-authenticated pairing, device
+revocation by group-key rotation, and a forward-secrecy ratchet on every
+connection.
 
 **Conclave protects:**
 
-- Confidentiality of data at rest and in transit (XChaCha20-Poly1305).
-- Integrity and authenticity of synced records (authenticated encryption;
-  tampered frames are rejected).
-- Room membership by key possession — peers without the key cannot read or
-  identify a database's traffic.
+- Confidentiality and integrity of data at rest (SQLCipher) and in transit
+  (XChaCha20-Poly1305); tampered frames are rejected.
+- Membership: devices join by a PAKE-authenticated pairing and are removed by
+  key rotation. Peers outside the group cannot read or identify a database's
+  traffic.
+- Past traffic against future device compromise (the per-connection ratchet).
 
-**Conclave does _not_ protect against:**
+**Boundaries (deliberate scope):**
 
-- A leaked passphrase (it grants full read/write access).
-- Anything beyond the local network — there is no relay, NAT traversal, or
-  internet sync.
-- Local-network metadata: an observer can see that a Conclave service exists, its
-  opaque room tag, and the size/timing of encrypted frames.
-- A compromised device or OS, or an unlocked keychain.
-- Denial-of-service from a malicious peer on the LAN.
+- A compromised device or OS, or an unlocked keychain, holds that device's
+  keys; the remedy is revocation from a surviving device.
+- Local-network metadata: an observer sees that a Conclave service exists, its
+  opaque room tag, and frame sizes and timing.
+- Recovery is opt-in; by default, losing every device loses the data.
+- Denial-of-service by a network neighbour is rate-limited, not prevented.
 
-> ⚠️ Conclave has **not** undergone an independent security audit. Evaluate it
-> carefully against your own threat model before using it for sensitive data.
-
-For the full discussion, see [`docs/security.md`](docs/security.md).
+Conclave has not yet had an independent security audit; one is planned. For the
+full discussion, see [`docs/security.md`](docs/security.md).
