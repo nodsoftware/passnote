@@ -68,7 +68,7 @@ Call it once and share the handle across the app.
 ```dart
 final conclave = await conclaveBuilder(
   appId: 'shopping', // scopes discovery + storage
-  salt: 'shopping:v1', // stable, app-specific PBKDF2 salt
+  salt: 'shopping:v1', // stable, app-specific key-derivation salt
 )
     // Override any default before open(). This one is optional.
     .compactionHorizon(const Duration(days: 60))
