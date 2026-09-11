@@ -1,7 +1,7 @@
 # Wire protocol
 
 What actually travels between two devices, from the outside in. Wire version:
-**2**. Version 1 (JSON) predates any release and is gone.
+**1**.
 
 ## The layer stack
 
@@ -20,11 +20,10 @@ that fails authentication at any layer is dropped silently.
 
 ## Frame encoding
 
-Every decrypted frame is `magic (0xC7) ‖ version (0x02) ‖ type ‖ body`.
+Every decrypted frame is `magic (0xC7) ‖ version (0x01) ‖ type ‖ body`.
 Variable-length fields are varint-prefixed; varints use arithmetic, not
 shifts, so 64-bit values survive JavaScript. Record values use a compact
-tagged encoding (null, bool, int, double, string, list, map). A 50-record
-counter delta measures about a third smaller than its old JSON form.
+tagged encoding (null, bool, int, double, string, list, map).
 
 `decodeMessage` is fail-closed: malformed, truncated, unknown-tag, or
 wrong-version input returns null, never throws. CI fuzzes it with random

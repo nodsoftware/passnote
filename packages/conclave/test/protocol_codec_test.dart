@@ -69,7 +69,7 @@ void main() {
       expect(m.capabilities, ['recon1', 'future-thing']);
       expect(m.devicePublicKey, List<int>.generate(64, (i) => i));
 
-      final bare = rt(const HandshakeMessage(node: 'n2', versions: [2]))
+      final bare = rt(const HandshakeMessage(node: 'n2', versions: [1]))
           as HandshakeMessage;
       expect(bare.capabilities, isEmpty);
       expect(bare.devicePublicKey, isNull);
@@ -161,10 +161,9 @@ void main() {
   });
 
   group('decodeMessage fails closed', () {
-    test('on the old JSON (wire version 1) frames', () {
+    test('on a JSON payload', () {
       expect(
         decodeMessage(utf8.encode(jsonEncode({
-          'v': 1,
           'type': 'hello',
           'node': 'n1',
         }))),
@@ -194,7 +193,7 @@ void main() {
         )),
         encodeMessage(const HandshakeMessage(
           node: 'n',
-          versions: [2],
+          versions: [1],
           capabilities: ['recon1'],
         )),
         encodeMessage(ReconcileMessage(
@@ -239,7 +238,7 @@ void main() {
     test('on a deep nesting bomb', () {
       // A frame claiming a 500-deep list must be rejected, not recursed into.
       final bomb = <int>[
-        0xC7, 2, 3, // magic, version, delta
+        0xC7, 1, 3, // magic, version, delta
         1, 'c'.codeUnitAt(0), // col 'c'
         1, // one record
         0, // flags

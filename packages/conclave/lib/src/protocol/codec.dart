@@ -1,10 +1,9 @@
 /// Binary wire codec for [ProtocolMessage]s.
 ///
-/// Every frame is `magic (0xC7) ‖ version (0x02) ‖ type ‖ body`, with all
+/// Every frame is `magic (0xC7) ‖ version (0x01) ‖ type ‖ body`, with all
 /// variable-length fields length-prefixed by a varint — no delimiters to
-/// escape, no application-level chunking, and roughly half the bytes of the
-/// JSON encoding it replaces. Record values are arbitrary JSON-shaped data,
-/// encoded with a compact tagged encoding ([_writeValue]).
+/// escape and no application-level chunking. Record values are arbitrary
+/// JSON-shaped data, encoded with a compact tagged encoding ([_writeValue]).
 ///
 /// Varints use arithmetic (`~/`, `%`) rather than bit shifts: compiled to
 /// JavaScript, bitwise operators truncate to 32 bits, and values such as
@@ -26,9 +25,8 @@ import 'messages.dart';
 /// starts with `{`) before any parsing work.
 const int _magic = 0xC7;
 
-/// Wire protocol version carried in every frame. Version 2 is the binary
-/// protocol; version 1 was JSON and predates any release.
-const int wireVersion = 2;
+/// Wire protocol version carried in every frame.
+const int wireVersion = 1;
 
 // Message type tags.
 const int _tagHello = 1;

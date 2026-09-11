@@ -167,20 +167,20 @@ void main() {
     });
 
     test('single common value', () {
-      expect(negotiate([2], [2]), 2);
+      expect(negotiate([1], [1]), 1);
       expect(negotiate([1, 2], [2, 9]), 2);
     });
 
     test('no overlap is null', () {
       expect(negotiate([1], [2]), isNull);
       expect(negotiate([2, 3], [4, 5]), isNull);
-      expect(negotiate([], [2]), isNull);
-      expect(negotiate([2], []), isNull);
+      expect(negotiate([], [1]), isNull);
+      expect(negotiate([1], []), isNull);
       expect(negotiate([], []), isNull);
     });
 
     test('this build advertises the binary protocol', () {
-      expect(supportedWireVersions, [2]);
+      expect(supportedWireVersions, [1]);
     });
   });
 
@@ -208,8 +208,8 @@ void main() {
   test('peers with a common version complete the handshake and sync', () async {
     final bus = InMemoryBus();
     final a = await openNode(bus);
-    // A future build advertising {2, 3} still talks 2 with this one.
-    final b = await openNode(bus, versions: [2, 3]);
+    // A future build advertising {1, 2} still talks 1 with this one.
+    final b = await openNode(bus, versions: [1, 2]);
     addTearDown(() async {
       await a.close();
       await b.close();
@@ -252,7 +252,7 @@ void main() {
     await colA.put({'id': 'x', 'v': 'unreachable'});
     final event =
         await incompatibleOnA.future.timeout(const Duration(seconds: 5));
-    expect(event.localVersions, [2]);
+    expect(event.localVersions, [1]);
     expect(event.remoteVersions, [3]);
 
     // Nothing syncs in either direction, and nothing crashes or loops.
