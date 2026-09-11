@@ -1,5 +1,5 @@
-// The getting-started walkthrough, compiled. Each numbered section matches a
-// step in docs/getting-started.md; keep the two in sync.
+// The tutorial, compiled. Each numbered section matches a step in
+// docs/start-here/tutorial.md; keep the two in sync.
 
 import 'package:conclave_flutter/conclave_flutter.dart';
 import 'package:flutter/material.dart';
@@ -75,6 +75,20 @@ void logChanges(Collection<Item> items) {
   items.watch().listen((all) {
     debugPrint('list now has ${all.length} items');
   });
+}
+
+// 7. Pair a second device
+
+Future<void> sponsorPairing(Conclave conclave) async {
+  // On a device that already has the data: create a one-time code.
+  final code = await conclave.startPairing('home', joinerLabel: 'new phone');
+  debugPrint('On the new device, enter: ${code.display}');
+}
+
+Future<Database> joinWithCode(Conclave conclave, String typedCode) {
+  // On the new device: enter the code. The exchange authenticates both
+  // sides, hands over the keys, and returns a ready database.
+  return conclave.pairWith('home', PairingCode.parse(typedCode));
 }
 
 class ShoppingList extends StatelessWidget {

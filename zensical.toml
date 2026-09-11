@@ -19,6 +19,13 @@ nav = [
   ] },
   { "Guides" = [
     "guides/index.md",
+    "guides/pair-a-device.md",
+    "guides/revoke-a-device.md",
+    "guides/choose-field-types.md",
+    "guides/query-and-paginate.md",
+    "guides/run-on-the-web.md",
+    "guides/recover-from-a-lost-passphrase.md",
+    "guides/contributing.md",
   ] },
   { "Concepts" = [
     "concepts/data-model.md",

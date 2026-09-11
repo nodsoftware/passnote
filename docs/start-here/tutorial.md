@@ -1,31 +1,35 @@
-# Getting started
+# Tutorial
 
-This guide takes you from an empty Flutter app to a live, encrypted, multi-device
-shopping list in a handful of steps.
+This walkthrough goes from an empty Flutter app to two devices sharing an
+encrypted shopping list. All code on this page lives in
+[`examples/quickstart/`](https://github.com/nodsoftware/conclave/tree/main/examples/quickstart)
+and is compiled in CI, so it cannot drift from the real API.
 
 ## 1. Install
 
-Add the umbrella package to your `pubspec.yaml`:
+Add the Flutter package to your `pubspec.yaml`, plus the code generator as a
+dev dependency:
 
 ```yaml
 dependencies:
-  conclave: ^0.1.0
+  conclave_flutter: ^0.1.0
+
+dev_dependencies:
+  build_runner: ^2.15.0
+  conclave_generator: ^0.1.0
 ```
 
-The umbrella re-exports everything you need and pulls in the default adapters
-(Sembast storage, OS keychain, LAN transport, AES-GCM crypto). If you only want
-the pure-Dart engine, depend on `conclave` instead and wire adapters
-yourself — see [Adapters](../concepts/identity.md).
+`conclave_flutter` brings the whole library: the engine, the crypto, the
+transports, and the Flutter glue (keychain key store, change notifiers).
 
 ```sh
 flutter pub get
 ```
 
-## 2. Define a model and codec
+## 2. Define a model
 
-A collection stores typed documents. Annotate a plain class and let
-`package:conclave_generator` generate its `Codec` — the (de)serialisation, the
-document id, and the per-field CRDT schema, kept in sync by construction:
+Annotate a plain class. The generator produces its codec: the mapping to and
+from stored form, with `@DocumentId()` marking the stable id.
 
 ```dart
 part 'main.g.dart';
@@ -44,67 +48,40 @@ class Item {
       Item(id: id, name: name ?? this.name, done: done ?? this.done);
 }
 
-// `dart run build_runner build` generates:
+// `dart run build_runner build` generates _$ItemCodec from the annotations:
+// toMap/fromMap over the fields, with `id` as the document id.
 final itemCodec = _$ItemCodec;
 ```
 
-Add the generator to `dev_dependencies` (`build_runner` and
-`conclave_generator`) and run `dart run build_runner build` after changing the
-model. Fields annotated `@Crdt(PnCounter())` or `@Crdt(OrSet())` merge as a
-counter or a set; unannotated fields merge last-write-wins. A hand-written
-codec keeps working for exotic shapes:
+Run the generator after changing the model:
 
-```dart
-final itemCodec = JsonCodec<Item>(
-  toMap: (i) => i.toJson(),
-  fromMap: Item.fromJson,
-  idOf: (i) => i.id,
-);
+```sh
+dart run build_runner build
 ```
 
 ## 3. Open Conclave
 
-`conclaveBuilder` returns a builder wired with the production adapters (Sembast
-storage, OS keychain, LAN transport, AES-GCM); `.open()` starts it. Call it once
-and share the handle across your app.
+`conclaveBuilder` returns a builder with the production pieces installed:
+SQLite storage, the OS keychain, LAN discovery, XChaCha20-Poly1305 encryption.
+Call it once and share the handle across the app.
 
 ```dart
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  final conclave = await conclaveBuilder(
-    appId: 'shopping', // scopes discovery + storage
-    salt: 'shopping:v1', // stable, app-specific PBKDF2 salt
-  )
-      // Override any default before open(). This one is optional.
-      .compactionHorizon(const Duration(days: 60))
-      .open();
-
-  // On the first device, generate a passphrase to show the user:
-  final words = conclave.generatePassphrase().join(' ');
-
-  // On every device, open the database with that passphrase:
-  final db = await conclave.openDatabase('home', passphrase: words);
-
-  final items = db.collection<Item>('items', itemCodec);
-
-  await seed(items);
-  logChanges(items);
-
-  runApp(ShoppingList(items: items));
-}
+final conclave = await conclaveBuilder(
+  appId: 'shopping', // scopes discovery + storage
+  salt: 'shopping:v1', // stable, app-specific PBKDF2 salt
+)
+    // Override any default before open(). This one is optional.
+    .compactionHorizon(const Duration(days: 60))
+    .open();
 ```
 
-- **`appId`** scopes mDNS discovery and storage namespacing — only apps with the
-  same `appId` discover each other.
-- **`salt`** is a stable, app-specific string mixed into key derivation. Change
-  it only when you intend to invalidate all previously derived keys.
+`appId` scopes discovery and storage: only apps with the same id see each
+other. `salt` pins your keys to your app; keep it constant.
 
-## 4. Open a database with a passphrase
+## 4. Open a database
 
-A *database* is one shared, encrypted dataset. The passphrase derives its
-encryption key and its discovery "room" — devices that enter the same passphrase
-(under the same `appId`/`salt`) join the same encrypted room.
+A database is one shared, encrypted dataset. Its passphrase protects the
+device roster and seeds discovery.
 
 ```dart
 // On the first device, generate a passphrase to show the user:
@@ -112,9 +89,15 @@ final words = conclave.generatePassphrase().join(' ');
 
 // On every device, open the database with that passphrase:
 final db = await conclave.openDatabase('home', passphrase: words);
+
+final items = db.collection<Item>('items', itemCodec);
 ```
 
-## 5. Read and write a collection
+The first device to open a database founds its device group and holds its
+group key. Other devices join by pairing (step 7), not by retyping the
+passphrase.
+
+## 5. Read and write
 
 ```dart
 Future<void> seed(Collection<Item> items) async {
@@ -131,28 +114,14 @@ Future<void> seed(Collection<Item> items) async {
 }
 ```
 
-`put`, `delete`, `all`, and `where` are all `async`; `await` them. `where`
-decodes and scans every document, so use it for one-off filtering, not a hot
-path.
-
-By default a document merges whole-document last-write-wins. To let concurrent
-edits to *different fields* of the same document both survive, pass a field-level
-merge strategy:
-
-```dart
-final items = db.collection<Item>(
-  'items',
-  itemCodec,
-  merge: const ShallowMergeStrategy(),
-);
-```
-
-See [Collections](../concepts/data-model.md) for the trade-offs.
+Writes work immediately, online or offline. For filtered, sorted, or paginated
+reads there is also an indexed query builder; see
+[Query and paginate](../guides/query-and-paginate.md).
 
 ## 6. React to changes
 
-`watch()` emits the current list once the initial load completes, then again on
-every local or synced change:
+`watch()` emits the current list once loaded, then again on every change,
+local or from a peer:
 
 ```dart
 void logChanges(Collection<Item> items) {
@@ -162,47 +131,50 @@ void logChanges(Collection<Item> items) {
 }
 ```
 
-In Flutter, prefer the ready-made `CollectionNotifier` (a `ChangeNotifier`):
+In widgets, use `CollectionNotifier` (or `CollectionNotifier.query` for a
+bounded slice) instead of hand-managing subscriptions.
+
+## 7. Pair a second device
+
+Run the app on a second device on the same network. On the device that already
+has the data, create a one-time nine-digit code and show it:
 
 ```dart
-class ShoppingList extends StatelessWidget {
-  const ShoppingList({required this.items, super.key});
-
-  final Collection<Item> items;
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      home: Scaffold(
-        body: ChangeNotifierProvider(
-          create: (_) => CollectionNotifier<Item>(items),
-          child: Consumer<CollectionNotifier<Item>>(
-            builder: (_, n, __) => ListView(
-              children: [for (final item in n.items) Text(item.name)],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+Future<void> sponsorPairing(Conclave conclave) async {
+  // On a device that already has the data: create a one-time code.
+  final code = await conclave.startPairing('home', joinerLabel: 'new phone');
+  debugPrint('On the new device, enter: ${code.display}');
 }
 ```
 
-## 7. Try multi-device sync
+On the new device, enter that code:
 
-1. Run the app on two devices on the same Wi-Fi.
-2. Enter the same passphrase on both.
-3. Add an item on one — it appears on the other within moments.
-4. Go offline, edit both, reconnect — the lists converge automatically.
+```dart
+Future<Database> joinWithCode(Conclave conclave, String typedCode) {
+  // On the new device: enter the code. The exchange authenticates both
+  // sides, hands over the keys, and returns a ready database.
+  return conclave.pairWith('home', PairingCode.parse(typedCode));
+}
+```
 
-Two complete, runnable examples live in the repository:
+Add an item on either device. It appears on the other within a moment.
 
-- `examples/shopping_list_provider` — Provider + `CollectionNotifier`.
-- `examples/shopping_list_bloc` — `flutter_bloc` Cubit over `items.watch()`.
+## 8. What just happened
 
-## Where to go next
+- Each device keeps its own complete copy of the list in an encrypted SQLite
+  file. Reads and writes never wait for the network.
+- The devices found each other over the local network and exchanged only
+  encrypted data. Nothing left the room in plaintext, and nothing touched a
+  server.
+- The nine-digit code ran a short cryptographic exchange
+  ([PAKE](../concepts/glossary.md#pake)) that proved both devices held the
+  same code, then sealed the data keys to the new device's own keypair.
+  Guessing costs an attacker one visible failed attempt per guess, and the
+  sponsor stops after three.
+- Edits made on both devices at once merge automatically and every device
+  arrives at the same result. How that works is in
+  [Clocks and merge](../concepts/clocks-and-merge.md).
 
-- [Databases & keys](../concepts/identity.md)
-- [Collections](../concepts/data-model.md)
-- [Sync & CRDTs](../concepts/sync.md)
-- [Security](../security.md)
+Next: pick per-field merge behaviour in
+[Choose field types](../guides/choose-field-types.md), or read the
+[data model](../concepts/data-model.md).
