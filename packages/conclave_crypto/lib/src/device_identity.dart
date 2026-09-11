@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:conclave/conclave.dart';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:cryptography/cryptography.dart';
+import 'package:meta/meta.dart';
 
 import 'key_derivation.dart';
 
@@ -129,18 +130,43 @@ class DeviceIdentity implements Identity {
   }
 
   @override
-  Future<WrappedKey> wrapFor(DevicePublicKey peer, List<int> key) async {
-    final ephemeral = await _x25519.newKeyPair();
+  Future<WrappedKey> wrapFor(DevicePublicKey peer, List<int> key) async =>
+      _wrapWith(await _x25519.newKeyPair(), peer, key);
+
+  /// [wrapFor] with the ephemeral keypair derived from [ephemeralSeed], for
+  /// the published known-answer test vectors only. Production wraps use a
+  /// fresh random ephemeral per call.
+  @visibleForTesting
+  Future<WrappedKey> wrapForWithEphemeralSeed(
+    DevicePublicKey peer,
+    List<int> key,
+    List<int> ephemeralSeed, {
+    List<int>? gcmNonce,
+  }) async =>
+      _wrapWith(
+        await _x25519.newKeyPairFromSeed(ephemeralSeed),
+        peer,
+        key,
+        gcmNonce: gcmNonce,
+      );
+
+  Future<WrappedKey> _wrapWith(
+    KeyPair ephemeral,
+    DevicePublicKey peer,
+    List<int> key, {
+    List<int>? gcmNonce,
+  }) async {
     final shared = await _x25519.sharedSecretKey(
       keyPair: ephemeral,
       remotePublicKey:
           SimplePublicKey(peer.keyExchange, type: KeyPairType.x25519),
     );
     final wrapKey = await _deriveWrapKey(shared, peer.keyExchange);
-    final nonce = _aesGcm.newNonce();
+    final nonce = gcmNonce ?? _aesGcm.newNonce();
     final box = await _aesGcm.encrypt(key, secretKey: wrapKey, nonce: nonce);
     return WrappedKey(
-      ephemeralPublicKey: (await ephemeral.extractPublicKey()).bytes,
+      ephemeralPublicKey:
+          ((await ephemeral.extractPublicKey()) as SimplePublicKey).bytes,
       nonce: nonce,
       ciphertext: Uint8List.fromList([...box.cipherText, ...box.mac.bytes]),
     );

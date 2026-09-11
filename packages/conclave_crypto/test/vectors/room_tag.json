@@ -1,0 +1,17 @@
+{
+  "primitive": "base32(SHA-256(key || \"conclave-room\"))[0..16], RFC 4648 alphabet, no padding",
+  "cases": [
+    {
+      "key": "00070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9",
+      "tag": "A6RDFCRESDKESSCA"
+    },
+    {
+      "key": "01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3da",
+      "tag": "D4NEJZTCBUIIHQFA"
+    },
+    {
+      "key": "424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b",
+      "tag": "4VVHEBFWIUVFTE4L"
+    }
+  ]
+}

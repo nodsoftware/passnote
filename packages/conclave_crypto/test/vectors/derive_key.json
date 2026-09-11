@@ -1,0 +1,26 @@
+{
+  "primitive": "BIP39 seed -> Argon2id(memory=19456 KiB, iterations=2, lanes=1, hashLength=32); argon salt = SHA-256(\"conclave-kdf-salt/<salt>\")[0..16]; recovery variant uses salt \"recovery-v1/<salt>\"",
+  "cases": [
+    {
+      "name": "12-word mnemonic",
+      "mnemonic": "legal winner thank year wave sausage worth useful legal winner thank yellow",
+      "salt": "vectors:v1",
+      "key": "951e6cba716ab2f23091ca70d1810b0e85864b4fb31e8ba9d5a642de6c17ce5b",
+      "recovery_secret": "c7d255e04a1f799801762f07c61edf59f592ad935fc6b735e9b57a2bde21439d"
+    },
+    {
+      "name": "24-word mnemonic",
+      "mnemonic": "letter advice cage absurd amount doctor acoustic avoid letter advice cage absurd amount doctor acoustic avoid letter advice cage absurd amount doctor acoustic bless",
+      "salt": "vectors:v1",
+      "key": "10d13be13d554fb78413363290f2bb8b7c5bb500aab3ac906bfa76d0df32a8d5",
+      "recovery_secret": "8bc0dd4fd4188c44efa517338bc5450525cbfc39d35ffaab0d97185807136079"
+    },
+    {
+      "name": "same phrase, other salt",
+      "mnemonic": "legal winner thank year wave sausage worth useful legal winner thank yellow",
+      "salt": "other-app:v1",
+      "key": "398e6ab1ef01e6a64e37e198b813b071dc469acdb201379a1f48fda66fe19695",
+      "recovery_secret": "d17c91924291603e4499c558c6bd0d975bd50eeeddcbf9726327ce6f8421da9f"
+    }
+  ]
+}

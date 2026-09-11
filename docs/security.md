@@ -91,8 +91,8 @@ Each of these is a deliberate scope decision, stated with its reason.
 | At rest | SQLCipher (whole-file) |
 | Room tag | truncated SHA-256 of key material, domain-separated |
 
-Published test vectors for the primitives accompany the crypto package (see
-the repository's `packages/conclave_crypto/test/`).
+Every primitive is pinned by published known-answer
+[test vectors](reference/crypto-vectors.md), asserted in CI.
 
 ## Recommendations
 

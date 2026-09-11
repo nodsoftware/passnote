@@ -40,6 +40,7 @@ nav = [
     "reference/transports.md",
     "reference/wire-protocol.md",
     "reference/sqlite-schema.md",
+    "reference/crypto-vectors.md",
   ] },
   { "Security" = "security.md" },
 ]

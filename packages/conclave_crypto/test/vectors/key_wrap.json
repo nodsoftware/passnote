@@ -1,0 +1,12 @@
+{
+  "primitive": "X25519(ephemeral, recipient) -> HKDF-SHA256(info=\"conclave-key-wrap-v1\" || recipientPub) -> AES-256-GCM; encoding ephemeralPub(32) || nonce(12) || ct || tag(16)",
+  "case": {
+    "recipient_phrase": "letter advice cage absurd amount doctor acoustic avoid letter advice cage absurd amount doctor acoustic avoid letter advice cage absurd amount doctor acoustic bless",
+    "recipient_salt": "vectors:v1",
+    "recipient_kx_pub": "cb573fb4d7b9fb793bc77f912f1e9ac33db8bbef8cdc4f2c962595634c3af562",
+    "wrapped_key": "555c636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e",
+    "ephemeral_seed": "666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f",
+    "gcm_nonce": "777e858c939aa1a8afb6bdc4",
+    "wrapped": "e8d0ead4458a53ab36998d65da078da12a713bbcb70f6f2db475a113cb0b1733777e858c939aa1a8afb6bdc4a6cbd1f9c16937fa2a2a06aa111039638d969d0ecbefd374364aedb2bd3c27b88fd9c6d34c1e0f88d31a4106b1d0d38c"
+  }
+}

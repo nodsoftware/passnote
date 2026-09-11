@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:conclave/conclave.dart';
 import 'package:cryptography/cryptography.dart' hide Cipher;
+import 'package:meta/meta.dart';
 
 /// XChaCha20-Poly1305 implementation of the [Cipher] port, and the default
 /// cipher.
@@ -35,8 +36,17 @@ class XChaChaPoly1305Cipher implements Cipher {
   static const int _tagLength = 16;
 
   @override
-  Future<List<int>> encrypt(List<int> plaintext) async {
-    final nonce = _algorithm.newNonce();
+  Future<List<int>> encrypt(List<int> plaintext) =>
+      encryptWithNonce(plaintext, _algorithm.newNonce());
+
+  /// [encrypt] with the nonce supplied, for the published known-answer test
+  /// vectors only. Production callers use [encrypt]: reusing a nonce under one
+  /// key breaks the cipher's guarantees.
+  @visibleForTesting
+  Future<List<int>> encryptWithNonce(
+    List<int> plaintext,
+    List<int> nonce,
+  ) async {
     final box = await _algorithm.encrypt(
       plaintext,
       secretKey: _secretKey,
