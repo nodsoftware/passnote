@@ -13,10 +13,38 @@ final conclave = await conclaveBuilder(appId: 'shopping', salt: 'shopping:v1')
 
 The frozen surface and its guarantees are described in
 [`VERSIONING.md`](https://github.com/nodsoftware/conclave/blob/main/VERSIONING.md).
-Pure-Dart apps use `Conclave.builder(appId:, salt:)` from `package:conclave`
-after installing defaults with `ConclaveBuilder.installDefaults`, or skip the
-builder entirely with `Conclave.lowLevel` (every dependency passed explicitly;
-see [Ports](ports.md)).
+
+## Pure Dart (no Flutter)
+
+A plain Dart process uses `Conclave.builder(appId:, salt:)` from
+`package:conclave` after installing defaults once with
+`ConclaveBuilder.installDefaults`, filling every `ConclaveDefaults` slot with
+the production adapters from `conclave_crypto` and `conclave_lan`:
+
+```dart
+ConclaveBuilder.installDefaults(ConclaveDefaults(
+  engine: (databaseId, collection, key) => SqliteCrdtTable(
+      '$dataDir/$databaseId/$collection.sqlite', encryptionKey: key),
+  keyStore: (appId) => FileKeyStore(File('$dataDir/$appId.keys.json')),
+  transport: LanTransport.new,
+  cipher: XChaChaPoly1305Cipher.new,
+  deriveKey: deriveKey,
+  roomTag: roomTag,
+  mnemonicGenerator: (words) => generateMnemonic(words: words),
+  validateMnemonic: isValidMnemonic,
+  identity: (keyStore) => DeviceIdentity.load(keyStore: keyStore),
+  pake: Spake2Pake.new,
+  recoveryIdentity: (phrase, salt) =>
+      DeviceIdentity.fromRecoveryPhrase(phrase, salt: salt),
+));
+```
+
+There is no OS keychain in a bare process, so bring your own `KeyStore`. The
+runnable version of all of this — including an example-grade file-backed
+`FileKeyStore` and a generated per-field merge strategy in use — is
+[`examples/cli_logbook`](https://github.com/nodsoftware/conclave/tree/main/examples/cli_logbook),
+a two-device terminal logbook. To skip the builder entirely, wire every
+dependency explicitly with `conclaveLowLevel` (see [Ports](ports.md)).
 
 ## Overrides
 
@@ -35,7 +63,7 @@ see [Ports](ports.md)).
 
 ## ConclaveConfig
 
-`Conclave.lowLevel` takes the same knobs as a `ConclaveConfig`:
+`conclaveLowLevel` takes the same knobs as a `ConclaveConfig`:
 
 | Field | Default | Meaning |
 | --- | --- | --- |

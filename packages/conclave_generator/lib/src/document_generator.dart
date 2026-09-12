@@ -180,9 +180,9 @@ class DocumentGenerator extends GeneratorForAnnotation<Document> {
     ClassElement element,
     List<FieldElement> fields,
   ) {
-    final ctor = element.constructors
-        .where((c) => c.displayName == name || c.displayName == 'new')
-        .firstOrNull;
+    // `unnamedConstructor` is stable across analyzer versions; `displayName`
+    // is not (analyzer 13 changed it from `Class` to `Class.new`).
+    final ctor = element.unnamedConstructor;
     if (ctor == null) {
       throw InvalidGenerationSource(
         '@Document() class $name needs an unnamed constructor.',

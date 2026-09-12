@@ -37,14 +37,37 @@ bump included, so an interrupted step reopens at the old version, never
 half-applied. The virtual `doc_id` / `field_path` columns are computed on
 read: they cost nothing on the write path.
 
+## Encryption is verified on open
+
+When an encryption key is supplied, the engine issues `PRAGMA key` and then
+checks `PRAGMA cipher_version`. A linked SQLite that is not a SQLCipher build
+returns no row, and the open throws `SqlCipherUnavailableException` instead of
+silently writing plaintext. A key that does not decrypt an existing file
+throws `WrongPassphraseException` and leaves the file untouched, so a retry
+with the right passphrase succeeds.
+
 ## Corruption recovery
 
-Opening runs `PRAGMA quick_check`. A file that will not open or does not pass
-is moved aside to `<path>.corrupt-<timestamp>` and the store is rebuilt: from
-`<path>.snapshot` when a readable one exists, otherwise empty, followed by an
-automatic re-sync from peers. `snapshotInterval` (default 30 minutes)
-controls how often the snapshot is refreshed with `VACUUM INTO`. Either
-recovery surfaces a `StoreRecovered` event on `Conclave.events`.
+Opening runs `PRAGMA quick_check`. A corrupt file is moved aside to
+`<path>.corrupt-<timestamp>` and the store is rebuilt: from `<path>.snapshot`
+when a readable one exists, otherwise empty, followed by an automatic re-sync
+from peers. `snapshotInterval` (default 30 minutes) controls how often the
+snapshot is refreshed with `VACUUM INTO` (the snapshot inherits the
+encryption key). Either recovery surfaces a `StoreRecovered` event on
+`Conclave.events`.
+
+For an **encrypted** database the corrupt and mis-keyed cases can look
+identical: SQLCipher answers header damage and a wrong key with the same
+error. The snapshot arbitrates. When `<path>.snapshot` opens cleanly under
+the supplied key, the key is proven right, the file is treated as corrupt,
+and recovery proceeds. Without a snapshot the ambiguity resolves to
+`WrongPassphraseException` and the file is preserved: the engine never
+destroys data on a guess, at the price that recovering from header damage
+then takes the user confirming the passphrase and deleting the file. Damage
+past the header (a broken page under a valid key) fails `quick_check`
+directly and recovers without arbitration. Opening an encrypted file with
+**no** key also reads as corruption; the quarantine keeps the original file,
+so a lost key entry quarantines the working copy rather than deleting it.
 
 ## Key rotation
 
@@ -55,5 +78,8 @@ revocation.
 ## What the file leaks
 
 SQLCipher encrypts the whole file: schema, row counts, and content are all
-ciphertext to an attacker with only the file. Without an encryption key (a
-custom setup), collection names, keys, HLCs, and values are plaintext SQLite.
+ciphertext to an attacker with only the file. Opening with a key on a
+non-SQLCipher build fails closed (see above), so a keyed database is never
+plaintext by accident. Only a database deliberately opened **without** an
+encryption key stores collection names, keys, HLCs, and values as plaintext
+SQLite.

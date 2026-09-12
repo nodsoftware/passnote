@@ -29,8 +29,11 @@ flowchart TD
   codec, and (optionally) a merge strategy:
 
   ```dart
-  final items = db.collection<Item>('items', Item.codec);
+  final items = db.collection<Item>('items', Item.codec, merge: Item.merge);
   ```
+
+  A collection created without `merge:` uses `ObjectMergeStrategy`, whatever
+  the model declares.
 
 - A document is one value of your model type, identified by a stable string
   id. Ids must not contain the ASCII unit separator (`\x1F`).
@@ -81,7 +84,7 @@ records, which decides how concurrent edits to one document merge:
 | --- | --- | --- |
 | `ObjectMergeStrategy` (default) | Whole document | Latest write wins; the other edit is discarded. |
 | `ShallowMergeStrategy` | Each top-level field | Edits to different fields both survive. |
-| `DeepMergeStrategy` | Every nested leaf | Edits to different leaves both survive; lists stay atomic. |
+| `DeepMergeStrategy` | Every nested leaf | Edits to different leaves both survive; lists stay atomic. Field names must not contain the path separator (default `.`); an offending document is rejected at `put`. Dotted keys (i18n keys, config paths, hostnames) belong on `ShallowMergeStrategy`. |
 | `SchemaMergeStrategy` | Per field, with [CRDT](glossary.md#crdt) types | As shallow, plus counters and sets per the schema. |
 
 The strategy is fixed when a collection is first created; all devices sharing

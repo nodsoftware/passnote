@@ -60,8 +60,8 @@ void main() {
       await client.start(self: 'client-node', appId: 'ws');
       addTearDown(client.stop);
 
-      expect((await serverSeesClient).peer, 'client-node');
-      expect((await clientSeesServer).peer, 'server-node');
+      expect((await serverSeesClient as PeerConnected).peer, 'client-node');
+      expect((await clientSeesServer as PeerConnected).peer, 'server-node');
 
       final atServer = server.inbound.first.timeout(const Duration(seconds: 5));
       await client.send('server-node', const Frame('room-1', [1, 2, 3]));
@@ -121,7 +121,7 @@ void main() {
       addTearDown(relay.close);
       final uri = Uri.parse('ws://127.0.0.1:${relay.port}');
 
-      Future<Conclave> openNode() => Conclave.lowLevel(
+      Future<Conclave> openNode() => conclaveLowLevel(
             config: const ConclaveConfig(appId: 'wsr', salt: 'wsr:v1'),
             keyStore: _MemKeyStore(),
             transport: WebSocketTransport(connectTo: [uri]),

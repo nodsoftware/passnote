@@ -33,7 +33,10 @@ part 'query/query.dart';
 /// full field set; they are harmless until overwritten or compacted.
 ///
 /// Document ids and field paths must not contain the ASCII Unit Separator
-/// (`\x1F`, U+001F), which is reserved as the id/field separator.
+/// (`\x1F`, U+001F), which is reserved as the id/field separator. This is
+/// enforced: [put], [increment], and [delete] throw [ArgumentError] on an
+/// offending id or path instead of writing a record key that would collide
+/// with another document's.
 ///
 /// The initial load is asynchronous. [put], [delete], [get], [all], [where],
 /// and [query] await it before returning meaningful results.
@@ -117,12 +120,36 @@ class Collection<T> {
   // writers run one-at-a-time through this chain.
   Future<void> _writes = Future<void>.value();
 
+  // How many mutating operations are queued or running. A document is written
+  // one record at a time, so between the first record and the last the store
+  // holds a half-written document: a watcher that recomputed there would decode
+  // a document missing fields its codec requires. Watchers therefore defer
+  // their refresh while this is non-zero and run once when the writes drain.
+  int _mutating = 0;
+
+  /// Watchers whose engine event arrived mid-write, refreshed once the writes
+  /// drain.
+  final Set<StreamController<List<T>>> _deferredRefresh = {};
+
   Future<void> _serialize(Future<void> Function() action) {
-    final done = _writes.then((_) => action());
+    _mutating++;
+    final done = _writes.then((_) => action()).whenComplete(_endMutation);
     // Keep the chain alive even if an action fails; the failure still surfaces
     // to the caller via [done].
     _writes = done.catchError((_) {});
     return done;
+  }
+
+  /// Ends one mutating operation, releasing the watchers it held back once the
+  /// last one finishes.
+  void _endMutation() {
+    if (--_mutating > 0) return;
+    if (_deferredRefresh.isEmpty) return;
+    final pending = _deferredRefresh.toList();
+    _deferredRefresh.clear();
+    for (final controller in pending) {
+      if (!controller.isClosed) _watcherRefresh[controller]?.call();
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -263,7 +290,11 @@ class Collection<T> {
     await _ready;
     await _serialize(() async {
       final id = _codec.idOf(value);
+      _checkNoSeparator(id, 'document id');
       final specs = _merge.fields(_codec.toMap(value)).toList();
+      for (final spec in specs) {
+        _checkNoSeparator(spec.path, 'field path');
+      }
       final prefix = '$id$_sep';
       final current = await _fieldsForDoc(id);
       final livePaths = {for (final s in specs) s.path};
@@ -310,6 +341,22 @@ class Collection<T> {
   /// before writing.
   Future<void> increment(String documentId, String fieldPath,
       {num by = 1}) async {
+    _checkNoSeparator(documentId, 'document id');
+    _checkNoSeparator(fieldPath, 'field path');
+    final declared = _merge.typeAt(fieldPath);
+    if (declared is! PnCounter) {
+      // Without a strategy that types the field as a counter, the delta would
+      // be written to a record no read ever looks at: the increment would
+      // vanish silently.
+      throw ArgumentError.value(
+        fieldPath,
+        'fieldPath',
+        'is typed ${declared.runtimeType} by this collection\'s merge '
+            'strategy, not PnCounter, so an increment would be lost. Create '
+            'the collection with a SchemaMergeStrategy that types it '
+            '(annotated models: the generated _\$<Model>MergeStrategy)',
+      );
+    }
     await _ready;
     await _serialize(() async {
       if (await _engine.value(_name, documentId) == null) {
@@ -332,11 +379,29 @@ class Collection<T> {
   /// rather than one missing the fields the edit did not touch. Awaits the
   /// initial storage load before writing.
   Future<void> delete(String documentId) async {
+    _checkNoSeparator(documentId, 'document id');
     await _ready;
     await _serialize(() async {
       await _engine.put(_name, documentId, null, isDeleted: true);
     });
     _onLocalChange?.call();
+  }
+
+  /// Enforces the reserved-separator invariant on locally written keys: the
+  /// engine joins a document id and a field path into one record key with
+  /// `\x1F`, so either one containing it would collide with another
+  /// document's records (id `"d1\x1Fa"` with field `b` keys identically to
+  /// id `"d1"` with field `"a\x1Fb"`).
+  static void _checkNoSeparator(String value, String what) {
+    if (value.contains(_sep)) {
+      throw ArgumentError.value(
+        value,
+        what,
+        'must not contain the ASCII Unit Separator (\\x1F, U+001F), which '
+        'the engine reserves to join document ids and field paths into '
+        'record keys',
+      );
+    }
   }
 
   /// Returns a stream that emits the current document list once the initial
@@ -371,16 +436,35 @@ class Collection<T> {
     controller = StreamController<List<T>>(
       onListen: () {
         _ready.then((_) {
-          sub = _engine.watch(_name).listen((_) => boundRefresh());
+          sub = _engine.watch(_name).listen((_) {
+            // Mid-write the store holds half-written documents; refresh once
+            // the write drains instead of decoding one now.
+            if (_mutating > 0) {
+              _deferredRefresh.add(controller);
+              return;
+            }
+            boundRefresh();
+          });
           _watcherSubs[controller] = sub;
           _watcherRefresh[controller] = boundRefresh;
           boundRefresh();
+        }).catchError((Object error, StackTrace stack) {
+          // The initial load can fail (an engine that will not open, or a
+          // database this device is not paired into yet). Report it on the
+          // stream the caller is listening to, rather than as an unhandled
+          // error in the zone.
+          if (!controller.isClosed) {
+            controller
+              ..addError(error, stack)
+              ..close();
+          }
         });
       },
       onCancel: () async {
         await sub?.cancel();
         _watcherSubs.remove(controller);
         _watcherRefresh.remove(controller);
+        _deferredRefresh.remove(controller);
         _watchers.remove(controller);
       },
       onPause: () => sub?.pause(),

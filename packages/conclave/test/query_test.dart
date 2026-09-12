@@ -217,6 +217,47 @@ void main() {
     }
   });
 
+  test(
+      'the two engines split an order-value tie at a page boundary '
+      'identically, both directions', () async {
+    // Duplicated priorities arranged so every page boundary falls INSIDE a
+    // tie: the cursor must disambiguate by document id, and both engines
+    // must agree on where each page ends. This is the trickiest branch of
+    // the compiled keyset window (`ord = cursor AND did > cursor.docId`).
+    final sqlite = await openSqlite(freshPath());
+    final memory = await openInMemory();
+    for (final col in [sqlite, memory]) {
+      for (var i = 0; i < 6; i++) {
+        await col.put(task('t$i', priority: i < 3 ? 1 : 2));
+      }
+    }
+
+    for (final descending in [false, true]) {
+      final expected = descending
+          ? ['t5', 't4', 't3', 't2', 't1', 't0']
+          : ['t0', 't1', 't2', 't3', 't4', 't5'];
+      final perEngine = <List<String>>[];
+      for (final col in [sqlite, memory]) {
+        final pages = <List<String>>[];
+        QueryCursor? cursor;
+        do {
+          var q =
+              col.query().orderBy('priority', descending: descending).limit(2);
+          if (cursor != null) q = q.startAfter(cursor);
+          final page = await q.page();
+          pages.add([for (final t in page.items) t.id]);
+          cursor = page.nextCursor;
+        } while (cursor != null);
+        expect(pages.expand((p) => p), equals(expected),
+            reason: 'ties order by document id (descending=$descending)');
+        expect(pages.every((p) => p.length <= 2), isTrue);
+        perEngine.add(pages.expand((p) => p).toList());
+      }
+      expect(perEngine[0], equals(perEngine[1]),
+          reason: 'both engines agree page by page (descending=$descending)');
+    }
+  });
+
   test('a cursor survives a close and reopen of the same store', () async {
     final path = freshPath();
     var col = await openSqlite(path);

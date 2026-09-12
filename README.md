@@ -20,18 +20,22 @@ items.watch().listen((all) => print('now ${all.length} items'));
 
 ## Highlights
 
-- **End-to-end encrypted.** XChaCha20-Poly1305 at rest (SQLCipher) and on the
-  wire, Argon2id key derivation, and a forward-secrecy ratchet per connection.
+- **End-to-end encrypted.** XChaCha20-Poly1305 on the wire with a
+  forward-secrecy ratchet per connection, SQLCipher at rest (enforced: the
+  engine refuses to open with a key on a non-SQLCipher build), Argon2id key
+  derivation.
 - **Real device membership.** Per-device keypairs; pairing by a nine-digit
-  code over SPAKE2; revocation by group-key rotation; an optional recovery
-  phrase.
+  code over SPAKE2; Ed25519-signed roster rows; revocation by group-key
+  rotation; an optional recovery phrase.
 - **Server-less.** mDNS discovery and direct sync on the LAN, or explicit
   WebSocket addresses (and a reference relay) for browsers and remote peers.
 - **Local-first, conflict-free.** Offline reads and writes; deterministic
   merges via hybrid logical clocks; per-field counters and sets when
   last-write-wins is not what you mean.
 - **Queryable.** Indexed, typed queries with stable keyset pagination and
-  bounded-cost live watching, compiled to SQL on the disk engine.
+  bounded-cost live query watching (`query()...watch()`), compiled to SQL on
+  the disk engine. `Collection.watch()` re-reads the whole collection per
+  change — see [limits](docs/reference/limits.md).
 - **Self-healing.** Streamed bounded sync frames, periodic anti-entropy, and
   range-fingerprint reconciliation that finds any gap in a few round trips.
 
@@ -68,6 +72,9 @@ Complete, runnable Flutter apps sharing the same data code:
   Provider + `CollectionNotifier`.
 - [`examples/shopping_list_bloc`](examples/shopping_list_bloc): `flutter_bloc`
   Cubit over `items.watch()`.
+- [`examples/cli_logbook`](examples/cli_logbook): pure Dart, no Flutter — a
+  two-terminal logbook with hand-wired adapters, a file-backed key store, and
+  a generated per-field merge strategy (counters) in use.
 
 Run one on two devices on the same Wi-Fi and pair them; edits sync live.
 
@@ -119,7 +126,7 @@ melos bootstrap
 melos run generate  # build_runner over the annotated models
 melos run format
 melos run analyze
-melos run test      # test:dart, then test:flutter, then a coverage check
+melos run test      # test:dart, then test:flutter, then a runner-wiring check
 ```
 
 The mDNS loopback integration test is excluded from the default run; run it

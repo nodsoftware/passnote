@@ -216,7 +216,7 @@ void main() {
       List<String>? capabilities,
     }) {
       final inner = InMemoryTransport(bus);
-      return Conclave.lowLevel(
+      return conclaveLowLevel(
         config: ConclaveConfig(
           appId: 'recon',
           salt: 'recon:v1',

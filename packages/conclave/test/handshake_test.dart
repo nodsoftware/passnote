@@ -116,6 +116,14 @@ class _TestIdentity implements Identity {
   Future<List<int>> sign(List<int> message) async => message;
 
   @override
+  Future<bool> verify(
+    List<int> message, {
+    required List<int> signature,
+    required DevicePublicKey signer,
+  }) async =>
+      true;
+
+  @override
   Future<WrappedKey> wrapFor(DevicePublicKey peer, List<int> key) async {
     final ks = _ks(peer.keyExchange, key.length);
     return WrappedKey(
@@ -189,7 +197,7 @@ void main() {
     List<int>? versions,
     int? identitySeed,
   }) =>
-      Conclave.lowLevel(
+      conclaveLowLevel(
         config: const ConclaveConfig(appId: 'hs', salt: 'hs:v1'),
         keyStore: _MemKeyStore(),
         transport: InMemoryTransport(bus),

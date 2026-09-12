@@ -17,7 +17,9 @@ conclave.events.listen((event) => debugPrint('conclave: $event'));
 | `PeerAppeared` | A peer was discovered and connected. Sync with it starts now. |
 | `PeerDisappeared` | A connection closed. Reconnection is automatic. |
 | `PeerIncompatible` | The peer speaks no common wire version. One of the two apps needs an update; nothing syncs until then. |
+| `PeerDiscoveryUnavailable` | The OS refused the multicast sockets discovery needs (a missing permission or entitlement). Show the user [platform-setup](set-up-platforms.md) guidance; without this event, a blocked platform looks like an empty network. |
 | `StoreRecovered` | A local store failed its integrity check and was rebuilt from a snapshot or from peers. The corrupt file is kept beside it. |
+| `FrameHandlingFailed` | An inbound frame was dropped because handling it threw. One is harmless (anti-entropy re-delivers); a steady stream from one peer is worth reporting. |
 
 ## No `PeerAppeared` at all
 
@@ -25,7 +27,7 @@ The devices do not find each other. In rough order of likelihood:
 
 1. **Platform permissions.** The most common cause on real devices, and
    always silent. Every item in
-   [Set up platform permissions](set-up-platforms.md) matters; on iOS in
+   [Set up platforms](set-up-platforms.md) matters; on iOS in
    particular, an app without the multicast entitlement discovers nothing.
 2. **The network blocks device-to-device traffic.** Guest Wi-Fi client
    isolation, corporate VLANs, and some mesh routers drop multicast. Put
@@ -53,6 +55,13 @@ discovery, not sync).
   is not membership: a device without a key wrap sits in
   `DeviceState.needsPairing`, syncs only the device roster, and cannot read
   user collections. Run the [pairing flow](pair-a-device.md).
+- **Two rival groups.** A second device that opened the database while no
+  peer was reachable has founded its own group: both devices are `ready`,
+  both encrypt with keys the other will never receive, and neither reads the
+  other's data. Recover by choosing one side as the group, deleting the other
+  side's local data (`forget`, remove its files), and pairing it in. Avoid it
+  by founding explicitly on one device and always joining the rest by code;
+  see [identity](../concepts/identity.md).
 - **The device was revoked.** A revoked device keeps its local copy but is
   cryptographically outside the group: nothing written after the revocation
   reaches it, in either direction.
@@ -72,7 +81,8 @@ discovery, not sync).
 
 | Exception | When | What to do |
 | --- | --- | --- |
-| `WrongPassphraseException` | `openDatabase` with a passphrase that does not match the stored data. | Ask the user to re-enter it. |
+| `WrongPassphraseException` | `openDatabase` with a passphrase that does not decrypt the stored data. The data on disk is untouched and no key is stored. | Ask the user to re-enter it; the right passphrase then opens normally. |
+| `SqlCipherUnavailableException` | An encryption key was supplied but the linked SQLite is not a SQLCipher build; storing plaintext is refused. | Fix the build wiring: select the SQLCipher source of `package:sqlite3` in the app's root pubspec (see [platform setup](set-up-platforms.md)). |
 | `WeakPassphraseException` | A non-mnemonic passphrase under a `strict` policy. | Generate one with `generatePassphrase()`, or relax the policy deliberately. |
 | `PairingRejected` | The code was wrong, or the sponsor declined. Three failures end the attempt. | Start a fresh code; each guess costs a visible failure. |
 | `PairingTimeout` | The two devices never met during the pairing window. | Check discovery first (above), then retry. |

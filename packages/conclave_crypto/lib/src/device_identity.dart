@@ -130,6 +130,26 @@ class DeviceIdentity implements Identity {
   }
 
   @override
+  Future<bool> verify(
+    List<int> message, {
+    required List<int> signature,
+    required DevicePublicKey signer,
+  }) async {
+    try {
+      return await _ed25519.verify(
+        message,
+        signature: Signature(
+          signature,
+          publicKey: SimplePublicKey(signer.signing, type: KeyPairType.ed25519),
+        ),
+      );
+    } catch (_) {
+      // A malformed signature or key never verifies; it must not throw.
+      return false;
+    }
+  }
+
+  @override
   Future<WrappedKey> wrapFor(DevicePublicKey peer, List<int> key) async =>
       _wrapWith(await _x25519.newKeyPair(), peer, key);
 

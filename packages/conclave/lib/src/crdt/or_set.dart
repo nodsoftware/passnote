@@ -118,14 +118,26 @@ Map<String, Object?> orMerge(Object? a, Object? b) {
   };
 }
 
+/// Coerces [state] into a well-formed set state. Fail-safe on the whole
+/// shape AND on every inner value: a state that is not a set degrades to
+/// empty, a non-map `adds` or non-list `tombstones` degrades to empty, an
+/// add whose tag is not a `String` is dropped, and non-`String` tombstones
+/// are filtered out. The value reaches this code from a synced peer, so it
+/// must never be trusted enough to throw on — a poisoned row would otherwise
+/// make every read of its collection fail.
 Map<String, Object?> _normalise(Object? state) {
-  if (state is Map && state[crdtTypeKey] == orSetTag) {
-    return {
-      crdtTypeKey: orSetTag,
-      'adds': Map<String, Object?>.from((state['adds'] as Map?) ?? const {}),
-      'tombstones':
-          ((state['tombstones'] as List?) ?? const []).cast<String>().toList(),
-    };
-  }
-  return orEmpty();
+  if (state is! Map || state[crdtTypeKey] != orSetTag) return orEmpty();
+  final adds = state['adds'];
+  final tombstones = state['tombstones'];
+  return {
+    crdtTypeKey: orSetTag,
+    'adds': <String, Object?>{
+      if (adds is Map)
+        for (final entry in adds.entries)
+          if (entry.key is String) entry.key as String: entry.value,
+    },
+    'tombstones': <String>[
+      if (tombstones is List) ...tombstones.whereType<String>(),
+    ],
+  };
 }

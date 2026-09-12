@@ -9,7 +9,7 @@ sees plaintext.
 The default on iOS, Android, macOS, Windows, and Linux. Zero configuration
 in code: devices on the same network find each other. Each OS gates local
 network access, though; do
-[Set up platform permissions](../guides/set-up-platforms.md) once per
+[Set up platforms](../guides/set-up-platforms.md) once per
 platform you ship to.
 
 ```dart
@@ -67,6 +67,15 @@ dart run conclave_lan:relay --port 9473
 It sees node ids, public [room tags](../concepts/glossary.md#room-tag), and
 ciphertext, never plaintext. It is a reference, not a product: one port, no
 authentication, no persistence. Host it yourself.
+
+**"No authentication" means anyone may become anyone.** A stranger who can
+reach the relay can claim any node id that is not connected at that moment:
+the real node is then refused service (indistinguishable, to it, from an
+outage) and every envelope addressed to it goes to the squatter instead —
+still ciphertext, but the full metadata graph (who talks to that node, frame
+sizes, timing). Run the relay only on a network you control, or behind an
+authenticating proxy. Client count and frame size are capped
+(`maxClients`, `maxFrameBytes`) as hygiene, not as protection.
 
 ## Writing your own
 

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:crdt/crdt.dart';
 
 import 'database.dart';
+import 'exceptions.dart';
 import 'identity/device_roster.dart';
 import 'identity/pairing.dart';
 import 'ports/crdt_table.dart';
@@ -14,25 +15,11 @@ import 'ports/transport.dart';
 import 'protocol/handshake.dart';
 import 'protocol/reconciliation.dart';
 
+export 'exceptions.dart';
 export 'identity/pairing.dart'
     show PairingCode, PairingBundle, PairingRejected, PairingTimeout;
 
 part 'builder.dart';
-
-/// Thrown when a supplied passphrase does not decrypt a database's existing
-/// local data.
-///
-/// Reserved for the disk-backed engine, which fails to open with the wrong
-/// key. The in-memory engine has nothing to validate against, so it does not
-/// currently throw this.
-class WrongPassphraseException implements Exception {
-  /// Creates the exception.
-  const WrongPassphraseException();
-
-  @override
-  String toString() =>
-      'WrongPassphraseException: passphrase does not match existing data';
-}
 
 /// Thrown by [Conclave.openDatabase] when [PassphrasePolicy.strictness] is
 /// [PassphraseStrictness.reject] and the supplied passphrase is not a valid
@@ -104,8 +91,9 @@ class ConclaveConfig {
   /// Scopes mDNS discovery and storage namespacing for this app.
   final String appId;
 
-  /// App-wide PBKDF2 salt. The same passphrase with different salts produces
-  /// different keys — use a stable, app-specific string such as `"myapp:v1"`.
+  /// App-wide key-derivation salt (fed to Argon2id by the default deriver).
+  /// The same passphrase with different salts produces different keys — use a
+  /// stable, app-specific string such as `"myapp:v1"`.
   final String salt;
 
   /// Passphrase generation policy.
@@ -207,6 +195,59 @@ final class PeerIncompatible extends ConclaveEvent {
   final List<int> remoteVersions;
 }
 
+/// The transport reported that peer discovery is unavailable on this
+/// platform ([DiscoveryUnavailable] at the transport layer) — typically a
+/// missing local-network permission or multicast entitlement.
+///
+/// Emitted when discovery stops working, and again after each recovery, but
+/// never once per failed retry. Show the user guidance (see the platform-setup
+/// guide) instead of an empty peer list: without this event, "discovery is
+/// blocked" looks exactly like "no peers nearby".
+///
+/// A transport reports this while it starts, which is inside [Conclave.open] —
+/// before any caller holds the object to listen on. Read
+/// [Conclave.discoveryUnavailableReason] once after opening to catch that
+/// case, then listen for later changes.
+final class PeerDiscoveryUnavailable extends ConclaveEvent {
+  /// Creates the event.
+  const PeerDiscoveryUnavailable({required this.reason});
+
+  /// A short human-readable description of what was refused.
+  final String reason;
+}
+
+/// Discovery works again after a [PeerDiscoveryUnavailable].
+///
+/// Take down whatever warning that event raised: peers will appear by
+/// themselves from here.
+final class PeerDiscoveryRestored extends ConclaveEvent {
+  /// Creates the event.
+  const PeerDiscoveryRestored();
+}
+
+/// An inbound frame was dropped because handling it threw.
+///
+/// Sync is self-healing (anti-entropy re-delivers anything that mattered), so
+/// a single occurrence is harmless — but a steady stream of these on one
+/// database points at a bug or a malformed peer and is worth logging.
+final class FrameHandlingFailed extends ConclaveEvent {
+  /// Creates the event.
+  const FrameHandlingFailed({
+    required this.peer,
+    required this.databaseId,
+    required this.error,
+  });
+
+  /// The peer whose frame failed.
+  final PeerId peer;
+
+  /// The local id of the database the frame was addressed to.
+  final String databaseId;
+
+  /// What the handler threw.
+  final Object error;
+}
+
 /// A collection's local store was found unreadable on open and rebuilt.
 ///
 /// With [CrdtRecoverySource.snapshot] the last on-disk snapshot was restored;
@@ -247,7 +288,7 @@ final class StoreRecovered extends ConclaveEvent {
 /// ).open();
 /// ```
 ///
-/// [Conclave.lowLevel] is the same wiring with every dependency passed
+/// [conclaveLowLevel] is the same wiring with every dependency passed
 /// explicitly, for custom adapters or tests.
 class Conclave {
   Conclave._({
@@ -313,6 +354,8 @@ class Conclave {
   // share the roster key with a joining device.
   final Map<String, List<int>> _databaseKeys = {};
   final Set<PeerId> _connectedPeers = {};
+
+  String? _discoveryUnavailableReason;
   final _events = StreamController<ConclaveEvent>.broadcast();
 
   PairingCoordinator? _pairing;
@@ -327,11 +370,17 @@ class Conclave {
   /// Opens the database identified by [localId] using [passphrase] to derive
   /// its encryption key and room tag.
   ///
-  /// The key is written to the [KeyStore] so the database can later be reopened
-  /// via [reopenDatabase] without the passphrase.
+  /// The key is written to the [KeyStore] **after** a successful open, so the
+  /// database can later be reopened via [reopenDatabase] without the
+  /// passphrase.
   ///
-  /// A wrong passphrase is currently not detected here; that check returns with
-  /// the disk-backed engine, which fails to open with the wrong key.
+  /// The derived key is validated against local storage before this method
+  /// returns, whether or not an [Identity] is configured: with the
+  /// disk-backed engine, a passphrase that does not decrypt existing local
+  /// data throws [WrongPassphraseException], the data on disk is left
+  /// untouched, and no key is stored, so retrying with the right passphrase
+  /// succeeds. The in-memory engine has nothing to validate against and
+  /// accepts any passphrase.
   Future<Database> openDatabase(
     String localId, {
     required String passphrase,
@@ -346,9 +395,13 @@ class Conclave {
     final entryKey = '${_config.appId}/$localId';
     final key = await _deriveKey(passphrase, _config.salt);
     final cipher = _cipherFactory(key);
-    await _keyStore.setKey(entryKey, key);
 
-    return _finishOpen(localId, entryKey, key, cipher);
+    final db = await _finishOpen(localId, entryKey, key, cipher);
+    // Only a key that opened the database is worth keeping: storing it before
+    // the open would make every later [reopenDatabase] repeat a wrong
+    // passphrase.
+    await _keyStore.setKey(entryKey, key);
+    return db;
   }
 
   /// Reopens a database previously opened with [openDatabase], reusing the key
@@ -415,43 +468,77 @@ class Conclave {
       )),
     );
 
+    // Force the reserved store open before the database is registered or
+    // announced. The disk engine validates its encryption key on open, so a
+    // wrong passphrase throws HERE in every configuration — with or without
+    // an [Identity] — and openDatabase never returns a database (or stores a
+    // key) it has not proven against local storage.
+    try {
+      await db.openReservedStore();
+    } catch (_) {
+      await db.close();
+      rethrow;
+    }
+
     _databases[localId] = db;
     _databaseKeys[localId] = key;
 
-    // Announce to peers that were already connected before this database
-    // was opened (common when openDatabase is called after transport start).
-    final aloneAtOpen = _connectedPeers.isEmpty;
-    for (final peer in _connectedPeers) {
-      await db.onPeerConnected(peer);
-    }
+    try {
+      // Announce to peers that were already connected before this database
+      // was opened (common when openDatabase is called after transport start).
+      final aloneAtOpen = _connectedPeers.isEmpty;
+      for (final peer in _connectedPeers) {
+        await db.onPeerConnected(peer);
+      }
 
-    // With an identity configured, resolve this device's group-key state from
-    // the reserved roster collection. A brand-new database with no peers founds
-    // its own group key here (first-run path); otherwise the device is
-    // `needsPairing` until it is admitted.
-    final identity = _identity;
-    if (identity != null) {
-      await db.initDeviceRoster(identity,
-          autoFound: aloneAtOpen && allowAutoFound);
+      // With an identity configured, resolve this device's group-key state
+      // from the reserved roster collection. A brand-new database with no
+      // peers founds its own group key here (first-run path); otherwise the
+      // device is `needsPairing` until it is admitted.
+      final identity = _identity;
+      if (identity != null) {
+        await db.initDeviceRoster(identity,
+            autoFound: aloneAtOpen && allowAutoFound);
+      }
+    } catch (_) {
+      // A database that failed mid-open must not stay registered: a later
+      // openDatabase would hand back the broken instance without
+      // re-validating anything.
+      _databases.remove(localId);
+      _databaseKeys.remove(localId);
+      await db.close();
+      rethrow;
     }
 
     return db;
   }
 
-  /// Peer-lifecycle ([PeerAppeared] / [PeerDisappeared]) and store-recovery
-  /// ([StoreRecovered]) events. Broadcast; safe to ignore.
+  /// Peer-lifecycle ([PeerAppeared] / [PeerDisappeared] /
+  /// [PeerIncompatible]), discovery ([PeerDiscoveryUnavailable]),
+  /// store-recovery ([StoreRecovered]), and frame-handling
+  /// ([FrameHandlingFailed]) events. Broadcast; safe to ignore, worth
+  /// logging.
   Stream<ConclaveEvent> get events => _events.stream;
+
+  /// Why peer discovery is unavailable, or `null` when it works.
+  ///
+  /// [events] carries the same news as [PeerDiscoveryUnavailable] and
+  /// [PeerDiscoveryRestored], but a transport reports its first failure while
+  /// it starts — inside [open], before any caller can subscribe — so that one
+  /// reaches nobody. This is the state behind those events, readable at any
+  /// time. Check it once after opening; listen to [events] for later changes.
+  String? get discoveryUnavailableReason => _discoveryUnavailableReason;
 
   /// This device's cryptographic [Identity].
   ///
   /// Throws [StateError] when none was configured — install a
   /// [ConclaveDefaults.identity] (the `conclave` umbrella does) or pass
-  /// `identity:` to [Conclave.lowLevel].
+  /// `identity:` to [conclaveLowLevel].
   Identity get identity =>
       _identity ??
       (throw StateError(
         'No Identity configured. Use Conclave.builder with an umbrella that '
-        'installs one, or pass identity: to Conclave.lowLevel.',
+        'installs one, or pass identity: to conclaveLowLevel.',
       ));
 
   // ---------------------------------------------------------------------------
@@ -561,7 +648,7 @@ class Conclave {
   ///
   /// Requires [ConclaveConfig.recoveryEnabled], a configured recovery
   /// derivation (see `Conclave.builder` / `recoveryIdentity:` on
-  /// [Conclave.lowLevel]), and a database in [DeviceState.ready]; throws
+  /// [conclaveLowLevel]), and a database in [DeviceState.ready]; throws
   /// [StateError] otherwise.
   Future<List<String>> enableRecovery(
     String localId, {
@@ -648,7 +735,7 @@ class Conclave {
       throw StateError(
         'Recovery is not enabled for this app. Opt in with '
         'Conclave.builder(...).recovery(enabled: true), or pass '
-        'recoveryIdentity: to Conclave.lowLevel with recoveryEnabled in the '
+        'recoveryIdentity: to conclaveLowLevel with recoveryEnabled in the '
         'config.',
       );
     }
@@ -660,7 +747,7 @@ class Conclave {
     if (pake == null) {
       throw StateError(
         'No PAKE configured; pairing is unavailable. Use Conclave.builder with '
-        'an umbrella that installs one, or pass pake: to Conclave.lowLevel.',
+        'an umbrella that installs one, or pass pake: to conclaveLowLevel.',
       );
     }
     return _pairing ??= PairingCoordinator(
@@ -762,6 +849,12 @@ class Conclave {
         db.onPeerLost(event.peer);
       }
       _emit(PeerDisappeared(event.peer));
+    } else if (event is DiscoveryUnavailable) {
+      _discoveryUnavailableReason = event.reason;
+      _emit(PeerDiscoveryUnavailable(reason: event.reason));
+    } else if (event is DiscoveryRestored) {
+      _discoveryUnavailableReason = null;
+      _emit(const PeerDiscoveryRestored());
     }
   }
 
@@ -800,8 +893,19 @@ class Conclave {
       if (db.room != inbound.frame.room) continue;
       // The database tries its roster/control cipher and its data cipher; a
       // frame that authenticates with neither (a revoked device after a key
-      // rotation) is dropped.
-      await db.handleFrame(inbound.from, inbound.frame.bytes);
+      // rotation) is dropped. This is remote-fed input: a throw from deeper
+      // handling must never become an unhandled async error (the transport's
+      // onError does not catch throws from inside this async callback), but
+      // it must not vanish either — a persistent failure is a signal.
+      try {
+        await db.handleFrame(inbound.from, inbound.frame.bytes);
+      } catch (error) {
+        _emit(FrameHandlingFailed(
+          peer: inbound.from,
+          databaseId: db.id,
+          error: error,
+        ));
+      }
       return;
     }
   }
@@ -826,54 +930,54 @@ class Conclave {
     required String salt,
   }) =>
       ConclaveBuilder._(appId, salt);
+}
 
-  /// Constructs and wires a [Conclave] instance.
-  ///
-  /// All dependencies are explicit: pass adapters from the other packages or
-  /// supply custom implementations that satisfy the port interfaces. Prefer
-  /// [builder] unless you need this level of control.
-  static Future<Conclave> lowLevel({
-    required ConclaveConfig config,
-    required KeyStore keyStore,
-    required Transport transport,
-    required Future<List<int>> Function(String passphrase, String salt)
-        deriveKey,
-    required String Function(List<int> key) roomTag,
-    required Cipher Function(List<int> key) cipher,
-    required List<String> Function(int words) mnemonicGenerator,
-    required bool Function(String) validateMnemonic,
-    required FutureOr<CrdtTable> Function(
-            String databaseId, String collection, List<int> key)
-        engine,
-    Identity? identity,
-    Pake? pake,
-    Future<Identity> Function(String phrase, String salt)? recoveryIdentity,
-    List<int> wireVersions = supportedWireVersions,
-    List<String> wireCapabilities = const [reconCapability],
-  }) async {
-    final nodeId = generateNodeId();
+/// Constructs and wires a [Conclave] instance with every dependency explicit.
+///
+/// Part of the advanced `package:conclave/engine.dart` surface, not the frozen
+/// app-facing library: pass adapters from the other packages or supply custom
+/// implementations that satisfy the port interfaces. Prefer [Conclave.builder]
+/// unless you need this level of control.
+Future<Conclave> conclaveLowLevel({
+  required ConclaveConfig config,
+  required KeyStore keyStore,
+  required Transport transport,
+  required Future<List<int>> Function(String passphrase, String salt) deriveKey,
+  required String Function(List<int> key) roomTag,
+  required Cipher Function(List<int> key) cipher,
+  required List<String> Function(int words) mnemonicGenerator,
+  required bool Function(String) validateMnemonic,
+  required FutureOr<CrdtTable> Function(
+          String databaseId, String collection, List<int> key)
+      engine,
+  Identity? identity,
+  Pake? pake,
+  Future<Identity> Function(String phrase, String salt)? recoveryIdentity,
+  List<int> wireVersions = supportedWireVersions,
+  List<String> wireCapabilities = const [reconCapability],
+}) async {
+  final nodeId = generateNodeId();
 
-    final instance = Conclave._(
-      config: config,
-      keyStore: keyStore,
-      transport: transport,
-      nodeId: nodeId,
-      deriveKey: deriveKey,
-      roomTag: roomTag,
-      cipherFactory: cipher,
-      mnemonicGenerator: mnemonicGenerator,
-      validateMnemonic: validateMnemonic,
-      engineFactory: engine,
-      pake: pake,
-      identity: identity,
-      recoveryIdentity: recoveryIdentity,
-      wireVersions: wireVersions,
-      wireCapabilities: wireCapabilities,
-    );
-    // Wire listeners BEFORE start so PeerConnected events emitted during
-    // registration are not missed.
-    instance._wireTransport();
-    await transport.start(self: nodeId, appId: config.appId);
-    return instance;
-  }
+  final instance = Conclave._(
+    config: config,
+    keyStore: keyStore,
+    transport: transport,
+    nodeId: nodeId,
+    deriveKey: deriveKey,
+    roomTag: roomTag,
+    cipherFactory: cipher,
+    mnemonicGenerator: mnemonicGenerator,
+    validateMnemonic: validateMnemonic,
+    engineFactory: engine,
+    pake: pake,
+    identity: identity,
+    recoveryIdentity: recoveryIdentity,
+    wireVersions: wireVersions,
+    wireCapabilities: wireCapabilities,
+  );
+  // Wire listeners BEFORE start so PeerConnected events emitted during
+  // registration are not missed.
+  instance._wireTransport();
+  await transport.start(self: nodeId, appId: config.appId);
+  return instance;
 }

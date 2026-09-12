@@ -97,6 +97,38 @@ void main() {
     expect(bad, isFalse);
   });
 
+  test('verify accepts a genuine signature and rejects a forged one', () async {
+    final signer = await DeviceIdentity.generate();
+    final other = await DeviceIdentity.generate();
+    final message = Uint8List.fromList('roster row payload'.codeUnits);
+
+    final signature = await signer.sign(message);
+    final signerPub = await signer.publicKey;
+    final otherPub = await other.publicKey;
+
+    expect(
+      await other.verify(message, signature: signature, signer: signerPub),
+      isTrue,
+      reason: 'any identity can verify any other identity signature',
+    );
+    expect(
+      await other.verify(message, signature: signature, signer: otherPub),
+      isFalse,
+      reason: 'the signature is bound to the signer key',
+    );
+    final tampered = Uint8List.fromList(message)..[0] ^= 0x01;
+    expect(
+      await other.verify(tampered, signature: signature, signer: signerPub),
+      isFalse,
+    );
+    expect(
+      await other.verify(message,
+          signature: const [1, 2, 3], signer: signerPub),
+      isFalse,
+      reason: 'a malformed signature returns false instead of throwing',
+    );
+  });
+
   test('deviceId is stable per keypair and unique across keypairs', () async {
     final a = await DeviceIdentity.generate();
     final b = await DeviceIdentity.generate();

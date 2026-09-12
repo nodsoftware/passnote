@@ -8,7 +8,8 @@ and is compiled in CI, so it cannot drift from the real API.
 ## 1. Install
 
 Add the Flutter package to your `pubspec.yaml`, plus the code generator as a
-dev dependency:
+dev dependency, and select the SQLCipher build of SQLite for at-rest
+encryption:
 
 ```yaml
 dependencies:
@@ -17,10 +18,18 @@ dependencies:
 dev_dependencies:
   build_runner: ^2.15.0
   conclave_generator: ^1.0.0
+
+hooks:
+  user_defines:
+    sqlite3:
+      source: sqlcipher
 ```
 
 `conclave_flutter` brings the whole library: the engine, the crypto, the
-transports, and the Flutter glue (keychain key store, change notifiers).
+transports, and the Flutter glue (keychain key store, change notifiers). The
+`hooks` stanza makes `package:sqlite3` bundle SQLCipher; without it, opening
+an encrypted database throws `SqlCipherUnavailableException` instead of
+writing plaintext to disk.
 
 ```sh
 flutter pub get
@@ -87,7 +96,7 @@ device roster and seeds discovery.
 // On the first device, generate a passphrase to show the user:
 final words = conclave.generatePassphrase().join(' ');
 
-// On every device, open the database with that passphrase:
+// On that same device, open the database with it:
 final db = await conclave.openDatabase('home', passphrase: words);
 
 final items = db.collection<Item>('items', itemCodec);
@@ -95,7 +104,8 @@ final items = db.collection<Item>('items', itemCodec);
 
 The first device to open a database founds its device group and holds its
 group key. Other devices join by pairing (step 7), not by retyping the
-passphrase.
+passphrase: a second device that calls `openDatabase` reaches
+`DeviceState.needsPairing`, where opening a collection throws.
 
 On every later launch, reopen without asking for the passphrase again; the
 derived key was stored in the OS keychain by `openDatabase`:
@@ -147,7 +157,7 @@ bounded slice) instead of hand-managing subscriptions.
     Local discovery is gated by every platform: an Info.plist entry and an
     entitlement on iOS, manifest permissions on Android, sandbox
     entitlements on macOS. A missing one fails silently. Do
-    [Set up platform permissions](../guides/set-up-platforms.md) once per
+    [Set up platforms](../guides/set-up-platforms.md) once per
     platform; simulators are more permissive than devices.
 
 Run the app on a second device on the same network. On the device that already

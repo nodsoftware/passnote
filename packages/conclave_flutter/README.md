@@ -27,6 +27,17 @@ dependencies:
   conclave_flutter: ^1.0.0
 ```
 
+Then select the SQLCipher build of `package:sqlite3` in your app's **root**
+`pubspec.yaml` — the engine refuses to open an encrypted database on a plain
+SQLite build (`SqlCipherUnavailableException`) rather than store plaintext:
+
+```yaml
+hooks:
+  user_defines:
+    sqlite3:
+      source: sqlcipher
+```
+
 ## Usage
 
 ```dart

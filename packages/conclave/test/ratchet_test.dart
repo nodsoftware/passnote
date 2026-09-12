@@ -53,6 +53,14 @@ class _TestIdentity implements Identity {
 
   @override
   Future<List<int>> sign(List<int> message) async => message;
+
+  @override
+  Future<bool> verify(
+    List<int> message, {
+    required List<int> signature,
+    required DevicePublicKey signer,
+  }) async =>
+      true;
   @override
   Future<WrappedKey> wrapFor(DevicePublicKey peer, List<int> key) async {
     final ks = _ks(peer.keyExchange, key.length);
@@ -160,7 +168,7 @@ void main() {
 
   group('over the transport', () {
     Future<Conclave> node(InMemoryBus bus, int seed, KeyStore ks) =>
-        Conclave.lowLevel(
+        conclaveLowLevel(
           config: const ConclaveConfig(
             appId: 'r',
             salt: 'r:v1',

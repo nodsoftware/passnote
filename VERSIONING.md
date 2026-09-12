@@ -8,7 +8,7 @@ five packages release together with matching versions.
 | Surface | Guarantee |
 | --- | --- |
 | `package:conclave/conclave.dart` (and everything `conclave_flutter` re-exports from it) | **Frozen.** Any breaking change is a major version. An export-surface test in the repository guards the exact export set. |
-| `package:conclave/engine.dart` (the advanced library: `Conclave.lowLevel`, engine implementations, conformance suites, protocol types) | Covered, but it may change in a **minor** version with a prominent CHANGELOG entry. Pin a minor if you build engines or transports. |
+| `package:conclave/engine.dart` (the advanced library: `conclaveLowLevel`, engine implementations, conformance suites, protocol types) | Covered, but it may change in a **minor** version with a prominent CHANGELOG entry. Pin a minor if you build engines or transports. |
 | The wire protocol | Versioned independently (`wireVersion`, currently 1) and negotiated per connection. A release that drops a wire version says so in the CHANGELOG one minor ahead; incompatible peers surface as `PeerIncompatible`, never silent failure. |
 | The SQLite schema | Versioned by `PRAGMA user_version` (currently 1) with forward, transactional migrations. A release never requires manual migration; downgrade is not supported. |
 | The stored data formats (typed CRDT states, record shapes) | Breaking changes are a major version with a migration. |

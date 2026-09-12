@@ -55,7 +55,8 @@ items.query().where('done', isEqualTo: false).limit(50).watch().listen(...);
 A watched query re-emits only when its own result changes, and decodes at most
 one page per emission. In Flutter, `CollectionNotifier.query(...)` wraps it.
 
-One constraint: queries need per-field records, so the collection must use a
-field-granular merge strategy (`ShallowMergeStrategy`, `DeepMergeStrategy`, or
-`SchemaMergeStrategy`; annotated models get this automatically). Querying an
-`ObjectMergeStrategy` collection throws.
+One constraint: queries need per-field records, so the collection must be
+created with a field-granular merge strategy (`ShallowMergeStrategy`,
+`DeepMergeStrategy`, or `SchemaMergeStrategy` — for an annotated model, the
+generated `_$XMergeStrategy`). Querying a collection left on the default
+`ObjectMergeStrategy` throws.

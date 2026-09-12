@@ -83,7 +83,7 @@ void main() {
       for (final words in [12, 15, 18, 21, 24]) {
         final mnemonic = generateMnemonic(words: words);
         expect(mnemonic, hasLength(words));
-        expect(validateMnemonic(mnemonic.join(' ')), isTrue);
+        expect(isValidMnemonic(mnemonic.join(' ')), isTrue);
       }
     });
 

@@ -17,7 +17,7 @@ melos bootstrap
 melos run generate   # build_runner over the @Document models
 melos run format     # formatter is the source of truth; CI fails on drift
 melos run analyze    # dart analyze --fatal-infos everywhere
-melos run test       # dart test + flutter test + a coverage presence check
+melos run test       # dart test + flutter test + a runner-wiring check
 ```
 
 Generated `*.g.dart` files are checked in; CI regenerates and fails on drift.
@@ -30,7 +30,7 @@ Generated `*.g.dart` files are checked in; CI regenerates and fails on drift.
 | Convergence | `packages/conclave/test/*convergence*`, `handshake`, `reconciliation`, `recovery`, `revocation`, `ratchet`, `pairing` | Multi-node scenarios over the in-memory bus. |
 | Protocol fuzz | `packages/conclave/test/protocol_codec_test.dart` | Round-trips plus random/truncation/corruption fuzzing of the decoder. |
 | Web | `dart test -P web` in `conclave` (wasm engine) and `conclave_lan` (browser transport vs a native hybrid peer) | Headless Chrome. |
-| mDNS loopback | `packages/conclave_lan` | Socket-bound; excluded by default: `dart test --run-skipped -t integration`. |
+| mDNS loopback | `packages/conclave_lan` | Socket-bound; excluded from the default unit run, executed by CI: `dart test --run-skipped -t integration`. |
 | Memory bounds | `packages/conclave` | `dart test --run-skipped -t benchmark`. |
 
 ## Docs

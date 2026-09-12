@@ -10,7 +10,7 @@ void main() {
       expect(Frame('room', const [1]).room, equals('room'));
       // Crypto
       expect(generateMnemonic(words: 12).length, equals(12));
-      expect(validateMnemonic(generateMnemonic().join(' ')), isTrue);
+      expect(isValidMnemonic(generateMnemonic().join(' ')), isTrue);
       // Flutter
       expect(KeychainKeyStore(namespace: 'demo'), isA<KeyStore>());
       // LAN

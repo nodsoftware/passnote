@@ -44,6 +44,16 @@ document, so a single document should stay well under a frame: kilobytes,
 not megabytes. Conclave is not a blob store; keep images and files outside
 and sync references to them.
 
+## Live watching
+
+`Collection.watch()` re-reads and decodes the **whole collection on every
+change**: every local `put`, and every synced remote changeset (remote
+batches coalesce into one refresh per changeset, but a loop of local writes
+triggers one full rescan each). That is fine for the small collections it is
+meant for; for a screen that shows a filtered or paginated slice of a large
+collection, use `query()...watch()`, whose cost per change is bounded by the
+page size.
+
 ## The knobs and their defaults
 
 Every bound below is a builder or config option; the defaults are the

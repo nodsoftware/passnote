@@ -13,15 +13,17 @@ engine for Dart and Flutter.
   deterministic by hybrid logical clock, with per-field counters and sets
   where last-write-wins is not what you mean. Queries are indexed, paginate
   stably, and can be watched live.
-- **Storage.** SQLite with SQLCipher encryption at rest, transactional schema
-  management, and automatic corruption recovery from snapshots or peers.
-- **Sync.** A binary wire protocol with a fail-closed, fuzz-tested decoder;
-  streamed bounded frames; periodic anti-entropy; and range-fingerprint
-  reconciliation that finds any gap in a few round trips.
+- **Storage.** SQLite with SQLCipher encryption at rest (verified on open),
+  transactional schema management, and automatic corruption recovery from
+  snapshots or peers.
+- **Sync.** A binary wire protocol with a fail-closed decoder; streamed
+  bounded frames; periodic anti-entropy; and range-fingerprint reconciliation
+  that finds any gap in a few round trips.
 - **Security.** XChaCha20-Poly1305 everywhere, Argon2id key derivation from a
-  BIP39 passphrase, per-device X25519/Ed25519 keypairs, SPAKE2 pairing by a
-  nine-digit one-time code, revocation with group-key rotation, a
-  forward-secrecy ratchet per connection, and an opt-in recovery phrase.
+  BIP39 passphrase, per-device X25519/Ed25519 keypairs, an Ed25519-signed
+  device roster with a trust chain rooted at the founding device, SPAKE2
+  pairing by a nine-digit one-time code, revocation with group-key rotation,
+  a forward-secrecy ratchet per connection, and an opt-in recovery phrase.
   Every primitive is pinned by published known-answer test vectors.
 - **Transports.** Zero-configuration mDNS discovery on the LAN, WebSockets
   everywhere (including the browser), and a self-hostable reference relay

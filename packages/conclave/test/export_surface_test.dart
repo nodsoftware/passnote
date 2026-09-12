@@ -1,43 +1,233 @@
 // Guards the two public libraries. `conclave.dart` is the app-facing
-// surface; `engine.dart` is the advanced surface. A symbol moving between them
-// (task 39) should break this test on purpose.
+// surface; `engine.dart` is the advanced surface. The exported symbol sets
+// are computed from each library's resolved export namespace, so a symbol
+// leaking into or out of either library breaks this test on purpose —
+// comparing the source of `lib/conclave.dart` against itself would not.
+@TestOn('vm')
+library;
+
 import 'dart:io';
 
+import 'package:analyzer/dart/analysis/analysis_context_collection.dart';
+import 'package:analyzer/dart/analysis/results.dart';
 import 'package:conclave/conclave.dart' as api;
 import 'package:conclave/engine.dart' as engine;
 import 'package:test/test.dart';
 
+/// The complete set of public symbols in the export namespace of the library
+/// at `lib/<name>.dart` (setters folded into their getter name).
+Future<Set<String>> surfaceOf(
+  AnalysisContextCollection collection,
+  String name,
+) async {
+  final path = '${Directory.current.path}/lib/$name.dart';
+  final session = collection.contextFor(path).currentSession;
+  final result = await session.getResolvedLibrary(path);
+  if (result is! ResolvedLibraryResult) {
+    fail('could not resolve lib/$name.dart: $result');
+  }
+  return result.element.exportNamespace.definedNames2.keys
+      .where((n) => !n.endsWith('='))
+      .toSet();
+}
+
 void main() {
-  test('the frozen library exports exactly the curated allow list', () {
-    // Semver freeze (VERSIONING.md): adding an export here is a deliberate
-    // API decision; removing or renaming one after v1.0.0 is a major version.
-    const allowList = [
-      "export 'src/annotations.dart';",
-      "export 'src/codec.dart';",
-      "export 'src/collection.dart';",
-      "export 'src/conclave.dart';",
-      "export 'src/crdt/crdt_type.dart';",
-      "export 'src/database.dart';",
-      "export 'src/id.dart';",
-      "export 'src/identity/device_roster.dart'",
-      "export 'src/merge_strategies.dart';",
-      "export 'src/ports/cipher.dart';",
-      "export 'src/ports/crdt_table.dart';",
-      "export 'src/ports/identity.dart';",
-      "export 'src/ports/key_store.dart';",
-      "export 'src/ports/merge_strategy.dart';",
-      "export 'src/ports/pake.dart';",
-      "export 'src/ports/query.dart';",
-      "export 'src/ports/transport.dart';",
-    ];
-    final lines = File('lib/conclave.dart')
-        .readAsLinesSync()
-        .where((l) => l.startsWith('export '))
-        .map((l) => l.trim())
-        .toList();
-    expect(lines, allowList,
-        reason: 'lib/conclave.dart export set changed: update the allow list '
-            'only as a deliberate semver decision');
+  late AnalysisContextCollection collection;
+
+  setUpAll(() {
+    collection =
+        AnalysisContextCollection(includedPaths: [Directory.current.path]);
+  });
+
+  // Semver freeze (VERSIONING.md): adding a symbol here is a deliberate API
+  // decision; removing or renaming one after v1.0.0 is a major version.
+  const frozenSurface = {
+    'Cipher',
+    'CipherAuthError',
+    'Codec',
+    'Collection',
+    'CollectionQuery',
+    'Conclave',
+    'ConclaveBuilder',
+    'ConclaveConfig',
+    'ConclaveDefaults',
+    'ConclaveEvent',
+    'Crdt',
+    'CrdtRecovery',
+    'CrdtRecoverySource',
+    'CrdtTable',
+    'CrdtType',
+    'Database',
+    'DeepMergeStrategy',
+    'DeviceInfo',
+    'DevicePublicKey',
+    'DeviceRecord',
+    'DeviceRosterEntry',
+    'DeviceState',
+    'DiscoveryRestored',
+    'DiscoveryUnavailable',
+    'Document',
+    'DocumentId',
+    'FieldSpec',
+    'FieldValue',
+    'Frame',
+    'FrameHandlingFailed',
+    'Identity',
+    'InboundFrame',
+    'JsonCodec',
+    'KeyRotation',
+    'KeyStore',
+    'LwwRegister',
+    'MergeStrategy',
+    'NodeId',
+    'ObjectMergeStrategy',
+    'OrSet',
+    'PairingBundle',
+    'PairingCode',
+    'PairingRejected',
+    'PairingTimeout',
+    'Pake',
+    'PakeResult',
+    'PakeSession',
+    'PassphrasePolicy',
+    'PassphraseStrictness',
+    'PeerAppeared',
+    'PeerConnected',
+    'PeerDisappeared',
+    'PeerDiscoveryRestored',
+    'PeerDiscoveryUnavailable',
+    'PeerEvent',
+    'PeerId',
+    'PeerIncompatible',
+    'PeerLost',
+    'PnCounter',
+    'QueryCursor',
+    'QueryOp',
+    'QueryPage',
+    'QueryPredicate',
+    'QueryRow',
+    'QuerySpec',
+    'RangeDigest',
+    'RangeDigestBuilder',
+    'SchemaMergeStrategy',
+    'ShallowMergeStrategy',
+    'SnapshotCapable',
+    'SqlCipherUnavailableException',
+    'StoreRecovered',
+    'Transport',
+    'WeakPassphraseException',
+    'WrappedGroupKey',
+    'WrappedKey',
+    'WrongPassphraseException',
+    'crdtTypeFromTag',
+    'kDeviceCollection',
+    'newId',
+  };
+
+  // The advanced surface: may change within a minor version with a CHANGELOG
+  // note (see lib/engine.dart).
+  const engineSurface = {
+    'AntiEntropy',
+    'AntiEntropyTimerFactory',
+    'Cipher',
+    'CipherAuthError',
+    'Conclave',
+    'ConclaveEvent',
+    'CrdtRecovery',
+    'CrdtRecoverySource',
+    'CrdtTable',
+    'CrdtType',
+    'DeviceInfo',
+    'DevicePublicKey',
+    'DeviceRecord',
+    'DeviceRosterEntry',
+    'DeviceState',
+    'DiscoveryRestored',
+    'DiscoveryUnavailable',
+    'FieldSpec',
+    'FieldValue',
+    'Frame',
+    'FrameWindow',
+    'Identity',
+    'InMemoryBus',
+    'InMemoryTransport',
+    'InboundFrame',
+    'KeyRotation',
+    'KeyStore',
+    'LwwRegister',
+    'MapCrdtTable',
+    'MergeStrategy',
+    'NodeId',
+    'OrSet',
+    'PairingBundle',
+    'PairingCode',
+    'PairingRejected',
+    'PairingTimeout',
+    'Pake',
+    'PakeResult',
+    'PakeSession',
+    'PeerAppeared',
+    'PeerConnected',
+    'PeerDisappeared',
+    'PeerEvent',
+    'PeerId',
+    'PeerLost',
+    'PnCounter',
+    'QueryCursor',
+    'QueryOp',
+    'QueryPredicate',
+    'QueryRow',
+    'QuerySpec',
+    'RangeDigest',
+    'RangeDigestBuilder',
+    'RangeProbe',
+    'RangeRequest',
+    'RatchetSession',
+    'ReconcilePlan',
+    'Reconciler',
+    'SnapshotCapable',
+    'SqlCipherUnavailableException',
+    'SqliteCrdtTable',
+    'StoreRecovered',
+    'Transport',
+    'TypedCrdtTable',
+    'WrappedGroupKey',
+    'WrappedKey',
+    'WrongPassphraseException',
+    'conclaveLowLevel',
+    'crdtTypeFromTag',
+    'deriveRatchetRoot',
+    'kDeviceCollection',
+    'negotiate',
+    'newRatchetNonce',
+    'reconCapability',
+    'supportedWireVersions',
+  };
+
+  test('the frozen library exports exactly the curated symbol set', () async {
+    expect(
+      await surfaceOf(collection, 'conclave'),
+      frozenSurface,
+      reason: 'package:conclave/conclave.dart symbol set changed: update the '
+          'allow list only as a deliberate semver decision',
+    );
+  });
+
+  test('the advanced wiring stays off the frozen library', () async {
+    final frozen = await surfaceOf(collection, 'conclave');
+    expect(frozen, isNot(contains('conclaveLowLevel')),
+        reason: 'conclaveLowLevel belongs to engine.dart only');
+    expect(frozen, isNot(contains('SqliteCrdtTable')));
+    expect(frozen, isNot(contains('MapCrdtTable')));
+  });
+
+  test('the engine library exports exactly the advanced symbol set', () async {
+    expect(
+      await surfaceOf(collection, 'engine'),
+      engineSurface,
+      reason: 'package:conclave/engine.dart symbol set changed: deliberate '
+          'changes need a CHANGELOG note and an update here',
+    );
   });
 
   test('conclave.dart surfaces the app-facing API', () {
@@ -146,11 +336,13 @@ void main() {
         contains('passphrase'));
     expect(
         const api.WeakPassphraseException().toString(), contains('mnemonic'));
+    expect(const api.SqlCipherUnavailableException().toString(),
+        contains('SQLCipher'));
     expect(const api.CipherAuthError().toString(), contains('authentication'));
   });
 
   test('engine.dart surfaces the advanced wiring and ports', () {
-    expect(engine.Conclave.lowLevel, isA<Function>());
+    expect(engine.conclaveLowLevel, isA<Function>());
     expect(engine.MapCrdtTable('t'), isA<engine.CrdtTable>());
     expect(engine.InMemoryTransport(engine.InMemoryBus()),
         isA<engine.Transport>());

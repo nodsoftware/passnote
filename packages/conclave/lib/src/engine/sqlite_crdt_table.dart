@@ -6,6 +6,7 @@ import 'package:crdt/crdt.dart';
 import 'package:sqlite3/common.dart';
 
 import '../crdt/crdt_type.dart';
+import '../exceptions.dart';
 import '../ports/crdt_table.dart';
 import '../ports/query.dart';
 import 'sqlite_open_io.dart' if (dart.library.js_interop) 'sqlite_open_web.dart'
@@ -21,13 +22,30 @@ import 'sqlite_open_io.dart' if (dart.library.js_interop) 'sqlite_open_web.dart'
 ///
 /// Construct it with a path; the database is opened on the first [init] (which
 /// [Collection] calls, since [isPersistent] is `true`). On native targets pass
-/// an [encryptionKey] to use SQLCipher (the native library must be a SQLCipher
-/// build; the Dart API is unchanged).
+/// an [encryptionKey] to use SQLCipher. The open fails closed: [init] throws
+/// [SqlCipherUnavailableException] when a key is given but the linked native
+/// library is not a SQLCipher build, so data is never silently written in
+/// plaintext.
+///
+/// ## Wrong key versus corruption
+///
+/// An existing encrypted file that does not decrypt under [encryptionKey]
+/// makes [init] throw [WrongPassphraseException] and leaves the file exactly
+/// as it was — retrying with the right key succeeds. An encrypted file whose
+/// damage makes it unreadable answers exactly like a mis-keyed one, so the
+/// snapshot arbitrates: when `<path>.snapshot` opens cleanly under the same
+/// key, the key is proven right, the file is treated as corrupt, and recovery
+/// proceeds. Without a snapshot the ambiguity resolves to
+/// [WrongPassphraseException] — the file is never destroyed on a guess, at
+/// the price that an encrypted database without snapshots recovers from
+/// header damage only by the user confirming the passphrase and deleting the
+/// file. Corruption past the header (a damaged page under a valid key) fails
+/// `PRAGMA quick_check` directly and recovers without arbitration.
 ///
 /// ## Corruption recovery
 ///
-/// [init] runs `PRAGMA quick_check` on open. If the file will not open or does
-/// not pass, it is moved aside to `<path>.corrupt-<timestamp>` and the store is
+/// [init] runs `PRAGMA quick_check` on open. If a corrupt file does not pass,
+/// it is moved aside to `<path>.corrupt-<timestamp>` and the store is
 /// rebuilt: from `<path>.snapshot` if a readable one exists, otherwise empty
 /// (and [recoveries] emits so the sync layer can pull the data back from a
 /// peer). Set [snapshotInterval] (or [ConclaveConfig.snapshotInterval]) to keep
@@ -90,7 +108,16 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
       : _nodeId;
 
   @override
-  set snapshotInterval(Duration value) => _snapshotInterval = value;
+  set snapshotInterval(Duration value) {
+    _snapshotInterval = value;
+    // Re-arm the timer when the database is already open; before [init] the
+    // new interval is picked up by the [_startSnapshots] call inside it.
+    if (_db != null && !_closed) {
+      _snapshotTimer?.cancel();
+      _snapshotTimer = null;
+      _startSnapshots();
+    }
+  }
 
   /// Non-null once [init] has run if it had to rebuild an unreadable store.
   CrdtRecovery? get recovery => _recovery;
@@ -124,23 +151,73 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
     }
   }
 
+  /// `SQLITE_NOTADB`: the first read against a keyed database raises this when
+  /// the key does not decrypt the file.
+  static const int _sqliteNotADb = 26;
+
   /// Opens [path] and returns the handle only if `PRAGMA quick_check` passes;
-  /// otherwise disposes it and returns `null`.
+  /// otherwise disposes it and returns `null` (corrupt — the caller
+  /// quarantines and rebuilds).
+  ///
+  /// Two failures are not corruption and rethrow instead of returning `null`:
+  /// [SqlCipherUnavailableException] (a key was given on a non-SQLCipher
+  /// build) and [WrongPassphraseException] (an existing encrypted file does
+  /// not decrypt under the key). Both leave the file untouched.
   Future<CommonDatabase?> _openIfHealthy(String path) async {
     CommonDatabase db;
     try {
       db = await backend.openSqliteDb(path, encryptionKey: _encryptionKey);
+    } on SqlCipherUnavailableException {
+      rethrow;
     } catch (_) {
       return null;
     }
     try {
       final rows = db.select('PRAGMA quick_check');
       if (rows.isNotEmpty && rows.first.values.first == 'ok') return db;
+    } on SqliteException catch (e) {
+      db.close();
+      if (_encryptionKey != null &&
+          (e.resultCode == _sqliteNotADb ||
+              e.extendedResultCode == _sqliteNotADb)) {
+        // SQLCipher answers NOTADB both for a mis-keyed file and for a file
+        // whose header is damaged; the two are indistinguishable from the
+        // file alone. The snapshot arbitrates: it carries the same key
+        // (VACUUM INTO inherits it), so a snapshot that opens under this key
+        // proves the key right and the file corrupt — recovery proceeds.
+        // Without that proof, report the wrong key and leave the file alone:
+        // never destroy data on ambiguity.
+        if (await _keyOpensSnapshot()) return null;
+        throw const WrongPassphraseException();
+      }
+      return null;
     } catch (_) {
       // Unreadable enough that quick_check itself failed.
     }
     db.close();
     return null;
+  }
+
+  /// Whether `<path>.snapshot` exists and passes `PRAGMA quick_check` under
+  /// the current [_encryptionKey]. Used to tell a corrupt file from a wrong
+  /// key.
+  Future<bool> _keyOpensSnapshot() async {
+    final snapshot = '$_path.snapshot';
+    if (!backend.databaseFileExists(snapshot)) return false;
+    CommonDatabase db;
+    try {
+      db = await backend.openSqliteDb(snapshot, encryptionKey: _encryptionKey);
+    } catch (_) {
+      return false;
+    }
+    try {
+      final rows = db.select('PRAGMA quick_check');
+      return rows.isNotEmpty && rows.first.values.first == 'ok';
+    } catch (_) {
+      return false;
+    } finally {
+      db.close();
+    }
   }
 
   /// Rebuilds the store after [_openIfHealthy] rejected it: restores the
@@ -166,14 +243,21 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
     return backend.openSqliteDb(_path, encryptionKey: _encryptionKey);
   }
 
-  /// Re-encrypts the database under [newKey] with SQLCipher's `PRAGMA rekey`
-  /// (a no-op on a non-SQLCipher build). All data is preserved. Subsequent
-  /// opens and recovery snapshots use [newKey].
+  /// Re-encrypts the database under [newKey] with SQLCipher's `PRAGMA rekey`.
+  /// All data is preserved. Subsequent opens and recovery snapshots use
+  /// [newKey].
+  ///
+  /// Fails closed like [init]: throws [SqlCipherUnavailableException] when the
+  /// linked library is not a SQLCipher build (the rekey would be silently
+  /// ignored and the file left in plaintext).
   @override
   Future<void> rekey(List<int> newKey) async {
     _encryptionKey = List<int>.unmodifiable(newKey);
     final db = _db;
     if (db == null) return;
+    if (db.select('PRAGMA cipher_version').isEmpty) {
+      throw const SqlCipherUnavailableException();
+    }
     final hex = newKey.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
     db.execute('PRAGMA rekey = "x\'$hex\'"');
   }

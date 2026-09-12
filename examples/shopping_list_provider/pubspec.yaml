@@ -20,3 +20,12 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   lints: ^4.0.0
+
+# At-rest encryption: build package:sqlite3's native library from the
+# SQLCipher source. Read from the root package, so keep this stanza when
+# copying the example out of the workspace; without it, openDatabase throws
+# SqlCipherUnavailableException instead of storing plaintext.
+hooks:
+  user_defines:
+    sqlite3:
+      source: sqlcipher

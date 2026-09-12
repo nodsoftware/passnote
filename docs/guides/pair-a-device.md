@@ -36,3 +36,23 @@ to the device [roster](../concepts/glossary.md#roster) and seals the
 Both devices must be reachable over the transport (same network for
 `LanTransport`). The joiner waits up to a short timeout for the sponsor
 (`PairingTimeout` otherwise).
+
+## If the new device already opened the database
+
+A device that called `openDatabase` while no peer was reachable has founded
+its own rival group (see [identity](../concepts/identity.md)): it is
+`DeviceState.ready`, its data is encrypted, and none of it belongs to the
+group you want to join. `pairWith` also refuses while that database is open
+locally. The way out, on the mistaken device only:
+
+```dart
+await conclave.forget('home');       // drops its key and roster trust pins
+// Delete its local files: with the Flutter defaults they live under
+// <application support>/conclave/<databaseId>/.
+final db = await conclave.pairWith('home', PairingCode.parse(code));
+```
+
+Anything written into the rival group stays in the deleted files and never
+reaches the real group — export it first if it matters. Avoid the situation
+by founding explicitly on one device and joining every other device by code,
+never by retyping the passphrase.

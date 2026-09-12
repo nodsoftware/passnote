@@ -1,9 +1,34 @@
-# Set up platform permissions
+# Set up platforms
+
+Two one-time steps per app: select the SQLCipher build of SQLite (all
+platforms), and declare the local-network permissions (per platform).
+
+## At-rest encryption: select SQLCipher
+
+`package:sqlite3` bundles its native library through build hooks, and the
+default build is plain SQLite. Select the SQLCipher source in your **app's
+root `pubspec.yaml`** (the setting is read from the root package only):
+
+```yaml
+hooks:
+  user_defines:
+    sqlite3:
+      source: sqlcipher
+```
+
+This is not optional when you use encryption: the engine verifies `PRAGMA
+cipher_version` after keying and throws `SqlCipherUnavailableException`
+rather than write plaintext to disk. Seeing that exception means this stanza
+is missing.
+
+## Local-network permissions
 
 `LanTransport` discovers peers with mDNS over multicast sockets. Every
 desktop and mobile OS gates local-network traffic in its own way, and a
-missing declaration fails *silently*: the app runs, but no peers ever
-appear. Do this page once per platform you ship to.
+missing declaration never crashes the app: it runs, but no peers ever
+appear. Detect that state in code by listening for the
+`PeerDiscoveryUnavailable` event on `Conclave.events` and pointing the user
+at the relevant section below. Do this page once per platform you ship to.
 
 The example apps ship as `lib/` and `pubspec.yaml` only; run
 `flutter create .` inside one to generate the platform folders, then apply

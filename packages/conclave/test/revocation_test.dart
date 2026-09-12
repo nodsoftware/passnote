@@ -61,6 +61,14 @@ class _TestIdentity implements Identity {
   Future<List<int>> sign(List<int> message) async => message;
 
   @override
+  Future<bool> verify(
+    List<int> message, {
+    required List<int> signature,
+    required DevicePublicKey signer,
+  }) async =>
+      true;
+
+  @override
   Future<WrappedKey> wrapFor(DevicePublicKey peer, List<int> key) async {
     final ks = _ks(peer.keyExchange, key.length);
     return WrappedKey(
@@ -103,7 +111,7 @@ final _noteCodec = JsonCodec<Map<String, dynamic>>(
 Future<void> _settle() => pumpEventQueue(times: 40);
 
 void main() {
-  Future<Conclave> openNode(InMemoryBus bus, int seed) => Conclave.lowLevel(
+  Future<Conclave> openNode(InMemoryBus bus, int seed) => conclaveLowLevel(
         config: const ConclaveConfig(
           appId: 'rev',
           salt: 'rev:v1',

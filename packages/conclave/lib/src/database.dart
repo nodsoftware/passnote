@@ -145,6 +145,10 @@ class Database {
   /// [close] and [leave].
   late final AntiEntropy _antiEntropy;
 
+  /// Set by [close] and [leave]; stops the pull timer from firing after
+  /// engines are disposed.
+  bool _closed = false;
+
   /// Records per delta frame: a changeset larger than this streams as several
   /// frames, split only on document boundaries so a receiver never applies
   /// half a document.
@@ -197,6 +201,13 @@ class Database {
   /// locally before the remote merge and whose key appears in the incoming
   /// changeset. Ignored on repeated calls (the first creation wins, just like
   /// [merge]).
+  ///
+  /// Throws [StateError] **synchronously** when an [Identity] is configured
+  /// and this device is not [DeviceState.ready]: membership is a
+  /// precondition for user collections (their key is the group key), and
+  /// checking it here lets the call site catch the failure with an ordinary
+  /// try/catch instead of meeting it later on the collection's async reads.
+  /// Pair the device (or found the group) first.
   Collection<T> collection<T>(
     String name,
     Codec<T> codec, {
@@ -210,6 +221,15 @@ class Database {
         'name',
         'Collection name "$kDeviceCollection" is reserved for Conclave device '
             'management.',
+      );
+    }
+    if (_identity != null &&
+        deviceState != DeviceState.ready &&
+        !_collections.containsKey(name)) {
+      throw StateError(
+        'Database "$_id" needs pairing before collection "$name" can be '
+        'opened (deviceState is $deviceState). Pair this device or call '
+        'Database.foundGroup() on a new database.',
       );
     }
     return _getOrCreate<T>(
@@ -250,7 +270,52 @@ class Database {
       onRemoteConflict: onRemoteConflict,
     );
     _collections[name] = col;
+    // A collection whose engine will not open (this device is not paired yet)
+    // has nothing to ask for; that failure reaches the app through the
+    // collection's own reads, writes, and watches.
+    unawaited(_registerPull(col).catchError((Object _) {}));
     return col;
+  }
+
+  /// How long a freshly opened collection waits for a peer to send its records
+  /// unprompted before asking for them.
+  static const Duration _newCollectionPullDelay = Duration(milliseconds: 250);
+
+  /// Collections opened since the last pull round, each with the watermark it
+  /// had once loaded. One debounced poke round serves all of them.
+  final Map<Collection<dynamic>, String> _pendingPulls = {};
+  Timer? _pullTimer;
+
+  /// Registers [col] for a pull round once its initial load completes.
+  ///
+  /// Peers name the collections they hold in the handshake, so a collection
+  /// opened after a peer connected — every collection on a device that has
+  /// just paired, and any collection an app opens lazily — is invisible to
+  /// that peer until the next anti-entropy round. A poke prompts the peer to
+  /// hello, which pulls its records now. The rounds are debounced per
+  /// database: an app opening many collections at startup costs one poke per
+  /// peer, not one per collection, and a round is skipped entirely when every
+  /// registered collection is already receiving records.
+  Future<void> _registerPull(Collection<dynamic> col) async {
+    await col.ready;
+    if (_closed) return;
+    _pendingPulls[col] = col.maxHlc;
+    _pullTimer?.cancel();
+    _pullTimer = Timer(_newCollectionPullDelay, () {
+      unawaited(_pullPending().catchError((Object _) {}));
+    });
+  }
+
+  Future<void> _pullPending() async {
+    final pending = Map.of(_pendingPulls);
+    _pendingPulls.clear();
+    if (_closed || _peers.isEmpty || pending.isEmpty) return;
+    final stalled =
+        pending.entries.any((entry) => entry.key.maxHlc == entry.value);
+    if (!stalled) return;
+    for (final peer in _peers.toList()) {
+      await _sendPoke(peer);
+    }
   }
 
   /// Picks the encryption key for [name] and builds its engine.
@@ -278,23 +343,31 @@ class Database {
   /// in the [KeyStore] so the database can later be reopened without the
   /// passphrase via [Conclave.reopenDatabase]. Used on normal shutdown.
   Future<void> close() async {
+    _closed = true;
     _antiEntropy.stop();
+    _pullTimer?.cancel();
     _tearDownSessions();
     for (final col in _collections.values) {
       await (col as Collection<dynamic>).dispose();
     }
   }
 
-  /// Permanently forgets this database: removes its encryption key from the
-  /// [KeyStore]. After [leave] the data can only be reopened by re-supplying
-  /// the original passphrase.
+  /// Permanently forgets this database: removes its encryption key and the
+  /// roster trust pins from the [KeyStore]. After [leave] the data can only be
+  /// reopened by re-supplying the original passphrase.
   Future<void> leave() async {
+    _closed = true;
     _antiEntropy.stop();
+    _pullTimer?.cancel();
     for (final col in _collections.values) {
       await (col as Collection<dynamic>).dispose();
     }
     await _keyStore.clear(_entryKey);
+    await _keyStore.clear(_rosterPinsKey);
   }
+
+  /// The [KeyStore] entry holding the device roster's local trust pins.
+  String get _rosterPinsKey => '$_entryKey/roster-pins';
 
   /// Permanently removes tombstoned records older than [horizon] from every
   /// open collection. Returns the total number of records reclaimed across all
@@ -472,11 +545,21 @@ class Database {
       throw StateError(
         'No Identity is configured for this database; the device roster is '
         'unavailable. Use Conclave.builder with an identity, or pass '
-        'identity: to Conclave.lowLevel.',
+        'identity: to conclaveLowLevel.',
       );
     }
     return roster;
   }
+
+  /// Opens the reserved roster collection and awaits its initial load,
+  /// forcing the backing engine open. The disk engine validates its
+  /// encryption key on open, so this is where a wrong passphrase surfaces —
+  /// in every configuration, not only when an [Identity] is present. Called
+  /// by [Conclave] before the database is registered or announced.
+  @internal
+  Future<void> openReservedStore() =>
+      _getOrCreate<DeviceRosterEntry>(kDeviceCollection, deviceRosterCodec)
+          .ready;
 
   /// Opens the reserved roster collection and resolves this device's initial
   /// group-key state. Called by [Conclave] right after the database is
@@ -491,7 +574,15 @@ class Database {
   }) async {
     final col =
         _getOrCreate<DeviceRosterEntry>(kDeviceCollection, deviceRosterCodec);
-    final roster = DeviceRoster(col, identity);
+    // The roster's trust pins (founder, known device keys, revoked ids) are
+    // local, monotone state: they must survive restarts or a revoked device
+    // could rewrite pre-revocation history against a freshly started peer.
+    final roster = DeviceRoster(
+      col,
+      identity,
+      pinBytes: await _keyStore.getKey(_rosterPinsKey),
+      savePins: (bytes) => _keyStore.setKey(_rosterPinsKey, bytes),
+    );
     _roster = roster;
     await roster.ready;
 
@@ -603,6 +694,10 @@ class Database {
   /// dropped. Returns `true` if the frame was handled.
   @internal
   Future<bool> handleFrame(PeerId from, List<int> frame) async {
+    // A closed database answers nothing: its engines are disposed, and a
+    // reply here would be a frame sent after close(). Swallowed, not passed
+    // on — the frame was addressed to this room.
+    if (_closed) return true;
     // An incompatible peer's frames are swallowed: addressed to us, not
     // processable, never an error loop.
     if (_incompatiblePeers.contains(from)) return true;
@@ -752,7 +847,14 @@ class Database {
   ) async {
     final col = _collections[colName] as Collection<dynamic>?;
     if (col == null) return;
-    final changeset = parseDeltaChangeset(colName, rawRecords);
+    var changeset = parseDeltaChangeset(colName, rawRecords);
+    // Roster rows are vetted before they touch storage: any holder of the
+    // roster key (including a revoked device) can send frames, but only rows
+    // written by a known, non-revoked member are worth persisting.
+    if (colName == kDeviceCollection && _roster != null) {
+      changeset = await _roster!.vetInbound(changeset);
+      if (changeset.values.every((records) => records.isEmpty)) return;
+    }
     await col.mergeChangeset(changeset);
 
     // A roster delta may carry a key rotation — adopt it, re-key, and if two

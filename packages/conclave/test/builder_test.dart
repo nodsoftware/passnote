@@ -47,6 +47,14 @@ class _StubIdentity implements Identity {
   Future<List<int>> sign(List<int> message) async => message;
 
   @override
+  Future<bool> verify(
+    List<int> message, {
+    required List<int> signature,
+    required DevicePublicKey signer,
+  }) async =>
+      true;
+
+  @override
   Future<WrappedKey> wrapFor(DevicePublicKey peer, List<int> key) async =>
       WrappedKey(
         ephemeralPublicKey: List<int>.filled(32, 0),
@@ -194,7 +202,9 @@ void main() {
     );
     await notes.put({'id': 'n1', 'text': 'hi'});
 
-    expect(engineBuilds, 1, reason: 'the default engine factory was used');
+    // Two builds: openDatabase validates the key against the reserved roster
+    // store (one engine), then the app collection gets its own.
+    expect(engineBuilds, 2, reason: 'the default engine factory was used');
     expect((await notes.get('n1'))?['text'], 'hi');
   });
 }

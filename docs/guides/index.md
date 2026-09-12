@@ -2,7 +2,7 @@
 
 Task-focused answers, one screen each:
 
-- [Set up platform permissions](set-up-platforms.md): what iOS, Android,
+- [Set up platforms](set-up-platforms.md): the SQLCipher build hook, plus what iOS, Android,
   macOS, Windows, and Linux each need before discovery works.
 - [Pair a device](pair-a-device.md): add a device with a one-time code.
 - [Revoke a device](revoke-a-device.md): lock a lost device out.

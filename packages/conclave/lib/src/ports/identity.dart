@@ -91,10 +91,10 @@ class WrappedKey {
 
 /// This device's cryptographic identity.
 ///
-/// Backs device pairing, sealing the group key to a new device, verifying
-/// signed control messages, and — later — rotation and revocation. One
-/// implementation per app instance; the private keys live only in the
-/// platform key store.
+/// Backs device pairing, sealing the group key to a new device, and signing
+/// and verifying device-roster rows so that rotation and revocation only
+/// honour entries written by roster members. One implementation per app
+/// instance; the private keys live only in the platform key store.
 abstract interface class Identity {
   /// This device's public identity. Safe to share with peers.
   Future<DevicePublicKey> get publicKey;
@@ -109,8 +109,19 @@ abstract interface class Identity {
   String fingerprintOf(DevicePublicKey publicKey);
 
   /// Signs [message] with this device's Ed25519 key. Verifiable against
-  /// `publicKey.signing`.
+  /// `publicKey.signing` with [verify].
   Future<List<int>> sign(List<int> message);
+
+  /// Whether [signature] is a valid signature by [signer] over [message].
+  ///
+  /// Verification uses only [signer]'s public signing key, so any device can
+  /// check any other device's signature. Returns `false` (never throws) for a
+  /// malformed or non-matching signature.
+  Future<bool> verify(
+    List<int> message, {
+    required List<int> signature,
+    required DevicePublicKey signer,
+  });
 
   /// Seals [key] so that only the device owning [peer] can [unwrap] it.
   Future<WrappedKey> wrapFor(DevicePublicKey peer, List<int> key);

@@ -12,9 +12,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # package:sqlite3 links the system SQLite. The keyed-engine test also
-      # exercises a SQLCipher build when one is present.
-      - run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev sqlcipher libsqlcipher-dev
+      # package:sqlite3 bundles its native library through build hooks; the
+      # workspace pubspec pins the SQLCipher source (hooks.user_defines), so
+      # every keyed-engine test runs against real at-rest encryption and
+      # sqlite_encryption_test.dart fails the build if that wiring breaks.
 
       # Pinned toolchain. Keep this in sync with .fvmrc (see README "Development").
       - uses: subosito/flutter-action@v2
@@ -38,8 +39,20 @@ jobs:
       - run: melos run analyze
 
       # Runs test:dart, then test:flutter, then a check that every package with
-      # a test/ dir was picked up by one of them.
+      # a test/ dir was picked up by one of them (a runner-wiring check, not a
+      # coverage measurement — no line coverage is collected).
       - run: melos run test
+
+      # The mDNS loopback integration test: two LanTransports discover each
+      # other over multicast on the runner and exchange a frame. Socket-bound,
+      # so it is tagged and skipped in the default unit run.
+      #
+      # Linux alone cannot vouch for this: the multicast options mDNS needs
+      # differ per platform, and a bind that Linux accepts can be refused on a
+      # host that runs its own responder. The macOS job below covers that.
+      - name: LAN transport integration
+        run: dart test --run-skipped -t integration
+        working-directory: packages/conclave_lan
 
       # Every package must stay publishable at all times. (pana runs after
       # publication on pub.dev; it cannot score the dependent packages before
@@ -75,6 +88,19 @@ jobs:
           zensical build
           dart run tool/check_doc_links.dart
 
+      # At-rest encryption wiring: the SQLCipher build hook must be present in
+      # the workspace root (so tests run encrypted), in every example (they
+      # are meant to be copied out, where only their own root pubspec counts),
+      # and in the tutorial's install step. The engine fails closed without
+      # it, so a missing stanza means examples throw on first launch.
+      - name: SQLCipher stanza check
+        run: |
+          fail=0
+          for f in pubspec.yaml examples/*/pubspec.yaml docs/start-here/tutorial.md; do
+            grep -q "source: sqlcipher" "$f" || { echo "::error::$f lacks the SQLCipher hooks stanza"; fail=1; }
+          done
+          exit $fail
+
       # House style: at most 2 em-dashes per docs page (commas, parentheses,
       # or sentence breaks carry the rest).
       - name: Docs em-dash ceiling
@@ -91,3 +117,35 @@ jobs:
       - name: Memory bounds benchmark
         run: dart test --run-skipped -t benchmark
         working-directory: packages/conclave
+
+      # The generator's analyzer constraint spans several majors, but inside
+      # this workspace the Flutter SDK's `meta` pin caps analyzer below what
+      # a user's fresh `dart pub get` resolves — so a consumer package
+      # OUTSIDE the workspace generates a model against the newest allowed
+      # analyzer (the displayName → Class.new kind of break fails here, not
+      # at the user's machine).
+      - name: Fresh user resolution (generator + core smoke)
+        run: bash tool/check-generator-fresh-resolve.sh
+
+  # mDNS on an Apple host, which is the only place some of its failure modes
+  # appear. macOS runs its own mDNSResponder and already holds UDP 5353, so a
+  # responder that binds it without SO_REUSEPORT is refused with
+  # "Address already in use" — while the same bind succeeds on Linux, where
+  # nothing contends for the port. Only this job sees that difference.
+  mdns-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Keep in sync with the ci job above and .fvmrc.
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.1
+          channel: stable
+
+      - run: dart pub global activate melos 7.8.2
+      - run: melos bootstrap
+
+      - name: LAN transport integration (macOS)
+        run: dart test --run-skipped -t integration
+        working-directory: packages/conclave_lan

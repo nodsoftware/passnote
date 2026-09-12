@@ -26,12 +26,18 @@ class FrameCodec {
   }
 
   /// Decodes a binary WebSocket message produced by [encode], or returns
-  /// `null` if the buffer is too short to be a valid frame.
+  /// `null` if the buffer is too short to be a valid frame or its room tag is
+  /// not valid UTF-8. Fail-closed: malformed network input never throws.
   static Frame? decode(List<int> bytes) {
     if (bytes.length < 2) return null;
     final roomLen = (bytes[0] << 8) | bytes[1];
     if (bytes.length < 2 + roomLen) return null;
-    final room = utf8.decode(bytes.sublist(2, 2 + roomLen));
+    final String room;
+    try {
+      room = utf8.decode(bytes.sublist(2, 2 + roomLen));
+    } on FormatException {
+      return null;
+    }
     final payload = bytes.sublist(2 + roomLen);
     return Frame(room, payload);
   }

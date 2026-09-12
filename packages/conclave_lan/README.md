@@ -22,6 +22,10 @@ frames; a transport never sees plaintext.
 - **`WebSocketRelay`** (`package:conclave_lan/relay.dart`) and the
   `dart run conclave_lan:relay` runner: a reference frame relay that routes
   addressed envelopes and can read only node ids, room tags, and ciphertext.
+  It is unauthenticated: anyone who reaches it can claim any node id that is
+  not currently connected, silencing that node and receiving its (encrypted)
+  traffic and metadata. Run it only on a network you control, or behind an
+  authenticating proxy.
 - **`FrameCodec`**: binary encoding of `(room, bytes)` frames.
 
 ## Install
@@ -37,7 +41,7 @@ dependencies:
 import 'package:conclave_lan/conclave_lan.dart';
 
 final transport = LanTransport();
-// Pass to Conclave.lowLevel(transport: transport, ...), or rely on conclaveBuilder.
+// Pass to conclaveLowLevel(transport: transport, ...), or rely on conclaveBuilder.
 ```
 
 ## Scope and limits

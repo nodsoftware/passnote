@@ -30,12 +30,10 @@ List<String> generateMnemonic({int words = 24}) {
   return bip39.generateMnemonic(strength: strength).split(' ');
 }
 
-/// Returns `true` if [mnemonic] is a valid BIP39 phrase (checksum included).
-bool validateMnemonic(String mnemonic) => bip39.validateMnemonic(mnemonic);
-
-/// Returns `true` if [phrase] is a valid BIP39 mnemonic (so its entropy is known
-/// and adequate). Apps that accept user-supplied passphrases should gate on this
-/// or on an explicit "I understand the risk" path.
+/// Returns `true` if [phrase] is a valid BIP39 mnemonic, checksum included
+/// (so its entropy is known and adequate). Apps that accept user-supplied
+/// passphrases should gate on this or on an explicit "I understand the risk"
+/// path.
 bool isValidMnemonic(String phrase) => bip39.validateMnemonic(phrase);
 
 /// A coarse entropy estimate in bits for a free-form passphrase, for surfacing

@@ -19,7 +19,7 @@ provides the key-derivation and mnemonic helpers installed by
   recovery flow.
 - **`Spake2Pake`**: SPAKE2 over P-256 (RFC 9382), the exchange behind the
   nine-digit pairing code.
-- **`generateMnemonic` / `validateMnemonic`**: BIP39 passphrases at 12, 15,
+- **`generateMnemonic` / `isValidMnemonic`**: BIP39 passphrases at 12, 15,
   18, 21, or 24 words (128 to 256 bits of entropy).
 - **`deriveKey`**: BIP39 seed, then Argon2id (19 MiB, 2 passes, 1 lane), to a
   32-byte key. `deriveKeyPbkdf2` keeps a PBKDF2-HMAC-SHA256 pipeline for FIPS

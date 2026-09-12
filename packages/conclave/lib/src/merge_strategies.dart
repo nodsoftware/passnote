@@ -64,8 +64,14 @@ class ShallowMergeStrategy implements MergeStrategy {
 /// concurrent edits to distinct leaves anywhere in the document all survive.
 /// Lists are treated as atomic leaves (no element-level merging).
 ///
-/// Field names must not contain [pathSeparator], as it is used to encode the
-/// nesting path.
+/// Field names must not contain [pathSeparator], because it encodes the
+/// nesting path: a literal `"a.b"` key would be indistinguishable from a `b`
+/// nested under `a`, and the document read back would not be the one
+/// written. The constraint is enforced — [fields] throws [ArgumentError] on
+/// the first write of an offending document, so nothing silently corrupts.
+/// Documents with dotted keys (i18n keys, config paths, hostnames) belong on
+/// [ShallowMergeStrategy], or on a [DeepMergeStrategy] with a separator that
+/// cannot occur in your keys.
 class DeepMergeStrategy implements MergeStrategy {
   /// Creates a recursive merge strategy.
   const DeepMergeStrategy({this.pathSeparator = '.'});
@@ -93,6 +99,17 @@ class DeepMergeStrategy implements MergeStrategy {
     }
     for (final entry in map.entries) {
       final key = entry.key as String;
+      if (key.contains(pathSeparator)) {
+        throw ArgumentError.value(
+          key,
+          'document field name',
+          'must not contain the DeepMergeStrategy path separator '
+              '"$pathSeparator": a literal "$key" key cannot be told apart '
+              'from nesting and the document would corrupt on read. Rename '
+              'the field, pick a pathSeparator that cannot occur in your '
+              'keys, or use ShallowMergeStrategy',
+        );
+      }
       final path = prefix.isEmpty ? key : '$prefix$pathSeparator$key';
       final value = entry.value;
       if (value is Map) {
@@ -109,9 +126,21 @@ class DeepMergeStrategy implements MergeStrategy {
     for (final row in rows) {
       final parts = row.path.split(pathSeparator);
       var node = root;
+      var orphaned = false;
       for (var i = 0; i < parts.length - 1; i++) {
-        node = (node[parts[i]] ??= <String, dynamic>{}) as Map<String, dynamic>;
+        // Field rows reach this code from a synced peer, so they must never
+        // be trusted enough to throw on: a row whose path descends through
+        // an existing scalar (which [fields] can never produce) is skipped,
+        // degrading that one field instead of failing every read of the
+        // collection.
+        final next = node[parts[i]] ??= <String, dynamic>{};
+        if (next is! Map<String, dynamic>) {
+          orphaned = true;
+          break;
+        }
+        node = next;
       }
+      if (orphaned) continue;
       node[parts.last] = row.value;
     }
     return root;

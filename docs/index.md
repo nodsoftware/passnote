@@ -22,9 +22,10 @@ items.watch().listen((all) => print('now ${all.length} items'));
 
 ## Why Conclave
 
-- **End-to-end encrypted.** XChaCha20-Poly1305 on every byte, at rest
-  (SQLCipher) and on the wire, with keys that never leave the devices and a
-  forward-secrecy ratchet on every connection.
+- **End-to-end encrypted.** XChaCha20-Poly1305 on every byte on the wire and
+  SQLCipher for the files at rest (verified on open, never assumed), with keys
+  that never leave the devices and a forward-secrecy ratchet on every
+  connection.
 - **Real device membership.** Each device has its own keypair. Joining is a
   nine-digit code over a PAKE; leaving is a revocation that rotates the group
   key away from the lost device. No shared password to rotate by hand.

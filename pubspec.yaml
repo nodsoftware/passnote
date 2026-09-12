@@ -4,6 +4,15 @@ environment:
   sdk: ^3.6.0
 dev_dependencies:
   melos: ^7.8.0
+
+# Build package:sqlite3's native library from the SQLCipher source so every
+# test in the workspace runs against real at-rest encryption. Apps make the
+# same choice in their own root pubspec (see docs/guides/set-up-platforms.md);
+# the engine refuses to open an encrypted database without it.
+hooks:
+  user_defines:
+    sqlite3:
+      source: sqlcipher
 workspace:
   - packages/conclave
   - packages/conclave_crypto
@@ -13,6 +22,7 @@ workspace:
   - examples/quickstart
   - examples/shopping_list_provider
   - examples/shopping_list_bloc
+  - examples/cli_logbook
 
 # Melos config lives here (not melos.yaml): melos 7 with a pub `workspace:`
 # reads its config from pubspec.yaml.
@@ -46,7 +56,7 @@ melos:
       steps:
         - test:dart
         - test:flutter
-        - test:coverage-check
+        - test:wiring-check
 
     test:dart:
       run: dart test
@@ -65,5 +75,7 @@ melos:
         dirExists: test
         flutter: true
 
-    test:coverage-check:
-      run: bash tool/check-test-coverage.sh
+    # Not a coverage measurement: verifies every package with a test/ dir is
+    # matched by one of the two test runners above.
+    test:wiring-check:
+      run: bash tool/check-test-wiring.sh

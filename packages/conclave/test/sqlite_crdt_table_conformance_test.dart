@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:conclave/engine.dart';
 import 'package:crdt/crdt.dart' show Hlc;
-import 'package:sqlite3/sqlite3.dart' show SqliteException;
 import 'package:test/test.dart';
 
 import '../test_support/crdt_table_conformance.dart';
@@ -81,6 +80,8 @@ void main() {
     });
 
     test('an encrypted database is unreadable without the key', () async {
+      // The full at-rest assertions (on-disk bytes, wrong-key behaviour,
+      // fail-closed opens) live in sqlite_encryption_test.dart.
       final path = freshPath();
       final a = await SqliteCrdtTable.open(
         path,
@@ -89,17 +90,10 @@ void main() {
       await a.put('items', 'secret', 'value');
       await a.close();
 
-      try {
-        final b = await SqliteCrdtTable.open(path); // no key
-        final leaked = await b.value('items', 'secret');
-        await b.close();
-        markTestSkipped(
-          'native SQLite is not a SQLCipher build; encryption not exercised '
-          '(read back "$leaked" without a key)',
-        );
-      } on SqliteException {
-        // SQLCipher: the file cannot be opened without the key. Good.
-      }
+      final b = await SqliteCrdtTable.open(path); // no key
+      addTearDown(b.close);
+      expect(await b.value('items', 'secret'), isNull,
+          reason: 'the file cannot be read without the key');
     });
 
     test('rekey preserves data and is used for the next open', () async {
@@ -120,6 +114,34 @@ void main() {
       addTearDown(b.close);
       expect(await b.value('items', 'a'), 'apple');
       expect(await b.value('items', 'b'), 'banana');
+    });
+
+    test('quoted identifiers are escaped safely in compiled SQL', () async {
+      // Collection names and field paths are inlined as literals (SQLite
+      // matches partial-index predicates textually, so they cannot be bound);
+      // _lit's escaping is the guarantee this test pins down.
+      final t = await SqliteCrdtTable.open(freshPath());
+      addTearDown(t.close);
+      const table = "it'ems''";
+      const path = "na'me";
+      await t.ensureQueryIndex(table, path);
+      await t.put(table, 'doc1', true);
+      await t.put(table, 'doc1\x1F$path', 'x');
+      await t.put(table, 'doc2', true);
+      await t.put(table, 'doc2\x1F$path', 'y');
+
+      final rows = await t.queryDocIds(
+        table,
+        const QuerySpec(predicates: [
+          QueryPredicate(
+            path: path,
+            op: QueryOp.equals,
+            value: 'x',
+            type: LwwRegister(),
+          ),
+        ]),
+      );
+      expect(rows.map((r) => r.docId), ['doc1']);
     });
 
     test('a schema-less file gets the schema on open and reopens', () async {

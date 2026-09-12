@@ -63,16 +63,28 @@ Map<String, Object?> pnMerge(Object? a, Object? b) {
   };
 }
 
+/// Coerces [state] into a well-formed counter state. Fail-safe on the whole
+/// shape AND on every inner value: a state that is not a counter degrades to
+/// empty, a `p`/`n` that is not a map degrades to empty, and an entry whose
+/// key is not a `String` or whose count is not a `num` is dropped (absent is
+/// 0). The value reaches this code from a synced peer, so it must never be
+/// trusted enough to throw on — a poisoned row would otherwise make every
+/// read of its collection fail.
 Map<String, Object?> _normalise(Object? state) {
-  if (state is Map && state[crdtTypeKey] == pnCounterTag) {
-    return {
-      crdtTypeKey: pnCounterTag,
-      'p': Map<String, Object?>.from((state['p'] as Map?) ?? const {}),
-      'n': Map<String, Object?>.from((state['n'] as Map?) ?? const {}),
-    };
-  }
-  return pnEmpty();
+  if (state is! Map || state[crdtTypeKey] != pnCounterTag) return pnEmpty();
+  return {
+    crdtTypeKey: pnCounterTag,
+    'p': _counts(state['p']),
+    'n': _counts(state['n']),
+  };
 }
+
+Map<String, Object?> _counts(Object? side) => {
+      if (side is Map)
+        for (final entry in side.entries)
+          if (entry.key is String && entry.value is num)
+            entry.key as String: entry.value,
+    };
 
 Map<String, Object?> _maxMerge(Map a, Map b) {
   final out = <String, Object?>{};

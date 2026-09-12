@@ -20,7 +20,7 @@ void main() {
         .timeout(const Duration(seconds: 10));
     await transport.start(self: 'browser-node', appId: 'wsweb');
     addTearDown(transport.stop);
-    expect((await connected).peer, 'native-node');
+    expect((await connected as PeerConnected).peer, 'native-node');
 
     final echoed = transport.inbound.first.timeout(const Duration(seconds: 10));
     await transport.send('native-node', const Frame('room-w', [1, 2, 3]));

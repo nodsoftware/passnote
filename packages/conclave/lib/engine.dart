@@ -2,7 +2,7 @@
 ///
 /// The supported entry point is [Conclave.builder] from
 /// `package:conclave/conclave.dart`. Use this library only to build a
-/// custom adapter, wire everything by hand with [Conclave.lowLevel], or run the
+/// custom adapter, wire everything by hand with [conclaveLowLevel], or run the
 /// port conformance suites.
 ///
 /// Everything here is covered by semver, but may change within a minor version
@@ -19,7 +19,9 @@ export 'src/conclave.dart'
         PairingTimeout,
         PeerAppeared,
         PeerDisappeared,
-        StoreRecovered;
+        StoreRecovered,
+        conclaveLowLevel;
+export 'src/exceptions.dart';
 export 'src/identity/device_roster.dart'
     show
         DeviceInfo,

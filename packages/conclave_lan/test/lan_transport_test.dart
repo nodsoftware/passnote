@@ -32,7 +32,7 @@ void main() {
     final connected = await a.events
         .firstWhere((e) => e is PeerConnected)
         .timeout(const Duration(seconds: 20));
-    expect(connected.peer, equals('node-b'));
+    expect((connected as PeerConnected).peer, equals('node-b'));
 
     final received = b.inbound.first.timeout(const Duration(seconds: 10));
     await a.send('node-b', Frame('room-1', [42, 7]));

@@ -82,6 +82,71 @@ void main() {
   group('DeepMergeStrategy', () {
     const strategy = DeepMergeStrategy();
 
+    test('a key containing the separator is rejected, never restructured', () {
+      // Each of these used to corrupt silently in a different way: a dotted
+      // key turned into nesting, a scalar/dotted collision threw on READ, a
+      // nested value was overwritten, or the dotted key's data vanished
+      // depending on map order. All four now fail loudly at the first write.
+      const offenders = [
+        {'id': 'x', 'a.b': 1},
+        {'id': 'x', 'a': 1, 'a.b': 2},
+        {
+          'id': 'x',
+          'a': {'b': 1},
+          'a.b': 2
+        },
+        {'id': 'x', 'a.b': 2, 'a': 1},
+      ];
+      for (final doc in offenders) {
+        expect(() => strategy.fields(doc), throwsArgumentError,
+            reason: 'document $doc must be rejected');
+      }
+    });
+
+    test('a separator-bearing key nested deeper is rejected too', () {
+      expect(
+        () => strategy.fields({
+          'id': 'x',
+          'a': {'b.c': 1}
+        }),
+        throwsArgumentError,
+      );
+    });
+
+    test('a custom separator moves the constraint with it', () {
+      const piped = DeepMergeStrategy(pathSeparator: '|');
+      // Dotted keys are fine under a pipe separator...
+      final values = _values(piped, {'id': 'x', 'a.b': 1});
+      expect(values['a.b'], 1);
+      // ...and pipes are the reserved character instead.
+      expect(() => piped.fields({'id': 'x', 'a|b': 1}), throwsArgumentError);
+    });
+
+    test('unflatten skips a peer row whose path descends through a scalar', () {
+      // fields() can never produce these rows, but a synced peer can send
+      // them; a poisoned path must degrade to one missing field, never to a
+      // throw that kills every read of the collection.
+      expect(
+        strategy.unflatten([
+          (path: 'id', value: 'd1'),
+          (path: 'a', value: 1),
+          (path: 'a.b', value: 2),
+        ]),
+        {'id': 'd1', 'a': 1},
+        reason: 'the row under an existing scalar is dropped',
+      );
+      // The other arrival order degrades the other way: the scalar row
+      // overwrites the synthesised nesting. Either way, no throw.
+      expect(
+        strategy.unflatten([
+          (path: 'id', value: 'd1'),
+          (path: 'a.b', value: 2),
+          (path: 'a', value: 1),
+        ]),
+        {'id': 'd1', 'a': 1},
+      );
+    });
+
     test('flattens nested maps into dotted paths', () {
       final doc = {
         'id': 'n1',

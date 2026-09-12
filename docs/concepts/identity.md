@@ -45,6 +45,23 @@ wrapped key at the current [key epoch](glossary.md#key-epoch). User
 collections are encrypted with the group key, at rest (SQLCipher) and on the
 wire.
 
+Founding happens automatically on `openDatabase` **only when no peer is
+connected at that instant** and the roster carries no group key yet. That
+condition is a snapshot, not a decision: the same second device founds a
+rival group when it opens offline, and lands in `needsPairing` when it opens
+with the founder reachable. Treat founding as explicit — call
+`db.foundGroup()` on the one device that is meant to be first (a no-op check
+guards against double-founding), and bring every other device in with the
+[pairing flow](../guides/pair-a-device.md), never by retyping the passphrase.
+
+Every roster row is signed with the writing device's Ed25519 key, and every
+device validates rows against a trust chain rooted at the founder: a device
+record counts only when a known, non-revoked member signed it, a wrapped key
+is unwrapped only when a known, non-revoked member wrote it, and a known
+device's public key is pinned and cannot change. Holding the roster key
+(which is passphrase-derived and never rotates) therefore lets a device
+*read* the roster, but writing rows that anyone acts on requires membership.
+
 ### Pairing
 
 A new device joins with a one-time nine-digit code:
@@ -73,9 +90,13 @@ Revoking generates a fresh group key at the next epoch, seals it to every
 remaining device, re-encrypts the local store, and marks the device revoked in
 the roster. Peers adopt the new key as the roster syncs. The revoked device
 keeps whatever it already had (nothing can erase a copy it holds), but every
-new write is under a key it will never receive. Two devices revoking different
-peers at the same time converge: the surviving device with the lowest id
-performs one final rotation covering both.
+new write is under a key it will never receive. Revocation is monotone and
+sticky: each device pins every revocation it sees, and rows signed by a
+revoked device stop counting, so the revoked device cannot rotate the key,
+re-admit itself, or smuggle a fresh identity into the roster with the roster
+key it still holds. Two devices revoking different peers at the same time
+converge: the surviving device with the lowest id performs one final rotation
+covering both.
 
 ### Forward secrecy
 
@@ -100,7 +121,7 @@ peer, and unwraps the group key. A phrase is withdrawn like any device, with
 
 ## Edge cases and guarantees
 
-- **No identity configured** (a custom `Conclave.lowLevel` without one): the
+- **No identity configured** (a custom `conclaveLowLevel` without one): the
   roster does not exist and the passphrase-derived key encrypts everything.
   This is the single-key mode; the builder always configures an
   identity.

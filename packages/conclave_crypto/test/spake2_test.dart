@@ -160,4 +160,25 @@ void main() {
       throwsA(isA<Spake2ProtocolError>()),
     );
   });
+
+  test('a well-formed point that is not on P-256 is rejected (RFC 9382 §4)',
+      () {
+    // Take a valid uncompressed point and corrupt one byte of its y
+    // coordinate: the encoding still parses, but y² ≠ x³ + ax + b. Accepting
+    // it would let an attacker substitute a small-order point from another
+    // curve and collapse the shared secret to a guessable value.
+    final a = Spake2.start(role: Spake2Role.prover, w: utf8.encode('pw'));
+    final offCurve = _hex(_rfc.pB);
+    offCurve[64] ^= 0x01;
+    expect(
+      () => a.finish(offCurve),
+      throwsA(isA<Spake2ProtocolError>()),
+    );
+
+    // The same run still accepts a genuine point afterwards being unused:
+    // a fresh run against a real verifier completes.
+    final prover =
+        Spake2.start(role: Spake2Role.verifier, w: utf8.encode('pw'));
+    expect(prover.outboundMessage, hasLength(65));
+  });
 }

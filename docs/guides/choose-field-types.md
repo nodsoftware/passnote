@@ -20,9 +20,16 @@ class Item {
 }
 ```
 
+Annotations describe the fields; the collection still has to be created with
+the strategy they produce, or every field stays last-write-wins:
+
+```dart
+final items = db.collection<Item>('items', _$ItemCodec,
+    merge: _$ItemMergeStrategy);
+```
+
 Without annotations (or with a hand-written codec), pass a
-`SchemaMergeStrategy({'qty': PnCounter(), 'tags': OrSet()})` when creating the
-collection.
+`SchemaMergeStrategy({'qty': PnCounter(), 'tags': OrSet()})` instead.
 
 ## Before and after, concretely
 

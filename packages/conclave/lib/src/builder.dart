@@ -3,10 +3,10 @@ part of 'conclave.dart';
 /// The platform factories [ConclaveBuilder] fills in for any slot the caller
 /// does not override.
 ///
-/// The `conclave` umbrella package installs a production bundle (OS keychain,
-/// LAN transport, AES-GCM) when its `conclaveBuilder` is first used. Code that
-/// depends on `conclave` directly installs its own with
-/// [ConclaveBuilder.installDefaults].
+/// `conclaveBuilder` from `package:conclave_flutter` installs a production
+/// bundle (SQLite storage, OS keychain, LAN transport, XChaCha20-Poly1305)
+/// on its first call. A pure-Dart app that depends on `package:conclave`
+/// directly installs its own with [ConclaveBuilder.installDefaults].
 final class ConclaveDefaults {
   /// Creates a default bundle. Every factory is required except [identity],
   /// which only the device-pairing paths need.
@@ -108,9 +108,9 @@ final class ConclaveBuilder {
 
   static ConclaveDefaults? _defaults;
 
-  /// Installs the [ConclaveDefaults] every builder falls back to. The `conclave`
-  /// umbrella calls this on import; call it directly only when depending on
-  /// `conclave` without the umbrella. The last call wins.
+  /// Installs the [ConclaveDefaults] every builder falls back to.
+  /// `conclaveBuilder` from `package:conclave_flutter` calls this for a Flutter
+  /// app; call it directly in a pure-Dart app. The last call wins.
   static void installDefaults(ConclaveDefaults defaults) =>
       _defaults = defaults;
 
@@ -151,7 +151,8 @@ final class ConclaveBuilder {
     return this;
   }
 
-  /// Overrides the cipher. Default: the umbrella's AES-256-GCM cipher.
+  /// Overrides the cipher. Default: the installed bundle's cipher
+  /// (XChaCha20-Poly1305 with `conclave_flutter`).
   ConclaveBuilder cipher(Cipher Function(List<int> key) factory) {
     _once('cipher', _cipher != null);
     _cipher = factory;
@@ -224,9 +225,10 @@ final class ConclaveBuilder {
     final defaults = _defaults;
     if (defaults == null) {
       throw StateError(
-        'ConclaveBuilder has no defaults installed. Depend on package:conclave '
-        '(which installs them on import), or call '
-        'ConclaveBuilder.installDefaults(...).',
+        'ConclaveBuilder has no defaults installed. Use conclaveBuilder() '
+        'from package:conclave_flutter, which installs them, or call '
+        'ConclaveBuilder.installDefaults(...) yourself (see the cli_logbook '
+        'example).',
       );
     }
 
@@ -236,7 +238,7 @@ final class ConclaveBuilder {
         identityFactory == null ? null : await identityFactory(keyStore);
 
     final override = _engineOverride;
-    return Conclave.lowLevel(
+    return conclaveLowLevel(
       engine: override != null
           ? (_, collection, __) => override(collection)
           : defaults.engine,

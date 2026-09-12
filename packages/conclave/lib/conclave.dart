@@ -7,7 +7,7 @@
 /// interfaces the builder's overrides accept.
 ///
 /// Engine implementations, the conformance suites, protocol internals, and
-/// `Conclave.lowLevel` wiring live on the advanced
+/// the `conclaveLowLevel` wiring function live on the advanced
 /// `package:conclave/engine.dart` library. Flutter bindings and
 /// batteries-included setup live in `package:conclave_flutter`.
 library;
@@ -15,7 +15,7 @@ library;
 export 'src/annotations.dart';
 export 'src/codec.dart';
 export 'src/collection.dart';
-export 'src/conclave.dart';
+export 'src/conclave.dart' hide conclaveLowLevel;
 export 'src/crdt/crdt_type.dart';
 export 'src/database.dart';
 export 'src/id.dart';

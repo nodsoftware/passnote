@@ -51,7 +51,7 @@ void main() {
 
   /// A node whose collections are backed by SQLite files under [tmp], namespaced
   /// by [label] so two "devices" on the same bus keep separate stores.
-  Future<Conclave> openNode(InMemoryBus bus, String label) => Conclave.lowLevel(
+  Future<Conclave> openNode(InMemoryBus bus, String label) => conclaveLowLevel(
         config: const ConclaveConfig(appId: 'test', salt: 'test:v1'),
         keyStore: _MemKeyStore(),
         transport: InMemoryTransport(bus),

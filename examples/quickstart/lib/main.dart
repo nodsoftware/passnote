@@ -43,7 +43,7 @@ Future<void> main() async {
   // On the first device, generate a passphrase to show the user:
   final words = conclave.generatePassphrase().join(' ');
 
-  // On every device, open the database with that passphrase:
+  // On that same device, open the database with it:
   final db = await conclave.openDatabase('home', passphrase: words);
 
   final items = db.collection<Item>('items', itemCodec);

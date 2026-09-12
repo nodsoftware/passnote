@@ -103,9 +103,11 @@ class Spake2 {
 
   /// Begins a run for [role].
   ///
-  /// [w] is the shared secret scalar as big-endian bytes; it is reduced mod the
-  /// group order. Derive it from the pairing code with a memory-hard hash (a
-  /// later step swaps in Argon2id); for the RFC test vectors pass `w` directly.
+  /// [w] is the shared secret scalar as big-endian bytes; it is reduced mod
+  /// the group order. Conclave feeds the raw pairing-code bytes in: SPAKE2's
+  /// security argument does not depend on the entropy of `w` — an active
+  /// attacker gets one online guess per run and the transcript reveals
+  /// nothing offline — so no stretching is applied.
   ///
   /// [proverId] / [verifierId] are the parties' identity strings — pass the
   /// same values on both sides, or leave both empty only when identities are
@@ -214,14 +216,46 @@ class Spake2 {
       throw const Spake2ProtocolError(
           'peer message is not a valid P-256 point');
     }
+    // pointycastle's decodePoint reads the coordinates without checking the
+    // curve equation, so validate y² = x³ + ax + b (mod p) here, as RFC 9382
+    // §4 requires. P-256 has cofactor 1, so an on-curve non-identity point is
+    // guaranteed to be in the prime-order group — without this check an
+    // attacker can substitute a small-order point from another curve and
+    // collapse K to a guessable value.
+    if (!_isOnCurve(point)) {
+      throw const Spake2ProtocolError('peer point is not on the P-256 curve');
+    }
     return point;
   }
 
+  /// The P-256 field prime (SEC 2 / FIPS 186-4).
+  static final BigInt _fieldPrime = BigInt.parse(
+    'ffffffff00000001000000000000000000000000ffffffffffffffffffffffff',
+    radix: 16,
+  );
+
+  /// Whether [point]'s affine coordinates satisfy the P-256 curve equation.
+  static bool _isOnCurve(ECPoint point) {
+    final x = point.x?.toBigInteger();
+    final y = point.y?.toBigInteger();
+    final a = _p256.curve.a?.toBigInteger();
+    final b = _p256.curve.b?.toBigInteger();
+    final p = _fieldPrime;
+    if (x == null || y == null || a == null || b == null) return false;
+    if (x < BigInt.zero || x >= p || y < BigInt.zero || y >= p) return false;
+    final lhs = y.modPow(BigInt.two, p);
+    final rhs = (x.modPow(BigInt.from(3), p) + a * x + b) % p;
+    return lhs == rhs;
+  }
+
+  /// A uniform scalar in `[1, n)` by rejection sampling: candidates at or
+  /// above the group order are re-drawn instead of reduced, so there is no
+  /// modular bias.
   static BigInt _randomScalar() {
     final order = _order;
     while (true) {
-      final v = _osToInt(_secureBytes(32)) % order;
-      if (v != BigInt.zero) return v;
+      final v = _osToInt(_secureBytes(32));
+      if (v != BigInt.zero && v < order) return v;
     }
   }
 

@@ -71,7 +71,7 @@ void main() {
   const passphrase =
       'one two three four five six seven eight nine ten eleven twelve';
 
-  Future<Conclave> openNode(InMemoryBus bus, String label) => Conclave.lowLevel(
+  Future<Conclave> openNode(InMemoryBus bus, String label) => conclaveLowLevel(
         config: const ConclaveConfig(
           appId: 'test',
           salt: 'test:v1',

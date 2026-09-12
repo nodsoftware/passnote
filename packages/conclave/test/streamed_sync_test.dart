@@ -81,7 +81,7 @@ void main() {
     int maxInboundFramesPerSecond = 100,
   }) {
     final inner = InMemoryTransport(bus);
-    return Conclave.lowLevel(
+    return conclaveLowLevel(
       config: ConclaveConfig(
         appId: 'stream',
         salt: 'stream:v1',

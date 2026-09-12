@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Fails if a package under packages/ has a test/ directory that neither the
 # `test:dart` nor the `test:flutter` melos script would pick up. Guards against a
-# package silently dropping out of CI (see the test-runner split in melos.yaml).
+# package silently dropping out of CI (see the test-runner split in the root pubspec.yaml).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 fs_pkgs=$(
-  for d in packages/*/test; do
+  for d in packages/*/test examples/*/test; do
     [ -d "$d" ] && basename "$(dirname "$d")"
   done | sort -u
 )

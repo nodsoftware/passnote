@@ -54,6 +54,14 @@ class _TestIdentity implements Identity {
   Future<List<int>> sign(List<int> message) async => message;
 
   @override
+  Future<bool> verify(
+    List<int> message, {
+    required List<int> signature,
+    required DevicePublicKey signer,
+  }) async =>
+      true;
+
+  @override
   Future<WrappedKey> wrapFor(DevicePublicKey peer, List<int> key) async {
     final ks = _keystream(peer.keyExchange, key.length);
     return WrappedKey(
@@ -102,7 +110,7 @@ void main() {
   /// assert user collections use the group key, not [_baseKey].
   late Map<String, List<int>> engineKeys;
 
-  Future<Conclave> openNode(InMemoryBus bus, int seed) => Conclave.lowLevel(
+  Future<Conclave> openNode(InMemoryBus bus, int seed) => conclaveLowLevel(
         config: const ConclaveConfig(
           appId: 'test',
           salt: 'test:v1',
@@ -177,7 +185,7 @@ void main() {
     expect(engineKeys['d/notes'], isNot(_baseKey));
   });
 
-  test('opening a user collection before pairing throws, not on open itself',
+  test('opening a user collection before pairing throws at the call site',
       () async {
     final bus = InMemoryBus();
     final a = await openNode(bus, 1);
@@ -189,9 +197,11 @@ void main() {
     await pumpEventQueue();
     final dbB = await b.openDatabase('d', passphrase: 'p'); // no throw
 
-    final notes = dbB.collection<Map<String, dynamic>>('notes', _noteCodec);
-    await expectLater(
-      notes.put({'id': 'x', 'v': 1}),
+    // Membership is a precondition checked synchronously: the failure is
+    // catchable with an ordinary try/catch where the collection is created,
+    // not later on its async reads.
+    expect(
+      () => dbB.collection<Map<String, dynamic>>('notes', _noteCodec),
       throwsStateError,
     );
   });

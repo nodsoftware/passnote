@@ -60,7 +60,7 @@ void main() {
   const passphrase =
       'one two three four five six seven eight nine ten eleven twelve';
 
-  Future<Conclave> openNode(InMemoryBus bus) => Conclave.lowLevel(
+  Future<Conclave> openNode(InMemoryBus bus) => conclaveLowLevel(
         config: const ConclaveConfig(appId: 'test', salt: 'test:v1'),
         keyStore: _MemKeyStore(),
         transport: InMemoryTransport(bus),
@@ -176,6 +176,20 @@ void main() {
         () => d.itemsA.increment('nope', 'qty', by: 1),
         throwsStateError,
       );
+    });
+
+    test(
+        'increment on a field the merge strategy does not type as a counter '
+        'throws instead of vanishing', () async {
+      // The default strategy stores the document as one record, so a counter
+      // delta would be written where no read looks for it.
+      final col = Collection.create<_Item>('items', _Item.codec);
+      addTearDown(col.dispose);
+      await col.ready;
+      await col.put(_Item('i1', 'Milk', 0, []));
+
+      expect(() => col.increment('i1', 'qty', by: 2), throwsArgumentError);
+      expect((await col.get('i1'))!.qty, 0);
     });
   });
 

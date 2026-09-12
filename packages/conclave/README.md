@@ -17,7 +17,7 @@ adapters.
 
 - **`Conclave` / `Database` / `Collection<T>`**: the app handle, an encrypted
   shared dataset, and typed queryable document sets.
-- **`Conclave.builder(...)`**: staged configuration; `Conclave.lowLevel` and
+- **`Conclave.builder(...)`**: staged configuration; `conclaveLowLevel` and
   `package:conclave/engine.dart` are the advanced surface.
 - **Ports**: `CrdtTable`, `Cipher`, `KeyStore`, `Transport`, `MergeStrategy`,
   `Identity`, `Pake`. The engine depends only on these interfaces.

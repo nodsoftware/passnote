@@ -1,0 +1,28 @@
+name: cli_logbook
+version: 0.1.0
+description: A pure-Dart (no Flutter) Conclave setup, as a two-device terminal logbook. Kept in sync with docs/reference/builder.md.
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  conclave: ^1.0.0
+  conclave_crypto: ^1.0.0
+  conclave_lan: ^1.0.0
+
+dev_dependencies:
+  build_runner: ^2.15.0
+  conclave_generator: ^1.0.0
+  lints: ^4.0.0
+  test: ^1.25.0
+
+# At-rest encryption: build package:sqlite3's native library from the
+# SQLCipher source. Read from the root package, so keep this stanza when
+# copying the example out of the workspace; without it, openDatabase throws
+# SqlCipherUnavailableException instead of storing plaintext.
+hooks:
+  user_defines:
+    sqlite3:
+      source: sqlcipher

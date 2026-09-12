@@ -121,6 +121,14 @@ class _TestIdentity implements Identity {
   Future<List<int>> sign(List<int> message) async => message;
 
   @override
+  Future<bool> verify(
+    List<int> message, {
+    required List<int> signature,
+    required DevicePublicKey signer,
+  }) async =>
+      true;
+
+  @override
   Future<WrappedKey> wrapFor(DevicePublicKey peer, List<int> key) async {
     final ks = _ks(peer.keyExchange, key.length);
     return WrappedKey(
@@ -162,7 +170,7 @@ final _noteCodec = JsonCodec<Map<String, dynamic>>(
 
 void main() {
   Future<Conclave> openNode(InMemoryBus bus, int seed, {Pake? pake}) =>
-      Conclave.lowLevel(
+      conclaveLowLevel(
         config: const ConclaveConfig(
           appId: 'pair',
           salt: 'pair:v1',
@@ -216,6 +224,103 @@ void main() {
     await b.forceSync();
     await pumpEventQueue();
     expect((await notesB.get('n1'))?['text'], 'from A');
+  });
+
+  test(
+      'a device that founded a rival group offline recovers with forget '
+      'then pairWith', () async {
+    final lan = InMemoryBus();
+    final offline = InMemoryBus();
+
+    // A founds the real group and writes data.
+    final a = await openNode(lan, 1);
+    addTearDown(a.close);
+    final dbA = await a.openDatabase('shared', passphrase: 'hunter2');
+    if (dbA.deviceState != DeviceState.ready) await dbA.foundGroup();
+    final notesA = dbA.collection<Map<String, dynamic>>('notes', _noteCodec);
+    await notesA.put({'id': 'n1', 'text': 'the real group'});
+
+    // B's device state persists across its two sessions (key store, roster
+    // pins, and stored records), like an app restarting.
+    final bStore = _MemKeyStore();
+    final bEngines = <String, MapCrdtTable>{};
+    Future<Conclave> openB(InMemoryBus bus) => conclaveLowLevel(
+          config: const ConclaveConfig(
+            appId: 'pair',
+            salt: 'pair:v1',
+            snapshotInterval: Duration.zero,
+          ),
+          keyStore: bStore,
+          transport: InMemoryTransport(bus),
+          deriveKey: (passphrase, salt) async => List<int>.generate(
+              32, (i) => (passphrase.hashCode ^ salt.hashCode ^ i) & 0xff),
+          roomTag: (key) => 'room-${key.take(4).join("-")}',
+          cipher: _XorCipher.new,
+          mnemonicGenerator: (n) => List.filled(n, 'abandon'),
+          validateMnemonic: (_) => true,
+          engine: (dbId, collection, _) => bEngines.putIfAbsent(
+              '$dbId/$collection', () => MapCrdtTable(collection)),
+          identity: _TestIdentity(2),
+          pake: _FakePake(),
+        );
+
+    // Session 1, offline: no peer is connected at open, so B founds a RIVAL
+    // group — ready, encrypted, and wrong.
+    var b = await openB(offline);
+    final rival = await b.openDatabase('shared', passphrase: 'hunter2');
+    expect(rival.deviceState, DeviceState.ready,
+        reason: 'offline open auto-founds: this is the trap');
+    await b.close();
+
+    // Session 2, back on the real network: the rival persisted, and its
+    // pinned founder keeps it a rival — syncing does not merge groups.
+    b = await openB(lan);
+    addTearDown(b.close);
+    await b.reopenDatabase('shared');
+
+    // The documented way out: forget the rival (drops its key and roster
+    // pins), delete its local data (the disk engine's files; here the
+    // in-memory stores), then join the real group by code.
+    await b.forget('shared');
+    bEngines.clear();
+
+    final code = await a.startPairing('shared', joinerLabel: 'B again');
+    final dbB = await b.pairWith('shared', PairingCode.parse(code.display));
+    expect(dbB.deviceState, DeviceState.ready);
+    final notesB = dbB.collection<Map<String, dynamic>>('notes', _noteCodec);
+    Map<String, dynamic>? note;
+    for (var i = 0; i < 100 && note == null; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 25));
+      note = await notesB.get('n1');
+    }
+    expect(note?['text'], 'the real group',
+        reason: "after forget + pairWith, B is in the founder's group");
+  });
+
+  test('a joiner receives data written before it paired, unprompted', () async {
+    final bus = InMemoryBus();
+    final a = await openNode(bus, 1);
+    addTearDown(a.close);
+
+    // A is alone when it opens, so it founds the group and writes data.
+    final dbA = await a.openDatabase('shared', passphrase: 'hunter2');
+    final notesA = dbA.collection<Map<String, dynamic>>('notes', _noteCodec);
+    await notesA.put({'id': 'n1', 'text': 'written before B existed'});
+
+    final b = await openNode(bus, 2);
+    addTearDown(b.close);
+    final code = await a.startPairing('shared', joinerLabel: "B's phone");
+    final dbB = await b.pairWith('shared', PairingCode.parse(code.display));
+    expect(dbB.deviceState, DeviceState.ready);
+
+    // No forceSync: the joiner asks for the collection it just opened, which
+    // the sponsor's handshake could not have named.
+    final notesB = dbB.collection<Map<String, dynamic>>('notes', _noteCodec);
+    await notesB
+        .watch()
+        .firstWhere((all) => all.isNotEmpty)
+        .timeout(const Duration(seconds: 5));
+    expect((await notesB.get('n1'))?['text'], 'written before B existed');
   });
 
   test('a wrong code is rejected without exposing the group key', () async {

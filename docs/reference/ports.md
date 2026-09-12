@@ -3,7 +3,7 @@
 The engine depends on small interfaces ("ports"); the other packages provide
 the production implementations ("adapters"). Everything here is on
 `package:conclave/engine.dart`, the advanced library. Swap any of them through
-the [builder](builder.md) or `Conclave.lowLevel`.
+the [builder](builder.md) or `conclaveLowLevel`.
 
 ## Transport
 
@@ -65,9 +65,12 @@ Shipped: `KeychainKeyStore` (OS keychain, in `conclave_flutter`).
 
 ## Identity
 
-The device keypair: wrap and unwrap keys for peers, sign, fingerprint.
-Shipped: `DeviceIdentity` (X25519 + Ed25519) in `conclave_crypto`, including
-`DeviceIdentity.fromRecoveryPhrase` for the recovery flow.
+The device keypair: wrap and unwrap keys for peers, sign and verify roster
+rows, fingerprint. `verify` checks any device's signature against its public
+signing key; the device roster uses it to reject rows that are unsigned or
+signed by a non-member. Shipped: `DeviceIdentity` (X25519 + Ed25519) in
+`conclave_crypto`, including `DeviceIdentity.fromRecoveryPhrase` for the
+recovery flow.
 
 ## Pake
 
