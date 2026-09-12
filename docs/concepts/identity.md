@@ -31,6 +31,12 @@ The passphrase is not the data key. User data is encrypted with the group key
 below, so knowing the passphrase alone is not enough to read a group's data:
 a device must also be admitted to the roster.
 
+Because it carries so little, the passphrase is cheap to change: rotating it
+re-encrypts the roster and moves the room tag, and leaves the group key, the
+data and every membership alone. See
+[Rotate the passphrase](../guides/rotate-the-passphrase.md) — including why
+each device has to be rotated or paired again.
+
 ### Device keypairs and the group key
 
 Each installation generates an identity: an X25519 key-exchange keypair and an

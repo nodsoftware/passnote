@@ -68,8 +68,16 @@ class Database {
   }
 
   final String _id;
-  final String _room;
-  final Cipher _cipher;
+
+  /// The public discovery tag this device speaks in for this database.
+  ///
+  /// Derived from the passphrase key, so it moves when the passphrase is
+  /// rotated ([adoptPassphraseKey]).
+  String _room;
+
+  /// Encrypts roster and control frames. Rebuilt when the passphrase key
+  /// changes.
+  Cipher _cipher;
   final NodeId _nodeId;
   final Transport _transport;
   final KeyStore _keyStore;
@@ -77,7 +85,9 @@ class Database {
 
   /// The passphrase-derived key. Encrypts the reserved device-roster collection;
   /// also encrypts every user collection when no [Identity] is configured.
-  final List<int> _baseKey;
+  ///
+  /// Replaced in place by [adoptPassphraseKey] when the passphrase is rotated.
+  List<int> _baseKey;
 
   /// This device's identity, when the device-keypair model is active. `null`
   /// keeps the legacy behaviour: the passphrase-derived key encrypts everything
@@ -496,6 +506,45 @@ class Database {
     await roster.rename(deviceId, label);
     _broadcastCollection(
         _collections[kDeviceCollection] as Collection<dynamic>);
+  }
+
+  /// The collections this database keeps under the passphrase-derived key.
+  ///
+  /// With an [Identity] that is the reserved roster alone — user collections
+  /// are under the group key. Without one, the passphrase key carries
+  /// everything. Only these have to be re-encrypted when the passphrase
+  /// changes, and [Conclave.rotatePassphrase] journals the list so an
+  /// interrupted rotation knows what it was in the middle of.
+  @internal
+  List<String> get passphraseKeyedCollections => [
+        for (final name in _collections.keys)
+          if (name == kDeviceCollection || _identity == null) name,
+      ];
+
+  /// Adopts [newKey] as the passphrase-derived key, in place.
+  ///
+  /// Re-encrypts every store in [passphraseKeyedCollections] under it, rebuilds
+  /// the cipher that seals roster and control frames, and starts speaking in
+  /// [newRoom]. Open [Collection] handles stay valid throughout: the engines
+  /// are re-keyed, not replaced.
+  ///
+  /// The group key is untouched — it is not derived from the passphrase — so
+  /// user collections, the device roster's contents and this device's
+  /// membership all survive a rotation unchanged.
+  ///
+  /// Called by [Conclave.rotatePassphrase], which owns the crash-safe order of
+  /// events around it.
+  @internal
+  Future<void> adoptPassphraseKey(
+    List<int> newKey, {
+    required String newRoom,
+  }) async {
+    for (final name in passphraseKeyedCollections) {
+      await (_collections[name]! as Collection<dynamic>).rekeyEngine(newKey);
+    }
+    _baseKey = List<int>.unmodifiable(newKey);
+    _cipher = _cipherFactory(newKey);
+    _room = newRoom;
   }
 
   /// Rebuilds [_dataCipher] and re-keys every user-collection engine whenever

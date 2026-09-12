@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:crdt/crdt.dart';
 
@@ -386,6 +387,7 @@ class Conclave {
     required String passphrase,
   }) async {
     if (_databases.containsKey(localId)) return _databases[localId]!;
+    await resumePendingRotation(localId);
 
     if (_config.passphrasePolicy.strictness == PassphraseStrictness.reject &&
         !_validateMnemonic(passphrase)) {
@@ -411,6 +413,7 @@ class Conclave {
   /// has never been opened on this device, or was [Database.leave]-d).
   Future<Database> reopenDatabase(String localId) async {
     if (_databases.containsKey(localId)) return _databases[localId]!;
+    await resumePendingRotation(localId);
 
     final entryKey = '${_config.appId}/$localId';
 
@@ -424,6 +427,177 @@ class Conclave {
     final cipher = _cipherFactory(key);
 
     return _finishOpen(localId, entryKey, key, cipher);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Passphrase rotation
+
+  /// Key-store suffix under which a rotation in progress records itself.
+  static const String _rotationSuffix = '#rotating';
+
+  /// Whether a passphrase rotation for [localId] was interrupted and has not
+  /// been finished.
+  ///
+  /// True only between the moment [rotatePassphrase] commits to a new key and
+  /// the moment it finishes. [openDatabase] and [reopenDatabase] finish such a
+  /// rotation before they open anything, so an app that simply opens as usual
+  /// never has to act on this — it exists so one can *tell the user* what
+  /// happened.
+  ///
+  /// ```dart
+  /// if (await conclave.hasPendingRotation('household')) {
+  ///   // Finished automatically on the next open; say so rather than worry.
+  /// }
+  /// ```
+  Future<bool> hasPendingRotation(String localId) async =>
+      await _keyStore.getKey(_rotationEntryKey(localId)) != null;
+
+  /// Re-encrypts [localId] under a key derived from [newPassphrase].
+  ///
+  /// The database must be open, and [oldPassphrase] must be the one it is
+  /// open under. Everything the old passphrase protected — the device roster,
+  /// and every collection when no [Identity] is configured — is re-encrypted
+  /// in place; open [Collection] handles keep working. The group key is not
+  /// derived from the passphrase and is left alone, so no user data is
+  /// re-encrypted, no device loses its membership, and nothing has to sync.
+  ///
+  /// ```dart
+  /// await conclave.rotatePassphrase(
+  ///   'household',
+  ///   oldPassphrase: oldWords.join(' '),
+  ///   newPassphrase: newWords.join(' '),
+  /// );
+  /// ```
+  ///
+  /// **This device only.** The passphrase key is also this database's
+  /// discovery [Database.room], so a rotated device stops exchanging frames
+  /// with peers that still hold the old one. Every other device has to be
+  /// rotated with the same two phrases, or paired again — pairing hands over
+  /// whatever key the sponsor currently holds.
+  ///
+  /// Crash-safe. The new key is written to the [KeyStore] under a pending
+  /// entry *before* any store is re-encrypted, so a process that dies halfway
+  /// leaves enough behind to finish the job: the next open re-keys whatever
+  /// is still on the old key and promotes the new one. A database is never
+  /// left unopenable.
+  ///
+  /// Throws [WrongPassphraseException] when [oldPassphrase] is not the one in
+  /// force, [WeakPassphraseException] when [newPassphrase] fails the
+  /// configured [PassphrasePolicy], and [StateError] when [localId] is not
+  /// open.
+  Future<void> rotatePassphrase(
+    String localId, {
+    required String oldPassphrase,
+    required String newPassphrase,
+  }) async {
+    final db = _database(localId);
+    if (_config.passphrasePolicy.strictness == PassphraseStrictness.reject &&
+        !_validateMnemonic(newPassphrase)) {
+      throw const WeakPassphraseException();
+    }
+
+    final entryKey = '${_config.appId}/$localId';
+    final current = await _keyStore.getKey(entryKey);
+    final oldKey = await _deriveKey(oldPassphrase, _config.salt);
+    if (current == null || !_sameKey(current, oldKey)) {
+      throw const WrongPassphraseException();
+    }
+    final newKey = await _deriveKey(newPassphrase, _config.salt);
+    if (_sameKey(newKey, oldKey)) return;
+
+    // Journal first. From here on the truth is "one of these two keys opens
+    // each store", and finishing is always possible.
+    await _keyStore.setKey(
+      _rotationEntryKey(localId),
+      _encodeRotation(newKey, db.passphraseKeyedCollections),
+    );
+    await db.adoptPassphraseKey(newKey, newRoom: _roomTag(newKey));
+    await _keyStore.setKey(entryKey, newKey);
+    _databaseKeys[localId] = newKey;
+    await _keyStore.clear(_rotationEntryKey(localId));
+  }
+
+  /// Finishes a rotation that was interrupted, if there is one.
+  ///
+  /// Idempotent, and safe to call when nothing is pending. Called by
+  /// [openDatabase] and [reopenDatabase] before they touch a store, which is
+  /// why an interrupted rotation is invisible in practice.
+  ///
+  /// Every journalled store is tried under the key in force and then under the
+  /// pending one: whichever opens it decides whether it still has to be
+  /// re-encrypted. Throws [StateError] when [localId] is open (close it first)
+  /// or when a store opens under neither key.
+  Future<void> resumePendingRotation(String localId) async {
+    final rotationKey = _rotationEntryKey(localId);
+    final journal = await _keyStore.getKey(rotationKey);
+    if (journal == null) return;
+    if (_databases.containsKey(localId)) {
+      throw StateError(
+        'Close database "$localId" before finishing its passphrase rotation.',
+      );
+    }
+
+    final (newKey, collections) = _decodeRotation(journal);
+    final entryKey = '${_config.appId}/$localId';
+    final current = await _keyStore.getKey(entryKey) ?? newKey;
+    for (final collection in collections) {
+      await _finishRekey(localId, collection, from: current, to: newKey);
+    }
+    await _keyStore.setKey(entryKey, newKey);
+    _databaseKeys[localId] = newKey;
+    await _keyStore.clear(rotationKey);
+  }
+
+  /// Re-encrypts one store, or leaves it alone when it is already done.
+  Future<void> _finishRekey(
+    String localId,
+    String collection, {
+    required List<int> from,
+    required List<int> to,
+  }) async {
+    if (_sameKey(from, to)) return;
+    final stale = await _engineFactory(localId, collection, from);
+    try {
+      await stale.init();
+    } on WrongPassphraseException {
+      // Already carried over before the crash. Prove it opens under the new
+      // key rather than assuming, so a half-written store is not mistaken for
+      // a finished one.
+      await stale.close();
+      final done = await _engineFactory(localId, collection, to);
+      await done.init();
+      await done.close();
+      return;
+    }
+    await stale.rekey(to);
+    await stale.close();
+  }
+
+  String _rotationEntryKey(String localId) =>
+      '${_config.appId}/$localId$_rotationSuffix';
+
+  /// The journal: the key being adopted, and what was under the old one.
+  List<int> _encodeRotation(List<int> key, List<String> collections) =>
+      utf8.encode(jsonEncode({
+        'v': 1,
+        'key': base64Encode(key),
+        'collections': collections,
+      }));
+
+  (List<int>, List<String>) _decodeRotation(List<int> journal) {
+    final decoded = jsonDecode(utf8.decode(journal)) as Map<String, dynamic>;
+    return (
+      base64Decode(decoded['key'] as String),
+      (decoded['collections'] as List<dynamic>).cast<String>(),
+    );
+  }
+
+  static bool _sameKey(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   /// Permanently forgets [localId]: removes it from the open set and deletes its

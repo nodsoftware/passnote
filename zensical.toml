@@ -23,6 +23,7 @@ nav = [
     "guides/set-up-platforms.md",
     "guides/pair-a-device.md",
     "guides/revoke-a-device.md",
+    "guides/rotate-the-passphrase.md",
     "guides/choose-field-types.md",
     "guides/query-and-paginate.md",
     "guides/run-on-the-web.md",

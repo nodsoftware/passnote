@@ -6,6 +6,8 @@ Task-focused answers, one screen each:
   macOS, Windows, and Linux each need before discovery works.
 - [Pair a device](pair-a-device.md): add a device with a one-time code.
 - [Revoke a device](revoke-a-device.md): lock a lost device out.
+- [Rotate the passphrase](rotate-the-passphrase.md): change the words, safely,
+  even if the phone dies halfway.
 - [Choose field types](choose-field-types.md): last-write-wins, counters, sets.
 - [Query and paginate](query-and-paginate.md): indexed queries, stable pages,
   live results.
