@@ -46,7 +46,8 @@ class LanTransport implements Transport {
   MDNSServer? _mdnsServer;
   Timer? _discoveryTimer;
   bool _started = false;
-  bool _discoveryUnavailableEmitted = false;
+  bool _advertiseOk = true;
+  bool _browseOk = true;
 
   /// Active connections keyed by remote [PeerId] (their [NodeId]).
   final Map<PeerId, WebSocket> _connections = {};
@@ -112,28 +113,52 @@ class LanTransport implements Transport {
             port: wsPort,
             txt: ['node=$self', 'port=$wsPort'],
           );
-          final mdns = MDNSServer(MDNSServerConfig(zone: service));
+          final mdns = MDNSServer(
+            MDNSServerConfig(zone: service, reusePort: _reusePort),
+          );
           await mdns.start();
           _mdnsServer = mdns;
+          _noteDiscovery(advertise: true);
         } catch (_) {
-          _noteDiscoveryUnavailable('multicast advertisement was refused');
+          _noteDiscovery(advertise: false);
         }
         if (!done.isCompleted) done.complete();
       },
       (_, __) {
-        _noteDiscoveryUnavailable('multicast advertisement was refused');
+        // The responder sends on both address families too. Once it is up, a
+        // failing send on one of them is not a refused advertisement.
+        if (_mdnsServer == null) _noteDiscovery(advertise: false);
         if (!done.isCompleted) done.complete();
       },
     );
     return done.future;
   }
 
-  /// Emits [DiscoveryUnavailable] once per transport lifetime.
-  void _noteDiscoveryUnavailable(String reason) {
-    if (_discoveryUnavailableEmitted) return;
-    _discoveryUnavailableEmitted = true;
-    if (!_events.isClosed) {
-      _events.add(DiscoveryUnavailable(reason: reason));
+  /// Records that advertising, or one browse round, failed or succeeded, and
+  /// emits an event when that changes whether discovery works at all.
+  ///
+  /// Discovery needs both halves: a responder so peers can find this node, and
+  /// a browse so this node can find them. Either one down is reported, and
+  /// only both being up clears it again.
+  ///
+  /// Transitions are what get emitted, never each failing round: a permanently
+  /// refused browse retries every [_discoveryInterval] and must not turn into
+  /// an endless stream of identical events. Equally, the first failure must
+  /// not latch forever — a later failure after a recovery is news again.
+  void _noteDiscovery({bool? advertise, bool? browse}) {
+    final was = _advertiseOk && _browseOk;
+    if (advertise != null) _advertiseOk = advertise;
+    if (browse != null) _browseOk = browse;
+    final now = _advertiseOk && _browseOk;
+    if (was == now || _events.isClosed) return;
+    if (now) {
+      _events.add(const DiscoveryRestored());
+    } else {
+      _events.add(DiscoveryUnavailable(
+        reason: _advertiseOk
+            ? 'multicast browse was refused'
+            : 'multicast advertisement was refused',
+      ));
     }
   }
 
@@ -195,6 +220,10 @@ class LanTransport implements Transport {
   Future<void> _browse() async {
     if (!_started) return;
     final entries = await _discover();
+    // A browse takes seconds, so [stop] can land while one is in flight: by
+    // here the streams are closed and the connections torn down, and dialing
+    // a peer now would reopen what stop just closed.
+    if (!_started) return;
     // Unavailable this round; the next tick retries in case the permission
     // arrived. Dialing below runs in the caller's zone.
     if (entries == null) return;
@@ -210,22 +239,35 @@ class LanTransport implements Transport {
     }
   }
 
-  /// Whether to ask for `SO_REUSEPORT` when binding the mDNS socket.
+  /// Whether to ask for `SO_REUSEPORT` when binding an mDNS socket.
   ///
-  /// Dart implements `reusePort` only on macOS and iOS; everywhere else the
-  /// runtime rejects the bind outright with
-  /// ``Dart Socket ERROR: `reusePort` not supported on this platform``. On
-  /// Apple platforms it is what lets the browse socket share UDP 5353 with the
-  /// OS's own mDNS responder, so it is worth asking for there and nowhere
-  /// else. `reuseAddress` (always on) covers the rest.
+  /// Apple platforms run their own mDNS responder, which already holds UDP
+  /// 5353. Sharing that port needs `SO_REUSEPORT`; `reuseAddress` alone is not
+  /// enough, and a bind without it fails with
+  /// `Address already in use, errno = 48`. Both mDNS sockets — the responder
+  /// that advertises this node and the client that browses for peers — bind
+  /// 5353, so both ask for it here.
+  ///
+  /// Android rejects the option outright: the runtime refuses the bind with
+  /// ``Dart Socket ERROR: `reusePort` not supported on this platform``, which
+  /// kills discovery on a platform that has no competing responder and does
+  /// not need the option at all. Linux implements it, but nothing there
+  /// contends for 5353, so `reuseAddress` is enough and this stays Apple-only.
   static final bool _reusePort = Platform.isMacOS || Platform.isIOS;
 
   /// One mDNS browse, inside a guarded zone scoped to the query alone: the
   /// mDNS library sends from fire-and-forget futures, so multicast refusal
   /// surfaces as asynchronous errors that must not reach the app. Returns
   /// `null` when discovery is unavailable (also noted as an event).
+  ///
+  /// The library queries both address families. A host that routes one of them
+  /// and not the other — an IPv4-only LAN is the common case — fails those
+  /// sends with `No route to host` while the other family answers normally, so
+  /// an asynchronous send failure alone says nothing about whether discovery
+  /// works. It counts only when the browse also came back empty.
   Future<List<ServiceEntry>?> _discover() {
     final done = Completer<List<ServiceEntry>?>();
+    var sendFailed = false;
     runZonedGuarded(
       () async {
         try {
@@ -234,15 +276,23 @@ class LanTransport implements Transport {
             timeout: const Duration(seconds: 2),
             reusePort: _reusePort,
           );
+          if (entries.isEmpty && sendFailed) {
+            _noteDiscovery(browse: false);
+            if (!done.isCompleted) done.complete(null);
+            return;
+          }
+          _noteDiscovery(browse: true);
           if (!done.isCompleted) done.complete(entries);
         } catch (_) {
-          _noteDiscoveryUnavailable('multicast browse was refused');
+          _noteDiscovery(browse: false);
           if (!done.isCompleted) done.complete(null);
         }
       },
       (_, __) {
-        _noteDiscoveryUnavailable('multicast browse was refused');
-        if (!done.isCompleted) done.complete(null);
+        // Swallowed so it never reaches the app, and recorded rather than
+        // acted on: aborting here would discard the results the working
+        // address family is about to deliver.
+        sendFailed = true;
       },
     );
     return done.future;
