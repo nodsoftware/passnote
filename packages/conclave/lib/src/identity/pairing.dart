@@ -112,8 +112,10 @@ class PairingCoordinator {
     required PairingFrameSender send,
     required PairingPeerSource peers,
     Duration timeout = const Duration(seconds: 20),
+    Duration discoveryTimeout = const Duration(seconds: 90),
     int maxAttempts = 3,
   })  : _appId = appId,
+        _discoveryTimeout = discoveryTimeout,
         _pake = pake,
         _deriveKey = deriveKey,
         _cipherFactory = cipherFactory,
@@ -131,6 +133,10 @@ class PairingCoordinator {
   final PairingFrameSender _send;
   final PairingPeerSource _peers;
   final Duration _timeout;
+
+  /// How long a joiner waits to find any peer before giving up. Separate from
+  /// [_timeout], which bounds the exchange once one is found.
+  final Duration _discoveryTimeout;
   final int _maxAttempts;
 
   static final List<int> _joinerId = utf8.encode('conclave-pair-joiner');
@@ -197,6 +203,7 @@ class PairingCoordinator {
     // [_maxAttempts] per hello, so re-sending to the same peer would deny a
     // correct code.
     final greeted = <PeerId>{};
+    final foundSomebody = Completer<void>();
     Future<void> greetNewPeers() async {
       // Copied before iterating: [_peers] is the live connection set, and this
       // runs while peers are still arriving, so awaiting a send inside a
@@ -204,6 +211,7 @@ class PairingCoordinator {
       for (final peer in _peers().toList()) {
         if (greeted.add(peer)) {
           await _send(peer, _frame(room, hello));
+          if (!foundSomebody.isCompleted) foundSomebody.complete();
         }
       }
     }
@@ -215,6 +223,12 @@ class PairingCoordinator {
     );
 
     try {
+      // Finding a device is not part of the exchange, and it is the slower
+      // half: mDNS can take tens of seconds on a busy network, while the
+      // exchange itself is a handful of frames. Counting both against one
+      // budget failed joins that had not yet said a word, so the exchange
+      // clock starts when there is somebody to say it to.
+      await foundSomebody.future.timeout(_discoveryTimeout);
       return await joiner.done.future.timeout(_timeout);
     } on TimeoutException {
       throw const PairingTimeout();

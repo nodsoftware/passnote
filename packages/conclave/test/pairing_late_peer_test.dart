@@ -297,4 +297,41 @@ void main() {
           'held, so pairing succeeded and the data never followed',
     );
   });
+
+  test('a joiner waits for discovery beyond the exchange timeout', () async {
+    // Finding a device over mDNS can take longer than the exchange itself.
+    // Charging both to one budget failed joins that had not yet sent a frame,
+    // which on real hardware showed up as pairing that worked or did not
+    // depending on how busy the network was.
+    final bus = InMemoryBus();
+
+    final sponsor = await openNode(1, InMemoryTransport(bus));
+    addTearDown(sponsor.close);
+    final late = _LateConnectTransport(InMemoryTransport(bus));
+    final joiner = await openNode(2, late);
+    addTearDown(joiner.close);
+
+    final dbSponsor =
+        await sponsor.openDatabase('shared', passphrase: 'hunter2');
+    if (dbSponsor.deviceState != DeviceState.ready) {
+      await dbSponsor.foundGroup();
+    }
+    final code = await sponsor.startPairing('shared');
+
+    final joining = joiner.pairWith('shared', PairingCode.parse(code.digits));
+
+    // Longer than the 20s exchange timeout: the joiner has found nobody and
+    // has therefore spent none of it.
+    await Future<void>.delayed(const Duration(seconds: 25));
+    late.release();
+
+    final dbJoiner = await joining.timeout(
+      const Duration(seconds: 20),
+      onTimeout: () => fail(
+        'the joiner gave up while still looking for a peer, so slow discovery '
+        'reads as a failed pairing',
+      ),
+    );
+    expect(dbJoiner.deviceState, DeviceState.ready);
+  }, timeout: const Timeout(Duration(seconds: 90)));
 }
