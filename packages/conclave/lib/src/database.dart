@@ -626,6 +626,33 @@ class Database {
 
   /// Kicks off the ratchet handshake with [peer]: sends our nonce if no session
   /// exists yet and this device holds the group key.
+  /// Last time a ratchet re-bootstrap was asked of a peer, so a peer that
+  /// keeps sealing does not turn every dropped frame into a fresh nonce.
+  final Map<PeerId, DateTime> _lastRebootstrap = {};
+
+  /// Last time a repeated nonce from a peer was answered, bounding the volley
+  /// two peers could otherwise keep up.
+  final Map<PeerId, DateTime> _lastDuplicateAnswer = {};
+
+  /// The shortest gap between two re-bootstrap requests to the same peer.
+  static const Duration _rebootstrapInterval = Duration(seconds: 2);
+
+  /// Starts the ratchet exchange again after a frame that could not be
+  /// opened, clearing this side's half of a session the peer still believes
+  /// in.
+  void _rebootstrapRatchet(PeerId peer) {
+    final now = DateTime.now();
+    final last = _lastRebootstrap[peer];
+    if (last != null && now.difference(last) < _rebootstrapInterval) return;
+    _lastRebootstrap[peer] = now;
+    // This side's nonce stays as it is. Minting a fresh one reads to the peer
+    // as "it redid its handshake", so the peer drops its session and mints
+    // one back, which reads the same way here: the two chase each other and
+    // establish a session per round forever. Re-sending the nonce already on
+    // record asks the peer for its own without disturbing what it holds.
+    unawaited(_sendRatchetNonce(peer).catchError((Object _) {}));
+  }
+
   Future<void> _kickRatchet(PeerId peer) async {
     if (_sessions.containsKey(peer) || _dataKey == null) return;
     await _sendRatchetNonce(peer);
@@ -707,8 +734,21 @@ class Database {
       final kind = payload[0];
       payload = payload.sublist(1);
       if (kind == _frameRatcheted) {
-        final inner = await _sessions[from]?.open(payload);
-        if (inner == null) return false; // no session yet, or ratcheted past
+        final session = _sessions[from];
+        final inner = await session?.open(payload);
+        if (inner == null) {
+          // No session at all means the peer seals under one this side never
+          // built: its nonce arrived before this device held the group key,
+          // or under an older generation, and was dropped. The peer cannot
+          // tell, and keeps sealing, so everything it sends is lost until the
+          // exchange starts again. Ask for that.
+          //
+          // With a session in hand the frame is instead stale or replayed,
+          // and tearing a working session down over one would be the more
+          // expensive mistake.
+          if (session == null) _rebootstrapRatchet(from);
+          return false;
+        }
         payload = inner;
       }
     }
@@ -749,11 +789,26 @@ class Database {
         // branch of two concurrent rotations that share an epoch number. A
         // session established from such a nonce would have a mismatched root
         // and silently drop every frame.
-        if (key == null || !_listEquals(keyTag, ratchetKeyTag(key))) break;
+        if (key == null || !_listEquals(keyTag, ratchetKeyTag(key))) {
+          break;
+        }
         if (_sessions.containsKey(from)) {
           // Duplicate of the nonce we already paired with: ping-pong ends.
           final known = _peerNonce[from];
-          if (known != null && _listEquals(known, nonce)) break;
+          if (known != null && _listEquals(known, nonce)) {
+            // The nonce this session was built from, sent again. The peer is
+            // asking because it never received ours — its copy arrived before
+            // it held the group key — and it stays deaf to everything sealed
+            // here until it gets one. Answer, at most once per interval so
+            // two peers cannot volley.
+            final last = _lastDuplicateAnswer[from];
+            if (last == null ||
+                DateTime.now().difference(last) >= _rebootstrapInterval) {
+              _lastDuplicateAnswer[from] = DateTime.now();
+              await _sendRatchetNonce(from);
+            }
+            break;
+          }
           // A fresh nonce from a peer we hold a session with: the peer redid
           // its handshake (it adopted the key later than we did) and our
           // session is one-sided. Drop it and pair anew, or every ratcheted
@@ -762,8 +817,11 @@ class Database {
           _myNonce.remove(from);
         }
         _peerNonce[from] = nonce;
-        _tryEstablishSession(from);
+        // This side's nonce is minted by [_sendRatchetNonce], so send before
+        // trying: establishing first leaves both nonces on record and no
+        // session, and nothing retries.
         await _sendRatchetNonce(from);
+        _tryEstablishSession(from);
       case HandshakeMessage(:final versions, :final capabilities):
         await _handleHandshake(from, versions, capabilities);
       case ReconcileMessage():
