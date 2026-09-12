@@ -16,8 +16,8 @@ import 'frame_codec.dart';
 /// lexicographically smaller id dials; the larger id accepts the inbound
 /// connection.
 ///
-/// This is the only socket-bound package in Conclave and is excluded from the
-/// default unit test run; see the loopback integration test.
+/// The WebSocket layer is covered by the default unit run; mDNS discovery is
+/// socket-bound and covered by the tagged loopback integration test.
 class LanTransport implements Transport {
   /// Creates a transport.
   ///
@@ -46,6 +46,7 @@ class LanTransport implements Transport {
   MDNSServer? _mdnsServer;
   Timer? _discoveryTimer;
   bool _started = false;
+  bool _discoveryUnavailableEmitted = false;
 
   /// Active connections keyed by remote [PeerId] (their [NodeId]).
   final Map<PeerId, WebSocket> _connections = {};
@@ -62,6 +63,10 @@ class LanTransport implements Transport {
   @override
   Stream<InboundFrame> get inbound => _inbound.stream;
 
+  /// The local port the WebSocket server is bound to, or `null` before
+  /// [start]. Diagnostics and tests; peers learn it over mDNS.
+  int? get port => _wsServer?.port;
+
   @override
   Future<void> start({required NodeId self, required String appId}) async {
     if (_started) throw StateError('LanTransport already started');
@@ -69,26 +74,67 @@ class LanTransport implements Transport {
     _self = self;
     _serviceType = '_conclave-$appId._tcp';
 
-    // 1. WebSocket server on an ephemeral port.
+    // 1. WebSocket server on an ephemeral port. Remote-fed input: a request
+    // that fails mid-handling is dropped, never an unhandled async error.
     final server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
     _wsServer = server;
-    server.listen(_handleHttpRequest);
+    server.listen(_handleHttpRequest, onError: (Object _) {});
 
-    // 2. Advertise this node over mDNS.
-    final service = await MDNSService.create(
-      instance: self,
-      service: _serviceType,
-      port: server.port,
-      txt: ['node=$self', 'port=${server.port}'],
-    );
-    final mdns = MDNSServer(MDNSServerConfig(zone: service));
-    await mdns.start();
-    _mdnsServer = mdns;
+    // 2. Advertise this node over mDNS. A platform that refuses multicast (a
+    // missing entitlement or local-network permission) must not crash the
+    // app: the transport stays up without discovery — the failure mode the
+    // platform-setup guide documents — and a [DiscoveryUnavailable] event
+    // tells the app why no peers will appear.
+    await _advertise(self, server.port);
 
-    // 3. Browse for peers immediately and on an interval.
+    // 3. Browse for peers immediately and on an interval. Only the mDNS
+    // query itself runs guarded (see [_discover]); dialing and socket
+    // handling keep normal error propagation, like the accepting side.
     unawaited(_browse());
     _discoveryTimer =
         Timer.periodic(_discoveryInterval, (_) => unawaited(_browse()));
+  }
+
+  /// Starts the mDNS responder. Never throws: the mDNS library sends packets
+  /// from fire-and-forget futures, so multicast refusal can surface as an
+  /// asynchronous error long after the awaited calls return — the responder
+  /// therefore lives in its own guarded zone, scoped to mDNS alone, and a
+  /// refusal degrades to "no advertisement" plus a [DiscoveryUnavailable]
+  /// event.
+  Future<void> _advertise(NodeId self, int wsPort) {
+    final done = Completer<void>();
+    runZonedGuarded(
+      () async {
+        try {
+          final service = await MDNSService.create(
+            instance: self,
+            service: _serviceType,
+            port: wsPort,
+            txt: ['node=$self', 'port=$wsPort'],
+          );
+          final mdns = MDNSServer(MDNSServerConfig(zone: service));
+          await mdns.start();
+          _mdnsServer = mdns;
+        } catch (_) {
+          _noteDiscoveryUnavailable('multicast advertisement was refused');
+        }
+        if (!done.isCompleted) done.complete();
+      },
+      (_, __) {
+        _noteDiscoveryUnavailable('multicast advertisement was refused');
+        if (!done.isCompleted) done.complete();
+      },
+    );
+    return done.future;
+  }
+
+  /// Emits [DiscoveryUnavailable] once per transport lifetime.
+  void _noteDiscoveryUnavailable(String reason) {
+    if (_discoveryUnavailableEmitted) return;
+    _discoveryUnavailableEmitted = true;
+    if (!_events.isClosed) {
+      _events.add(DiscoveryUnavailable(reason: reason));
+    }
   }
 
   @override
@@ -126,13 +172,21 @@ class LanTransport implements Transport {
   // Inbound (server side)
 
   Future<void> _handleHttpRequest(HttpRequest request) async {
-    if (!WebSocketTransformer.isUpgradeRequest(request)) {
-      request.response.statusCode = HttpStatus.badRequest;
-      await request.response.close();
-      return;
+    // Fail closed on remote-fed input: `onError` on the server subscription
+    // does not catch a throw from inside this async callback (a malformed
+    // upgrade, a connection dying mid-handshake), so the whole handler is
+    // guarded and a failing request is simply dropped.
+    try {
+      if (!WebSocketTransformer.isUpgradeRequest(request)) {
+        request.response.statusCode = HttpStatus.badRequest;
+        await request.response.close();
+        return;
+      }
+      final socket = await WebSocketTransformer.upgrade(request);
+      _registerSocket(socket, dialedPeer: null);
+    } catch (_) {
+      // The requester is gone or sent garbage; there is nobody to answer.
     }
-    final socket = await WebSocketTransformer.upgrade(request);
-    _registerSocket(socket, dialedPeer: null);
   }
 
   // ---------------------------------------------------------------------------
@@ -140,16 +194,10 @@ class LanTransport implements Transport {
 
   Future<void> _browse() async {
     if (!_started) return;
-    final List<ServiceEntry> entries;
-    try {
-      entries = await MDNSClient.discover(
-        _serviceType,
-        timeout: const Duration(seconds: 2),
-        reusePort: true,
-      );
-    } catch (_) {
-      return;
-    }
+    final entries = await _discover();
+    // Unavailable this round; the next tick retries in case the permission
+    // arrived. Dialing below runs in the caller's zone.
+    if (entries == null) return;
     for (final entry in entries) {
       final txt = MDNSService.parseTXTRecords(entry.infoFields);
       final node = txt['node'];
@@ -160,6 +208,44 @@ class LanTransport implements Transport {
       if (_connections.containsKey(node) || _dialing.contains(node)) continue;
       unawaited(_dial(node, address, entry.port));
     }
+  }
+
+  /// Whether to ask for `SO_REUSEPORT` when binding the mDNS socket.
+  ///
+  /// Dart implements `reusePort` only on macOS and iOS; everywhere else the
+  /// runtime rejects the bind outright with
+  /// ``Dart Socket ERROR: `reusePort` not supported on this platform``. On
+  /// Apple platforms it is what lets the browse socket share UDP 5353 with the
+  /// OS's own mDNS responder, so it is worth asking for there and nowhere
+  /// else. `reuseAddress` (always on) covers the rest.
+  static final bool _reusePort = Platform.isMacOS || Platform.isIOS;
+
+  /// One mDNS browse, inside a guarded zone scoped to the query alone: the
+  /// mDNS library sends from fire-and-forget futures, so multicast refusal
+  /// surfaces as asynchronous errors that must not reach the app. Returns
+  /// `null` when discovery is unavailable (also noted as an event).
+  Future<List<ServiceEntry>?> _discover() {
+    final done = Completer<List<ServiceEntry>?>();
+    runZonedGuarded(
+      () async {
+        try {
+          final entries = await MDNSClient.discover(
+            _serviceType,
+            timeout: const Duration(seconds: 2),
+            reusePort: _reusePort,
+          );
+          if (!done.isCompleted) done.complete(entries);
+        } catch (_) {
+          _noteDiscoveryUnavailable('multicast browse was refused');
+          if (!done.isCompleted) done.complete(null);
+        }
+      },
+      (_, __) {
+        _noteDiscoveryUnavailable('multicast browse was refused');
+        if (!done.isCompleted) done.complete(null);
+      },
+    );
+    return done.future;
   }
 
   Future<void> _dial(PeerId peer, InternetAddress address, int port) async {
@@ -230,6 +316,12 @@ class LanTransport implements Transport {
   }
 
   void _bindPeer(PeerId peer, WebSocket socket) {
+    // A handshake completing while stop() tears things down must not touch
+    // the closed controller (the same guard _unbindPeer carries).
+    if (!_started || _events.isClosed) {
+      unawaited(socket.close());
+      return;
+    }
     final existing = _connections[peer];
     if (identical(existing, socket)) return;
     if (existing != null) {
