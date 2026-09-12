@@ -189,13 +189,37 @@ class PairingCoordinator {
     _joiner = joiner;
 
     final hello = _encode({'t': 'hello', 'm': base64.encode(session.message)});
-    await _broadcast(room, hello);
+
+    // A joining device usually calls this the moment it opens, before
+    // discovery has found anybody, so the peer set is still empty and a single
+    // broadcast would reach nobody and never be retried. Greet peers as they
+    // arrive instead, and each one exactly once: the sponsor spends one of its
+    // [_maxAttempts] per hello, so re-sending to the same peer would deny a
+    // correct code.
+    final greeted = <PeerId>{};
+    Future<void> greetNewPeers() async {
+      // Copied before iterating: [_peers] is the live connection set, and this
+      // runs while peers are still arriving, so awaiting a send inside a
+      // direct iteration would race a concurrent modification.
+      for (final peer in _peers().toList()) {
+        if (greeted.add(peer)) {
+          await _send(peer, _frame(room, hello));
+        }
+      }
+    }
+
+    await greetNewPeers();
+    final sweep = Timer.periodic(
+      const Duration(milliseconds: 250),
+      (_) => unawaited(greetNewPeers()),
+    );
 
     try {
       return await joiner.done.future.timeout(_timeout);
     } on TimeoutException {
       throw const PairingTimeout();
     } finally {
+      sweep.cancel();
       joiner.dispose();
       if (identical(_joiner, joiner)) _joiner = null;
     }
@@ -393,12 +417,6 @@ class PairingCoordinator {
 
   Future<List<int>> _boxKey(List<int> sharedSecret) => _deriveKey(
       base64.encode(sharedSecret), 'conclave/$_appId/pairing-box-v1');
-
-  Future<void> _broadcast(String room, List<int> payload) async {
-    for (final peer in _peers()) {
-      await _send(peer, _frame(room, payload));
-    }
-  }
 
   static Frame _frame(String room, List<int> payload) => Frame(room, payload);
 
