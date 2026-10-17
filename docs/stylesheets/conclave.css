@@ -1,0 +1,51 @@
+/* Conclave house style. Palette and contrast ratios: design/reviews/logo-v2.md. */
+@import url("https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap");
+
+:root {
+  --conclave-cardinal: #a3162b;
+  --conclave-cardinal-deep: #7e0f20;
+  --conclave-rose: #f0909c;
+  --conclave-ink: #1a1416;
+  --conclave-parchment: #f2e8dc;
+  --conclave-paper: #fbf8f4;
+  /* The theme tints greys with this hue; 340deg is the ink's own hue. */
+  --md-hue: 340deg;
+}
+
+/* Light: ink on paper, cardinal links (7.3:1). */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: var(--conclave-cardinal);
+  --md-primary-fg-color--light: var(--conclave-cardinal);
+  --md-primary-fg-color--dark: var(--conclave-cardinal-deep);
+  --md-accent-fg-color: var(--conclave-cardinal-deep);
+  --md-accent-fg-color--transparent: #a3162b14;
+  --md-typeset-a-color: var(--conclave-cardinal);
+  --md-default-fg-color: var(--conclave-ink);
+  --md-default-bg-color: var(--conclave-paper);
+}
+
+/* Dark: parchment on ink. Cardinal on ink is only 2.4:1, so links use rose (7.9:1). */
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: var(--conclave-rose);
+  --md-primary-fg-color--light: var(--conclave-rose);
+  --md-primary-fg-color--dark: var(--conclave-rose);
+  --md-accent-fg-color: var(--conclave-parchment);
+  --md-accent-fg-color--transparent: #f0909c1f;
+  --md-typeset-a-color: var(--conclave-rose);
+  --md-default-fg-color: var(--conclave-parchment);
+  --md-default-bg-color: var(--conclave-ink);
+}
+
+/* The cardinal door fails contrast on ink, so the dark scheme swaps in the parchment door. */
+[data-md-color-scheme="slate"] .md-logo img {
+  content: url("../assets/logo-dark.svg");
+}
+
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3,
+.md-header__topic {
+  font-family: "Source Serif 4", Georgia, serif;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}

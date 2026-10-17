@@ -10,6 +10,7 @@ docs_dir = "docs"
 site_dir = "site"
 repo_url = "https://github.com/nodsoftware/conclave"
 repo_name = "nodsoftware/conclave"
+extra_css = ["stylesheets/conclave.css"]
 
 nav = [
   { "Home" = "index.md" },
@@ -63,3 +64,27 @@ features = [
   "toc.follow",
   "content.code.copy",
 ]
+logo = "assets/logo.svg"
+favicon = "assets/favicon.svg"
+
+# Brand fonts (SIL OFL): Source Sans 3 for text; headings use Source Serif 4,
+# the wordmark's face, loaded in stylesheets/conclave.css.
+[project.theme.font]
+text = "Source Sans 3"
+code = "Source Code Pro"
+
+# Colours come from the brand palette in stylesheets/conclave.css, so both
+# schemes use the "custom" primary and accent.
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "custom"
+accent = "custom"
+toggle = { icon = "lucide/moon", name = "Switch to dark mode" }
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "custom"
+accent = "custom"
+toggle = { icon = "lucide/sun", name = "Switch to light mode" }

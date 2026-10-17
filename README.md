@@ -1,4 +1,9 @@
-# Conclave
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/conclave-horizontal-on-dark.svg">
+    <img src="docs/assets/conclave-horizontal.svg" alt="Conclave" width="320">
+  </picture>
+</h1>
 
 **End-to-end encrypted, server-less, local-first sync for Dart and Flutter.**
 
