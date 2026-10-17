@@ -18,6 +18,7 @@ export 'src/collection.dart';
 export 'src/conclave.dart' hide conclaveLowLevel;
 export 'src/crdt/crdt_type.dart';
 export 'src/database.dart';
+export 'src/exceptions.dart';
 export 'src/id.dart';
 export 'src/identity/device_roster.dart'
     show
