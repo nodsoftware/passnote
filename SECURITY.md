@@ -8,8 +8,7 @@ security problems.
 
 - Use GitHub's [private vulnerability reporting](https://github.com/nodsoftware/conclave/security/advisories/new)
   for this repository, or
-- Contact the maintainers directly through the address listed on the repository
-  profile.
+- Email [wouter@nodsoftware.net](mailto:wouter@nodsoftware.net).
 
 Please include enough detail to reproduce the issue: affected package and
 version, a description of the impact, and a minimal proof of concept if possible.
@@ -18,8 +17,14 @@ disclosure unless you prefer to remain anonymous.
 
 ## Supported versions
 
-Conclave is pre-1.0 (`0.x`). Security fixes are applied to the latest released
-`0.x` version. Pin to a specific version and upgrade promptly when fixes ship.
+Security fixes go into the latest `1.x` release. All five packages release
+together with matching versions (see [`VERSIONING.md`](VERSIONING.md)), so
+upgrade them together and promptly when a fix ships.
+
+| Version | Supported |
+| --- | --- |
+| 1.x (latest) | Yes |
+| Older 1.x releases | No: upgrade to the latest |
 
 ## Threat model summary
 
