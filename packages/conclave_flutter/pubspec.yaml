@@ -3,6 +3,9 @@ version: 1.0.0
 description: "Conclave for Flutter: the full library plus keychain key store, collection notifier, and batteries-included setup."
 homepage: https://github.com/nodsoftware/conclave
 repository: https://github.com/nodsoftware/conclave
+screenshots:
+  - description: The Conclave logo, a locked chapel door with a keyhole.
+    path: doc/conclave-logo.png
 resolution: workspace
 
 environment:

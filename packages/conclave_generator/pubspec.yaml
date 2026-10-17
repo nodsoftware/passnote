@@ -5,6 +5,9 @@ description: >-
   the codec, the document-id extractor, and the per-field CRDT schema.
 homepage: https://github.com/nodsoftware/conclave
 repository: https://github.com/nodsoftware/conclave
+screenshots:
+  - description: The Conclave logo, a locked chapel door with a keyhole.
+    path: doc/conclave-logo.png
 resolution: workspace
 
 environment:

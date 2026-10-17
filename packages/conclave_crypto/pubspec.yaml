@@ -5,6 +5,9 @@ description: >-
   BIP39 passphrase, X25519/Ed25519 device identity, and SPAKE2 pairing.
 homepage: https://github.com/nodsoftware/conclave
 repository: https://github.com/nodsoftware/conclave
+screenshots:
+  - description: The Conclave logo, a locked chapel door with a keyhole.
+    path: doc/conclave-logo.png
 resolution: workspace
 
 environment:

@@ -5,6 +5,9 @@ description: >-
   typed collections, queries, SQLite storage, device identity, sync protocol.
 homepage: https://github.com/nodsoftware/conclave
 repository: https://github.com/nodsoftware/conclave
+screenshots:
+  - description: The Conclave logo, a locked chapel door with a keyhole.
+    path: doc/conclave-logo.png
 
 environment:
   sdk: ^3.6.0
