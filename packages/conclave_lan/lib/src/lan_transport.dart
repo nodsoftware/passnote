@@ -264,10 +264,20 @@ class LanTransport implements Transport {
   /// and not the other — an IPv4-only LAN is the common case — fails those
   /// sends with `No route to host` while the other family answers normally, so
   /// an asynchronous send failure alone says nothing about whether discovery
-  /// works. It counts only when the browse also came back empty.
+  /// works. It used to count anyway whenever the browse also came back
+  /// empty — meant as a proxy for "and nothing else explains the empty
+  /// result", but wrong on exactly the browsing device with no peers to
+  /// find yet: browse there is *always* empty, on every single-address-
+  /// family LAN (common — plenty of home networks route only IPv4), turning
+  /// every retry into a false "multicast browse was refused" for a device
+  /// that was never actually refused anything (found by a real device
+  /// stuck showing that banner indefinitely while alone on its network).
+  /// [_isRefusal] now does what the empty-results check was standing in
+  /// for: separates an actual permission refusal from an unreachable
+  /// address family, so only the former counts.
   Future<List<ServiceEntry>?> _discover() {
     final done = Completer<List<ServiceEntry>?>();
-    var sendFailed = false;
+    var refused = false;
     runZonedGuarded(
       () async {
         try {
@@ -276,26 +286,50 @@ class LanTransport implements Transport {
             timeout: const Duration(seconds: 2),
             reusePort: _reusePort,
           );
-          if (entries.isEmpty && sendFailed) {
+          if (entries.isEmpty && refused) {
             _noteDiscovery(browse: false);
             if (!done.isCompleted) done.complete(null);
             return;
           }
           _noteDiscovery(browse: true);
           if (!done.isCompleted) done.complete(entries);
-        } catch (_) {
-          _noteDiscovery(browse: false);
+        } catch (error) {
+          if (_isRefusal(error)) refused = true;
+          _noteDiscovery(browse: !refused);
           if (!done.isCompleted) done.complete(null);
         }
       },
-      (_, __) {
+      (error, __) {
         // Swallowed so it never reaches the app, and recorded rather than
         // acted on: aborting here would discard the results the working
         // address family is about to deliver.
-        sendFailed = true;
+        if (_isRefusal(error)) refused = true;
       },
     );
     return done.future;
+  }
+
+  /// Whether [error] is the OS actually denying multicast — permission
+  /// revoked, no multicast lock held — as opposed to an address family
+  /// simply having no route on this network, which is routine and would
+  /// otherwise be misreported as a refusal on every retry for as long as a
+  /// device has no peers to find (see [_discover]'s doc comment). Dart's
+  /// `SocketException.osError` carries the platform errno; matched by
+  /// message rather than by numeric code because BSD/Darwin's
+  /// `ENETUNREACH`/`EHOSTUNREACH` values differ from Linux/Android's, while
+  /// `dart:io` renders both consistently in `OSError.message`.
+  static bool _isRefusal(Object error) {
+    if (error is! SocketException) return false;
+    final message = (error.osError?.message ?? error.message).toLowerCase();
+    if (message.contains('permission') || message.contains('not permitted')) {
+      return true;
+    }
+    if (message.contains('unreachable') || message.contains('no route')) {
+      return false;
+    }
+    // An error shape neither list recognizes: treat as a refusal rather
+    // than silently swallowing an unfamiliar failure mode.
+    return true;
   }
 
   Future<void> _dial(PeerId peer, InternetAddress address, int port) async {
