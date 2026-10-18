@@ -46,7 +46,7 @@ leave the device.
 The first device to open a database *founds* its group: it generates a random
 **[group key](glossary.md#group-key)** and seals ("wraps") it to its own
 public key. The wrap lives in the roster, a reserved synced collection
-(`__conclave_devices`) holding one record per device plus each device's
+(`__passnote_devices`) holding one record per device plus each device's
 wrapped key at the current [key epoch](glossary.md#key-epoch). User
 collections are encrypted with the group key, at rest (SQLCipher) and on the
 wire.
@@ -74,9 +74,9 @@ A new device joins with a one-time nine-digit code:
 
 ```dart
 // Sponsor (any device that has the data):
-final code = await conclave.startPairing('home');
+final code = await passnote.startPairing('home');
 // Joiner:
-final db = await conclave.pairWith('home', PairingCode.parse(input));
+final db = await passnote.pairWith('home', PairingCode.parse(input));
 ```
 
 Under the code runs a [PAKE](glossary.md#pake) (SPAKE2): both sides prove they
@@ -89,7 +89,7 @@ nothing.
 ### Revocation
 
 ```dart
-await conclave.revokeDevice('home', deviceId);
+await passnote.revokeDevice('home', deviceId);
 ```
 
 Revoking generates a fresh group key at the next epoch, seals it to every
@@ -127,7 +127,7 @@ peer, and unwraps the group key. A phrase is withdrawn like any device, with
 
 ## Edge cases and guarantees
 
-- **No identity configured** (a custom `conclaveLowLevel` without one): the
+- **No identity configured** (a custom `passnoteLowLevel` without one): the
   roster does not exist and the passphrase-derived key encrypts everything.
   This is the single-key mode; the builder always configures an
   identity.
@@ -137,5 +137,5 @@ peer, and unwraps the group key. A phrase is withdrawn like any device, with
 - **Roster changes are CRDT rows** and converge like any data, including
   concurrent admissions and revocations.
 - **The room tag is public by design.** A network observer learns that some
-  Conclave database exists and sees frame sizes and timing, nothing more. See
+  Passnote database exists and sees frame sizes and timing, nothing more. See
   [Security](../security.md).

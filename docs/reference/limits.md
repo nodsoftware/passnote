@@ -1,7 +1,7 @@
 # Limits and performance
 
 Honest numbers and the design bounds behind them, so you can judge fit
-before you build. Conclave is sized for a small group of devices sharing a
+before you build. Passnote is sized for a small group of devices sharing a
 dataset every device can hold in full; see
 [Is it a fit?](../start-here/index.md#is-it-a-fit) for the qualitative
 version.
@@ -11,7 +11,7 @@ version.
 Every device connects to every other device it can reach, so connections
 grow quadratically with the group. The design target is household and small
 team scale: a handful of devices, comfortably up to around a dozen. Nothing
-enforces a ceiling, but Conclave has no relay-mesh or gossip layer to make
+enforces a ceiling, but Passnote has no relay-mesh or gossip layer to make
 hundreds of peers cheap, and pairing is a deliberate one-at-a-time human
 act.
 
@@ -34,14 +34,14 @@ test suite:
   trips by fingerprint halving, shipping only the difference.
 
 Reproduce the memory numbers with the harness in
-[`packages/conclave/benchmark/`](https://github.com/nodsoftware/conclave/tree/main/packages/conclave/benchmark).
+[`packages/passnote/benchmark/`](https://github.com/nodsoftware/passnote/tree/main/packages/passnote/benchmark).
 
 ## Documents
 
 Documents are JSON-shaped values, sent whole. There is no hard size cap,
 but a delta frame carries at most 500 records and is never split inside a
 document, so a single document should stay well under a frame: kilobytes,
-not megabytes. Conclave is not a blob store; keep images and files outside
+not megabytes. Passnote is not a blob store; keep images and files outside
 and sync references to them.
 
 ## Live watching
@@ -70,7 +70,7 @@ tested configuration.
 
 ## What is deliberately not here
 
-- **Thousands of users on one dataset.** That is a server's job; Conclave
+- **Thousands of users on one dataset.** That is a server's job; Passnote
   has no central authority to arbitrate at that scale.
 - **Partial replicas.** Every device holds everything; there is no
   subscribe-to-a-subset mode.

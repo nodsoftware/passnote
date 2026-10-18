@@ -4,14 +4,14 @@
 //   dart run tool/check_doc_links.dart [site-dir] [base-path]
 //
 // [base-path] is the deploy prefix absolute links carry (from `site_url`),
-// `/conclave/` for this site.
+// `/passnote/` for this site.
 import 'dart:io';
 
 final _linkPattern = RegExp('(?:href|src)="([^"]+)"');
 
 Future<void> main(List<String> args) async {
   final siteDir = Directory(args.isEmpty ? 'site' : args.first);
-  final basePath = args.length > 1 ? args[1] : '/conclave/';
+  final basePath = args.length > 1 ? args[1] : '/passnote/';
   if (!siteDir.existsSync()) {
     stderr
         .writeln('No ${siteDir.path}/ directory; run `zensical build` first.');

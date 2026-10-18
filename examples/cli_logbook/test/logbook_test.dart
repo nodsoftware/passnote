@@ -7,8 +7,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:cli_logbook/logbook.dart';
-import 'package:conclave/conclave.dart';
-import 'package:conclave/engine.dart' show InMemoryBus, InMemoryTransport;
+import 'package:passnote/passnote.dart';
+import 'package:passnote/engine.dart' show InMemoryBus, InMemoryTransport;
 import 'package:test/test.dart';
 
 void main() {
@@ -21,7 +21,7 @@ void main() {
   });
   tearDown(() => dir.deleteSync(recursive: true));
 
-  Future<Conclave> open() => Conclave.builder(appId: 'lbt', salt: 'lbt:v1')
+  Future<Passnote> open() => Passnote.builder(appId: 'lbt', salt: 'lbt:v1')
       // The LAN transport needs a network; the test overrides just that slot.
       .transport(() => InMemoryTransport(bus))
       .open();
@@ -29,9 +29,9 @@ void main() {
   test(
       'generated merge strategy wires the counter; data and key survive a '
       'restart', () async {
-    var conclave = await open();
-    final words = conclave.generatePassphrase().join(' ');
-    var db = await conclave.openDatabase('book', passphrase: words);
+    var passnote = await open();
+    final words = passnote.generatePassphrase().join(' ');
+    var db = await passnote.openDatabase('book', passphrase: words);
     if (db.deviceState != DeviceState.ready) await db.foundGroup();
 
     var entries =
@@ -48,17 +48,17 @@ void main() {
     await untyped.put(const Entry(id: 'e1', text: 'x'));
     await expectLater(untyped.increment('e1', 'stars'), throwsArgumentError);
 
-    await conclave.close();
+    await passnote.close();
 
     // Restart: the FileKeyStore holds the key, so no passphrase is needed,
     // and the SQLCipher files reopen with the counter intact.
-    conclave = await open();
-    db = await conclave.reopenDatabase('book');
+    passnote = await open();
+    db = await passnote.reopenDatabase('book');
     entries = db.collection<Entry>('entries', entryCodec, merge: entryMerge);
     final entry = await entries.get('e1');
     expect(entry?.text, 'first light');
     expect(entry?.stars, 2);
-    await conclave.close();
+    await passnote.close();
   });
 
   test('a second device pairs with the code and sees entries written before it',
@@ -79,7 +79,7 @@ void main() {
     await onPhone.put(const Entry(id: 'e1', text: 'written before pairing'));
 
     installLogbookDefaults(dirB);
-    final laptop = await Conclave.builder(appId: 'lbt', salt: 'lbt:v1')
+    final laptop = await Passnote.builder(appId: 'lbt', salt: 'lbt:v1')
         .transport(() => InMemoryTransport(bus))
         .open();
     addTearDown(laptop.close);
@@ -112,14 +112,14 @@ void main() {
 
   test('the key file never holds plaintext data and the database is opaque',
       () async {
-    final conclave = await open();
-    final words = conclave.generatePassphrase().join(' ');
-    final db = await conclave.openDatabase('book', passphrase: words);
+    final passnote = await open();
+    final words = passnote.generatePassphrase().join(' ');
+    final db = await passnote.openDatabase('book', passphrase: words);
     if (db.deviceState != DeviceState.ready) await db.foundGroup();
     final entries =
         db.collection<Entry>('entries', entryCodec, merge: entryMerge);
     await entries.put(const Entry(id: 'e1', text: 'TOP-SECRET-ENTRY'));
-    await conclave.close();
+    await passnote.close();
 
     for (final file in dir.listSync(recursive: true).whereType<File>()) {
       final content = latin1.decode(file.readAsBytesSync(), allowInvalid: true);

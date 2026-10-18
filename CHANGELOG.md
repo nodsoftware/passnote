@@ -1,4 +1,4 @@
-# Conclave releases
+# Passnote releases
 
 All five packages release together with matching versions. Per-package detail
 lives in each package's own `CHANGELOG.md`; this file is the cross-package
@@ -6,7 +6,7 @@ summary.
 
 ## Unreleased
 
-- **Passphrase rotation.** `Conclave.rotatePassphrase` re-encrypts a database's
+- **Passphrase rotation.** `Passnote.rotatePassphrase` re-encrypts a database's
   roster and control key under new words, in place, leaving the group key, the
   data and every device's membership untouched. Crash-safe: the new key is
   journalled before any store is touched, and an interrupted rotation finishes
@@ -42,11 +42,11 @@ engine for Dart and Flutter.
 - **Tooling.** A code generator that turns one `@Document()` annotation into
   the codec, the id extractor, and the per-field CRDT schema.
 
-The packages: [`conclave_flutter`](packages/conclave_flutter) (the Flutter
-entry point), [`conclave`](packages/conclave) (the pure-Dart engine),
-[`conclave_crypto`](packages/conclave_crypto),
-[`conclave_lan`](packages/conclave_lan), and
-[`conclave_generator`](packages/conclave_generator).
+The packages: [`passnote_flutter`](packages/passnote_flutter) (the Flutter
+entry point), [`passnote`](packages/passnote) (the pure-Dart engine),
+[`passnote_crypto`](packages/passnote_crypto),
+[`passnote_lan`](packages/passnote_lan), and
+[`passnote_generator`](packages/passnote_generator).
 
 Semver applies from this release; [`VERSIONING.md`](VERSIONING.md) states
 what each surface guarantees.

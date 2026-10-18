@@ -3,9 +3,9 @@
 From any remaining device:
 
 ```dart
-final devices = await conclave.devices('home');
+final devices = await passnote.devices('home');
 final lost = devices.singleWhere((d) => d.label == 'old phone');
-await conclave.revokeDevice('home', lost.id);
+await passnote.revokeDevice('home', lost.id);
 ```
 
 The lost device is out: everything written from now on uses a key it will

@@ -26,12 +26,12 @@ Generated `*.g.dart` files are checked in; CI regenerates and fails on drift.
 
 | Suite | Where | Runs |
 | --- | --- | --- |
-| Engine conformance | `packages/conclave/test/*_conformance_test.dart` | Every `CrdtTable` against the shared behavioural contract, typed layer included. |
-| Convergence | `packages/conclave/test/*convergence*`, `handshake`, `reconciliation`, `recovery`, `revocation`, `ratchet`, `pairing` | Multi-node scenarios over the in-memory bus. |
-| Protocol fuzz | `packages/conclave/test/protocol_codec_test.dart` | Round-trips plus random/truncation/corruption fuzzing of the decoder. |
-| Web | `dart test -P web` in `conclave` (wasm engine) and `conclave_lan` (browser transport vs a native hybrid peer) | Headless Chrome. |
-| mDNS loopback | `packages/conclave_lan` | Socket-bound; excluded from the default unit run, executed by CI: `dart test --run-skipped -t integration`. |
-| Memory bounds | `packages/conclave` | `dart test --run-skipped -t benchmark`. |
+| Engine conformance | `packages/passnote/test/*_conformance_test.dart` | Every `CrdtTable` against the shared behavioural contract, typed layer included. |
+| Convergence | `packages/passnote/test/*convergence*`, `handshake`, `reconciliation`, `recovery`, `revocation`, `ratchet`, `pairing` | Multi-node scenarios over the in-memory bus. |
+| Protocol fuzz | `packages/passnote/test/protocol_codec_test.dart` | Round-trips plus random/truncation/corruption fuzzing of the decoder. |
+| Web | `dart test -P web` in `passnote` (wasm engine) and `passnote_lan` (browser transport vs a native hybrid peer) | Headless Chrome. |
+| mDNS loopback | `packages/passnote_lan` | Socket-bound; excluded from the default unit run, executed by CI: `dart test --run-skipped -t integration`. |
+| Memory bounds | `packages/passnote` | `dart test --run-skipped -t benchmark`. |
 
 ## Docs
 

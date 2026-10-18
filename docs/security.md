@@ -1,6 +1,6 @@
 # Security
 
-Conclave encrypts everything, everywhere, with modern primitives and real
+Passnote encrypts everything, everywhere, with modern primitives and real
 device membership. Data is protected by authenticated end-to-end encryption
 (XChaCha20-Poly1305); keys derive with Argon2id and never leave the devices;
 each device carries its own keypair; pairing is authenticated by a
@@ -13,9 +13,9 @@ one-way [room tag](concepts/glossary.md#room-tag) that reveals nothing.
 !!! note "Audit status"
     An independent third-party audit is planned and has not happened yet. The
     design and its test suite are open; if you find a weakness, use the
-    [private reporting process](https://github.com/nodsoftware/conclave/blob/main/SECURITY.md).
+    [private reporting process](https://github.com/nodsoftware/passnote/blob/main/SECURITY.md).
 
-## What Conclave protects
+## What Passnote protects
 
 - **Confidentiality, at rest and in transit.** Every record is encrypted with
   XChaCha20-Poly1305 before it touches disk or network. User data travels
@@ -74,7 +74,7 @@ Each of these is a deliberate scope decision, stated with its reason.
   on. `WebSocketTransport` reaches further with explicit addresses or a
   self-hosted relay; the relay routes ciphertext and is never trusted with
   keys.
-- **Metadata is visible to the network.** An observer sees that a Conclave
+- **Metadata is visible to the network.** An observer sees that a Passnote
   service exists, its opaque room tag, and the sizes and timing of encrypted
   frames. Traffic analysis of volume and timing is possible; contents are not.
   The reference relay raises the stakes from passive to active: it is
@@ -82,7 +82,7 @@ Each of these is a deliberate scope decision, stated with its reason.
   currently connected, silencing that node and collecting its (encrypted)
   traffic and metadata. Deploy it only on a network you control, or behind an
   authenticating proxy; see [transports](reference/transports.md).
-- **A compromised device is out of scope.** Conclave protects data between
+- **A compromised device is out of scope.** Passnote protects data between
   devices. An attacker who controls a device's OS or unlocked keychain has
   that device's keys, exactly as with any end-to-end encrypted system. Your
   remedy is revocation from a surviving device.
@@ -136,5 +136,5 @@ Every primitive is pinned by published known-answer
 ## Reporting a vulnerability
 
 Report privately, not in a public issue. See
-[`SECURITY.md`](https://github.com/nodsoftware/conclave/blob/main/SECURITY.md)
+[`SECURITY.md`](https://github.com/nodsoftware/passnote/blob/main/SECURITY.md)
 for the process.

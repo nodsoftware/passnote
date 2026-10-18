@@ -1,13 +1,13 @@
 // The shared pieces of the pure-Dart logbook: the document model, a
 // file-backed KeyStore, and the production adapter wiring that
-// `conclave_flutter`'s `conclaveBuilder` performs for Flutter apps.
+// `passnote_flutter`'s `passnoteBuilder` performs for Flutter apps.
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:conclave/conclave.dart';
-import 'package:conclave/engine.dart' show SqliteCrdtTable;
-import 'package:conclave_crypto/conclave_crypto.dart';
-import 'package:conclave_lan/discovery.dart';
+import 'package:passnote/passnote.dart';
+import 'package:passnote/engine.dart' show SqliteCrdtTable;
+import 'package:passnote_crypto/passnote_crypto.dart';
+import 'package:passnote_lan/discovery.dart';
 
 part 'logbook.g.dart';
 
@@ -43,14 +43,14 @@ const MergeStrategy entryMerge = _$EntryMergeStrategy;
 // --- Pure-Dart defaults --------------------------------------------------
 
 /// Installs production adapters for a plain Dart process, mirroring what
-/// `conclave_flutter` installs for Flutter apps: the SQLCipher-backed SQLite
+/// `passnote_flutter` installs for Flutter apps: the SQLCipher-backed SQLite
 /// engine, the mDNS LAN transport, XChaCha20-Poly1305, Argon2id key
 /// derivation from a BIP39 passphrase, the X25519/Ed25519 device identity,
 /// SPAKE2 pairing, and the recovery-phrase derivation. Local state (database
 /// files and the key file) lives under [dataDir].
 void installLogbookDefaults(Directory dataDir) {
-  ConclaveBuilder.installDefaults(
-    ConclaveDefaults(
+  PassnoteBuilder.installDefaults(
+    PassnoteDefaults(
       engine: (databaseId, collection, key) {
         final dir = Directory('${dataDir.path}/$databaseId')
           ..createSync(recursive: true);
@@ -83,7 +83,7 @@ void installLogbookDefaults(Directory dataDir) {
 /// Example-grade: the file is made owner-only (mode 600) on POSIX systems,
 /// but anyone who can read it holds the keys. A production app uses the
 /// platform's secret storage instead — `KeychainKeyStore` from
-/// `conclave_flutter`, or an adapter over the OS secret service.
+/// `passnote_flutter`, or an adapter over the OS secret service.
 class FileKeyStore implements KeyStore {
   FileKeyStore(this._file);
 

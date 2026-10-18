@@ -1,6 +1,6 @@
 # Start here
 
-Conclave lets a small group of devices share a live dataset: a shopping list,
+Passnote lets a small group of devices share a live dataset: a shopping list,
 a household inventory, a team logbook. Every device keeps a full copy, works
 offline, and syncs directly with the others. There is no server and no
 account, and everything is encrypted end to end.
@@ -34,7 +34,7 @@ Not a fit when you need:
 
 | Noun | What it is |
 | --- | --- |
-| `Conclave` | The app-level handle. One per app; owns the transport. |
+| `Passnote` | The app-level handle. One per app; owns the transport. |
 | `Database` | One shared, encrypted dataset, unlocked by a passphrase. |
 | `Collection<T>` | A typed set of documents inside a database. |
 | Document | One record of your model type `T`, identified by a stable id. |

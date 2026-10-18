@@ -1,6 +1,6 @@
 # Run on the web
 
-Conclave runs in the browser: the engine compiles to JavaScript and wasm, the
+Passnote runs in the browser: the engine compiles to JavaScript and wasm, the
 SQLite store runs on `sqlite3/wasm`, and sync uses `WebSocketTransport`.
 
 Two things differ from native:
@@ -18,7 +18,7 @@ connections, so it dials an explicit address: a native peer that listens, or a
 relay.
 
 ```dart
-final conclave = await Conclave.builder(appId: 'shopping', salt: 'shopping:v1')
+final passnote = await Passnote.builder(appId: 'shopping', salt: 'shopping:v1')
     .transport(() => WebSocketTransport(
           connectTo: [Uri.parse('wss://relay.example:9473')],
         ))
@@ -35,7 +35,7 @@ WebSocketTransport(listenPort: 9473, connectTo: []);
 Or run the reference relay somewhere both can reach:
 
 ```sh
-dart run conclave_lan:relay --port 9473
+dart run passnote_lan:relay --port 9473
 ```
 
 The relay routes encrypted envelopes between its clients and can read only

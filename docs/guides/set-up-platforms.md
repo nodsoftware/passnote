@@ -27,7 +27,7 @@ is missing.
 desktop and mobile OS gates local-network traffic in its own way, and a
 missing declaration never crashes the app: it runs, but no peers ever
 appear. Detect that state in code by listening for the
-`PeerDiscoveryUnavailable` event on `Conclave.events` and pointing the user
+`PeerDiscoveryUnavailable` event on `Passnote.events` and pointing the user
 at the relevant section below. Do this page once per platform you ship to.
 
 The example apps ship as `lib/` and `pubspec.yaml` only; run
@@ -45,8 +45,8 @@ Two things, both required:
 <string>Finds your other devices on this network to sync your data directly, without a server.</string>
 <key>NSBonjourServices</key>
 <array>
-  <!-- _conclave-<appId>._tcp, for your appId: -->
-  <string>_conclave-shopping._tcp</string>
+  <!-- _passnote-<appId>._tcp, for your appId: -->
+  <string>_passnote-shopping._tcp</string>
 </array>
 ```
 
@@ -54,7 +54,7 @@ iOS shows the user a local-network permission prompt on first use. If the
 user declines, discovery finds nothing until they enable it in Settings >
 Privacy & Security > Local Network.
 
-**2. Request the multicast entitlement.** Conclave's mDNS is pure Dart
+**2. Request the multicast entitlement.** Passnote's mDNS is pure Dart
 (its own sockets, not Apple's Bonjour API), and iOS restricts direct
 multicast to apps holding `com.apple.developer.networking.multicast`.
 [Request it from Apple](https://developer.apple.com/contact/request/networking-multicast)

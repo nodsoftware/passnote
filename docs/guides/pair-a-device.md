@@ -3,19 +3,19 @@
 On any device that already has the data, create a one-time code and show it:
 
 ```dart
-final code = await conclave.startPairing('home', joinerLabel: 'new phone');
+final code = await passnote.startPairing('home', joinerLabel: 'new phone');
 // code.display => "123 456 789"
 ```
 
 On the new device, enter the code:
 
 ```dart
-final db = await conclave.pairWith('home', PairingCode.parse(input));
+final db = await passnote.pairWith('home', PairingCode.parse(input));
 // db.deviceState == DeviceState.ready
 ```
 
 That is the whole flow. The new device receives the keys, syncs, and appears
-in `conclave.devices('home')` on every member.
+in `passnote.devices('home')` on every member.
 
 ## What the code does
 
@@ -46,10 +46,10 @@ group you want to join. `pairWith` also refuses while that database is open
 locally. The way out, on the mistaken device only:
 
 ```dart
-await conclave.forget('home');       // drops its key and roster trust pins
+await passnote.forget('home');       // drops its key and roster trust pins
 // Delete its local files: with the Flutter defaults they live under
-// <application support>/conclave/<databaseId>/.
-final db = await conclave.pairWith('home', PairingCode.parse(code));
+// <application support>/passnote/<databaseId>/.
+final db = await passnote.pairWith('home', PairingCode.parse(code));
 ```
 
 Anything written into the rival group stays in the deleted files and never

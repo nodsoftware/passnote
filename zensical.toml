@@ -1,16 +1,16 @@
 [project]
-site_name = "Conclave"
-site_url = "https://nodsoftware.github.io/conclave/"
+site_name = "Passnote"
+site_url = "https://nodsoftware.github.io/passnote/"
 site_description = """
 End-to-end encrypted, server-less, local-first CRDT sync engine for Dart and \
 Flutter."""
-site_author = "Conclave contributors"
-copyright = "&copy; 2026 Conclave contributors"
+site_author = "Passnote contributors"
+copyright = "&copy; 2026 Passnote contributors"
 docs_dir = "docs"
 site_dir = "site"
-repo_url = "https://github.com/nodsoftware/conclave"
-repo_name = "nodsoftware/conclave"
-extra_css = ["stylesheets/conclave.css"]
+repo_url = "https://github.com/nodsoftware/passnote"
+repo_name = "nodsoftware/passnote"
+extra_css = ["stylesheets/passnote.css"]
 
 nav = [
   { "Home" = "index.md" },
@@ -69,12 +69,12 @@ logo = "assets/logo.svg"
 favicon = "assets/favicon.svg"
 
 # Brand fonts (SIL OFL): Source Sans 3 for text; headings use Source Serif 4,
-# the wordmark's face, loaded in stylesheets/conclave.css.
+# the wordmark's face, loaded in stylesheets/passnote.css.
 [project.theme.font]
 text = "Source Sans 3"
 code = "Source Code Pro"
 
-# Colours come from the brand palette in stylesheets/conclave.css, so both
+# Colours come from the brand palette in stylesheets/passnote.css, so both
 # schemes use the "custom" primary and accent.
 [[project.theme.palette]]
 media = "(prefers-color-scheme: light)"

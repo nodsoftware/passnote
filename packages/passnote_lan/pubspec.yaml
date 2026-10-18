@@ -1,0 +1,24 @@
+name: passnote_lan
+version: 1.0.0
+description: >-
+  Transports for Passnote: WebSocket (web-safe, with a reference relay) and
+  mDNS LAN discovery (native).
+homepage: https://github.com/nodsoftware/passnote
+repository: https://github.com/nodsoftware/passnote
+screenshots:
+  - description: The Passnote logo, a locked chapel door with a keyhole.
+    path: doc/passnote-logo.png
+resolution: workspace
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  mdns_dart: ^2.2.1
+  passnote: ^1.0.0
+  web: ^1.1.0
+
+dev_dependencies:
+  lints: ^4.0.0
+  stream_channel: ^2.1.4
+  test: ^1.25.0

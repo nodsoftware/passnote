@@ -2,7 +2,7 @@
 
 This walkthrough goes from an empty Flutter app to two devices sharing an
 encrypted shopping list. All code on this page lives in
-[`examples/quickstart/`](https://github.com/nodsoftware/conclave/tree/main/examples/quickstart)
+[`examples/quickstart/`](https://github.com/nodsoftware/passnote/tree/main/examples/quickstart)
 and is compiled in CI, so it cannot drift from the real API.
 
 ## 1. Install
@@ -13,11 +13,11 @@ encryption:
 
 ```yaml
 dependencies:
-  conclave_flutter: ^1.0.0
+  passnote_flutter: ^1.0.0
 
 dev_dependencies:
   build_runner: ^2.15.0
-  conclave_generator: ^1.0.0
+  passnote_generator: ^1.0.0
 
 hooks:
   user_defines:
@@ -25,7 +25,7 @@ hooks:
       source: sqlcipher
 ```
 
-`conclave_flutter` brings the whole library: the engine, the crypto, the
+`passnote_flutter` brings the whole library: the engine, the crypto, the
 transports, and the Flutter glue (keychain key store, change notifiers). The
 `hooks` stanza makes `package:sqlite3` bundle SQLCipher; without it, opening
 an encrypted database throws `SqlCipherUnavailableException` instead of
@@ -68,14 +68,14 @@ Run the generator after changing the model:
 dart run build_runner build
 ```
 
-## 3. Open Conclave
+## 3. Open Passnote
 
-`conclaveBuilder` returns a builder with the production pieces installed:
+`passnoteBuilder` returns a builder with the production pieces installed:
 SQLite storage, the OS keychain, LAN discovery, XChaCha20-Poly1305 encryption.
 Call it once and share the handle across the app.
 
 ```dart
-final conclave = await conclaveBuilder(
+final passnote = await passnoteBuilder(
   appId: 'shopping', // scopes discovery + storage
   salt: 'shopping:v1', // stable, app-specific key-derivation salt
 )
@@ -94,10 +94,10 @@ device roster and seeds discovery.
 
 ```dart
 // On the first device, generate a passphrase to show the user:
-final words = conclave.generatePassphrase().join(' ');
+final words = passnote.generatePassphrase().join(' ');
 
 // On that same device, open the database with it:
-final db = await conclave.openDatabase('home', passphrase: words);
+final db = await passnote.openDatabase('home', passphrase: words);
 
 final items = db.collection<Item>('items', itemCodec);
 ```
@@ -111,7 +111,7 @@ On every later launch, reopen without asking for the passphrase again; the
 derived key was stored in the OS keychain by `openDatabase`:
 
 ```dart
-final db = await conclave.reopenDatabase('home');
+final db = await passnote.reopenDatabase('home');
 ```
 
 ## 5. Read and write
@@ -164,9 +164,9 @@ Run the app on a second device on the same network. On the device that already
 has the data, create a one-time nine-digit code and show it:
 
 ```dart
-Future<void> sponsorPairing(Conclave conclave) async {
+Future<void> sponsorPairing(Passnote passnote) async {
   // On a device that already has the data: create a one-time code.
-  final code = await conclave.startPairing('home', joinerLabel: 'new phone');
+  final code = await passnote.startPairing('home', joinerLabel: 'new phone');
   debugPrint('On the new device, enter: ${code.display}');
 }
 ```
@@ -174,10 +174,10 @@ Future<void> sponsorPairing(Conclave conclave) async {
 On the new device, enter that code:
 
 ```dart
-Future<Database> joinWithCode(Conclave conclave, String typedCode) {
+Future<Database> joinWithCode(Passnote passnote, String typedCode) {
   // On the new device: enter the code. The exchange authenticates both
   // sides, hands over the keys, and returns a ready database.
-  return conclave.pairWith('home', PairingCode.parse(typedCode));
+  return passnote.pairWith('home', PairingCode.parse(typedCode));
 }
 ```
 

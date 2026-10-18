@@ -2,8 +2,8 @@
 
 The engine depends on small interfaces ("ports"); the other packages provide
 the production implementations ("adapters"). Everything here is on
-`package:conclave/engine.dart`, the advanced library. Swap any of them through
-the [builder](builder.md) or `conclaveLowLevel`.
+`package:passnote/engine.dart`, the advanced library. Swap any of them through
+the [builder](builder.md) or `passnoteLowLevel`.
 
 ## Transport
 
@@ -47,7 +47,7 @@ abstract interface class Cipher {
 ```
 
 Shipped: `XChaChaPoly1305Cipher` (default) and `AesGcmCipher` in
-`conclave_crypto`. Decrypt must fail closed on any tampered input.
+`passnote_crypto`. Decrypt must fail closed on any tampered input.
 
 ## KeyStore
 
@@ -61,7 +61,7 @@ abstract interface class KeyStore {
 }
 ```
 
-Shipped: `KeychainKeyStore` (OS keychain, in `conclave_flutter`).
+Shipped: `KeychainKeyStore` (OS keychain, in `passnote_flutter`).
 
 ## Identity
 
@@ -69,13 +69,13 @@ The device keypair: wrap and unwrap keys for peers, sign and verify roster
 rows, fingerprint. `verify` checks any device's signature against its public
 signing key; the device roster uses it to reject rows that are unsigned or
 signed by a non-member. Shipped: `DeviceIdentity` (X25519 + Ed25519) in
-`conclave_crypto`, including `DeviceIdentity.fromRecoveryPhrase` for the
+`passnote_crypto`, including `DeviceIdentity.fromRecoveryPhrase` for the
 recovery flow.
 
 ## Pake
 
 The password-authenticated exchange behind pairing codes. Shipped:
-`Spake2Pake` (SPAKE2 over P-256, RFC 9382) in `conclave_crypto`.
+`Spake2Pake` (SPAKE2 over P-256, RFC 9382) in `passnote_crypto`.
 
 ## MergeStrategy
 
@@ -104,5 +104,5 @@ abstract interface class Codec<T> {
 }
 ```
 
-Generate one with `@Document()` and `conclave_generator`, or hand-write a
+Generate one with `@Document()` and `passnote_generator`, or hand-write a
 `JsonCodec`.

@@ -11,7 +11,7 @@
 import 'dart:io';
 
 import 'package:cli_logbook/logbook.dart';
-import 'package:conclave/conclave.dart';
+import 'package:passnote/passnote.dart';
 
 const appId = 'cli-logbook';
 const dbId = 'book';
@@ -24,9 +24,9 @@ Future<void> main(List<String> args) async {
   installLogbookDefaults(
     Directory(Platform.environment['LOGBOOK_DIR'] ?? '.logbook'),
   );
-  final conclave =
-      await Conclave.builder(appId: appId, salt: '$appId:v1').open();
-  conclave.events.listen((event) {
+  final passnote =
+      await Passnote.builder(appId: appId, salt: '$appId:v1').open();
+  passnote.events.listen((event) {
     if (event is PeerDiscoveryUnavailable) {
       stderr.writeln('discovery unavailable: ${event.reason}\n'
           'see docs/guides/set-up-platforms.md');
@@ -36,19 +36,19 @@ Future<void> main(List<String> args) async {
   try {
     switch (args.first) {
       case 'create':
-        await _create(conclave);
+        await _create(passnote);
       case 'join':
-        await _join(conclave, args);
+        await _join(passnote, args);
       case 'pair':
-        await _pair(conclave);
+        await _pair(passnote);
       case 'add':
-        await _add(conclave, args);
+        await _add(passnote, args);
       case 'star':
-        await _star(conclave, args);
+        await _star(passnote, args);
       case 'list':
-        await _list(conclave);
+        await _list(passnote);
       case 'watch':
-        await _watch(conclave);
+        await _watch(passnote);
       default:
         _usage();
     }
@@ -66,7 +66,7 @@ Future<void> main(List<String> args) async {
         'for a fresh code.');
     exitCode = 1;
   } finally {
-    await conclave.close();
+    await passnote.close();
   }
 }
 
@@ -79,9 +79,9 @@ void _usage() => stdout.writeln('usage: logbook create | pair | join <code> | '
 /// auto-found, which only fires when no peer is connected at that instant —
 /// an explicit foundGroup makes "this is the first device" a decision, not a
 /// race.
-Future<void> _create(Conclave conclave) async {
-  final words = conclave.generatePassphrase().join(' ');
-  final db = await conclave.openDatabase(dbId, passphrase: words);
+Future<void> _create(Passnote passnote) async {
+  final words = passnote.generatePassphrase().join(' ');
+  final db = await passnote.openDatabase(dbId, passphrase: words);
   if (db.deviceState != DeviceState.ready) await db.foundGroup();
   stdout.writeln('logbook created. Passphrase (write it down, shown once):');
   stdout.writeln('  $words');
@@ -89,9 +89,9 @@ Future<void> _create(Conclave conclave) async {
 }
 
 /// Reopens the already-created logbook with the key held in the KeyStore.
-Future<Database> _open(Conclave conclave) async {
+Future<Database> _open(Passnote passnote) async {
   try {
-    return await conclave.reopenDatabase(dbId);
+    return await passnote.reopenDatabase(dbId);
   } on StateError {
     throw StateError('no logbook here yet: run `logbook create` on the first '
         'device or `logbook join <code>` on a new one');
@@ -104,56 +104,56 @@ Collection<Entry> _entries(Database db) =>
     // `star` (a counter increment) would throw.
     db.collection<Entry>('entries', entryCodec, merge: entryMerge);
 
-Future<void> _pair(Conclave conclave) async {
-  await _open(conclave);
-  final before = (await conclave.devices(dbId)).length;
-  final code = await conclave.startPairing(dbId);
+Future<void> _pair(Passnote passnote) async {
+  await _open(passnote);
+  final before = (await passnote.devices(dbId)).length;
+  final code = await passnote.startPairing(dbId);
   stdout.writeln('on the new device, run: logbook join ${code.digits}');
   stdout.writeln('waiting (ctrl-c to cancel)...');
-  while ((await conclave.devices(dbId)).length == before) {
+  while ((await passnote.devices(dbId)).length == before) {
     await Future<void>.delayed(const Duration(milliseconds: 250));
   }
   stdout.writeln('device paired.');
   // Let the freshly sealed group key reach the joiner before exiting.
-  await conclave.forceSync();
+  await passnote.forceSync();
   await Future<void>.delayed(const Duration(seconds: 1));
 }
 
-Future<void> _join(Conclave conclave, List<String> args) async {
+Future<void> _join(Passnote passnote, List<String> args) async {
   if (args.length < 2) return _usage();
-  final db = await conclave.pairWith(dbId, PairingCode.parse(args[1]));
+  final db = await passnote.pairWith(dbId, PairingCode.parse(args[1]));
   stdout.writeln('joined. Current entries:');
   // The sponsor sends what it already holds once this device opens the
   // collection; give those frames a moment before printing.
   final entries = _entries(db);
-  await _settle(conclave);
+  await _settle(passnote);
   for (final entry in await entries.all()) {
     stdout.writeln('  ${entry.id}  ${'*' * entry.stars.toInt()}  '
         '${entry.text}');
   }
 }
 
-Future<void> _add(Conclave conclave, List<String> args) async {
+Future<void> _add(Passnote passnote, List<String> args) async {
   if (args.length < 2) return _usage();
-  final db = await _open(conclave);
+  final db = await _open(passnote);
   final entry = Entry(id: newId(), text: args.skip(1).join(' '));
   await _entries(db).put(entry);
   stdout.writeln('added ${entry.id}');
-  await _settle(conclave);
+  await _settle(passnote);
 }
 
-Future<void> _star(Conclave conclave, List<String> args) async {
+Future<void> _star(Passnote passnote, List<String> args) async {
   if (args.length < 2) return _usage();
-  final db = await _open(conclave);
+  final db = await _open(passnote);
   await _entries(db).increment(args[1], 'stars');
   stdout.writeln('starred ${args[1]}');
-  await _settle(conclave);
+  await _settle(passnote);
 }
 
-Future<void> _list(Conclave conclave) async {
-  final db = await _open(conclave);
+Future<void> _list(Passnote passnote) async {
+  final db = await _open(passnote);
   // Give discovery a moment so freshly synced entries are included.
-  await _settle(conclave);
+  await _settle(passnote);
   final all = await _entries(db).all();
   if (all.isEmpty) stdout.writeln('(empty)');
   for (final entry in all) {
@@ -162,8 +162,8 @@ Future<void> _list(Conclave conclave) async {
   }
 }
 
-Future<void> _watch(Conclave conclave) async {
-  final db = await _open(conclave);
+Future<void> _watch(Passnote passnote) async {
+  final db = await _open(passnote);
   stdout.writeln('watching (ctrl-c to stop)...');
   final sub = _entries(db).watch().listen((all) {
     stdout.writeln('--- ${all.length} entries');
@@ -178,8 +178,8 @@ Future<void> _watch(Conclave conclave) async {
 
 /// Lets discovery find peers and in-flight frames land before the process
 /// exits (a long-running app needs none of this).
-Future<void> _settle(Conclave conclave) async {
+Future<void> _settle(Passnote passnote) async {
   await Future<void>.delayed(const Duration(seconds: 2));
-  await conclave.forceSync();
+  await passnote.forceSync();
   await Future<void>.delayed(const Duration(milliseconds: 500));
 }

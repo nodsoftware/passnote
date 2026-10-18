@@ -1,0 +1,28 @@
+name: passnote_flutter
+version: 1.0.0
+description: "Passnote for Flutter: the full library plus keychain key store, collection notifier, and batteries-included setup."
+homepage: https://github.com/nodsoftware/passnote
+repository: https://github.com/nodsoftware/passnote
+screenshots:
+  - description: The Passnote logo, a locked chapel door with a keyhole.
+    path: doc/passnote-logo.png
+resolution: workspace
+
+environment:
+  sdk: ^3.6.0
+  flutter: '>=3.27.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_secure_storage: ^9.2.4
+  passnote: ^1.0.0
+  passnote_crypto: ^1.0.0
+  passnote_lan: ^1.0.0
+  path: ^1.9.0
+  path_provider: ^2.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  lints: ^4.0.0

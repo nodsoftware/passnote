@@ -14,7 +14,7 @@ on:
 
 jobs:
   publish:
-    if: github.repository == 'nodsoftware/conclave'
+    if: github.repository == 'nodsoftware/passnote'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -25,18 +25,18 @@ jobs:
           flutter-version: 3.44.1
           cache: true
       - run: flutter pub get
-      - name: Publish conclave
+      - name: Publish passnote
         run: flutter pub publish --force
-        working-directory: packages/conclave
-      - name: Publish conclave_crypto
+        working-directory: packages/passnote
+      - name: Publish passnote_crypto
         run: flutter pub publish --force
-        working-directory: packages/conclave_crypto
-      - name: Publish conclave_lan
+        working-directory: packages/passnote_crypto
+      - name: Publish passnote_lan
         run: flutter pub publish --force
-        working-directory: packages/conclave_lan
-      - name: Publish conclave_generator
+        working-directory: packages/passnote_lan
+      - name: Publish passnote_generator
         run: flutter pub publish --force
-        working-directory: packages/conclave_generator
-      - name: Publish conclave_flutter
+        working-directory: packages/passnote_generator
+      - name: Publish passnote_flutter
         run: flutter pub publish --force
-        working-directory: packages/conclave_flutter
+        working-directory: packages/passnote_flutter

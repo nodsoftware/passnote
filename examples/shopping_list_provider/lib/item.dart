@@ -1,11 +1,11 @@
-import 'package:conclave_flutter/conclave_flutter.dart';
+import 'package:passnote_flutter/passnote_flutter.dart';
 
 part 'item.g.dart';
 
-/// Shared shopping-list item model for the Conclave examples.
+/// Shared shopping-list item model for the Passnote examples.
 ///
 /// The codec, document id, and CRDT schema are generated from the annotations
-/// by `package:conclave_generator` — run `dart run build_runner build` after
+/// by `package:passnote_generator` — run `dart run build_runner build` after
 /// changing the fields.
 @Document()
 class Item {

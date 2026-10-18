@@ -1,6 +1,6 @@
 # Shopping List — BLoC
 
-A minimal [Conclave](../../) example using
+A minimal [Passnote](../../) example using
 [`flutter_bloc`](https://pub.dev/packages/flutter_bloc) for state management.
 
 `ShoppingCubit` subscribes to `Collection<Item>.watch()` and emits the current
@@ -31,5 +31,5 @@ flutter run
    deterministic winner on both devices.
 
 > The demo uses a fixed passphrase for convenience. A real app would call
-> `conclave.generatePassphrase()` on the first device and have the user enter
+> `passnote.generatePassphrase()` on the first device and have the user enter
 > those words on the second to pair.

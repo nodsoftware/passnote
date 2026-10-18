@@ -1,0 +1,17 @@
+builders:
+  passnote_generator:
+    import: "package:passnote_generator/passnote_generator.dart"
+    builder_factories: ["passnoteGenerator"]
+    build_extensions: { ".dart": [".passnote.g.part"] }
+    auto_apply: dependents
+    build_to: cache
+    applies_builders: ["source_gen:combining_builder"]
+
+# Apply the builder to this package's own test fixtures, so the generator is
+# exercised for real (generate, compile, run) by its own test suite.
+targets:
+  $default:
+    builders:
+      passnote_generator:passnote_generator:
+        enabled: true
+        generate_for: ["test/src/*.dart"]

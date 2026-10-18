@@ -6,10 +6,10 @@ move".
 
 ## First: make the state visible
 
-`Conclave.events` narrates the peer lifecycle. Log it before anything else:
+`Passnote.events` narrates the peer lifecycle. Log it before anything else:
 
 ```dart
-conclave.events.listen((event) => debugPrint('conclave: $event'));
+passnote.events.listen((event) => debugPrint('passnote: $event'));
 ```
 
 | Event | Meaning |
@@ -70,7 +70,7 @@ discovery, not sync).
 - **You are watching the wrong moment.** `watch()` emits once loaded and on
   every change; a test that reads before sync completes sees the old state.
   Wait on `watch().firstWhere(...)` with a timeout, or call
-  `conclave.forceSync()` to exchange with every connected peer immediately.
+  `passnote.forceSync()` to exchange with every connected peer immediately.
 - **A very fast writer.** Inbound frames are rate-limited per peer
   (`maxInboundFramesPerSecond`, default 100). Dropped frames are not lost
   data: the periodic anti-entropy exchange (default every 3 minutes) heals

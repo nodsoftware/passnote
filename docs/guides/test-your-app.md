@@ -1,6 +1,6 @@
 # Test your app
 
-Two complete Conclave nodes can run inside one ordinary `flutter test`: real
+Two complete Passnote nodes can run inside one ordinary `flutter test`: real
 encryption, real pairing, real sync. Only the pieces that touch the
 environment get swapped, each with a builder override:
 
@@ -15,7 +15,7 @@ pairing, the sync protocol) runs the production code, so a passing test
 exercises the same path as two phones on a shelf.
 
 The code on this page lives in
-[`examples/quickstart/test/sync_test.dart`](https://github.com/nodsoftware/conclave/blob/main/examples/quickstart/test/sync_test.dart)
+[`examples/quickstart/test/sync_test.dart`](https://github.com/nodsoftware/passnote/blob/main/examples/quickstart/test/sync_test.dart)
 and runs in CI.
 
 ## The harness
@@ -24,8 +24,8 @@ One `InMemoryBus` is one network: every node built on it can reach the
 others. The key store is a ten-line fake:
 
 ```dart
-import 'package:conclave/engine.dart';
-import 'package:conclave_flutter/conclave_flutter.dart';
+import 'package:passnote/engine.dart';
+import 'package:passnote_flutter/passnote_flutter.dart';
 
 class MemoryKeyStore implements KeyStore {
   final _keys = <String, List<int>>{};
@@ -40,8 +40,8 @@ class MemoryKeyStore implements KeyStore {
   Future<void> clear(String id) async => _keys.remove(id);
 }
 
-Future<Conclave> testNode(InMemoryBus bus) =>
-    conclaveBuilder(appId: 'shopping', salt: 'shopping:v1')
+Future<Passnote> testNode(InMemoryBus bus) =>
+    passnoteBuilder(appId: 'shopping', salt: 'shopping:v1')
         .engine(MapCrdtTable.new)
         .keyStore(MemoryKeyStore.new)
         .transport(() => InMemoryTransport(bus))
@@ -49,8 +49,8 @@ Future<Conclave> testNode(InMemoryBus bus) =>
 ```
 
 `MapCrdtTable` and the in-memory transport come from
-`package:conclave/engine.dart`, the advanced surface. It arrives
-transitively through `conclave_flutter`; list `conclave` in your
+`package:passnote/engine.dart`, the advanced surface. It arrives
+transitively through `passnote_flutter`; list `passnote` in your
 `pubspec.yaml` as well so the import is an explicit dependency.
 
 ## A convergence test
@@ -92,7 +92,7 @@ test('an item put on one device appears on a paired device', () async {
 - **Wait on observations, never on time.** `watch().firstWhere(...)` with a
   timeout is deterministic; a `Future.delayed` is a flake waiting to happen.
 - **Assert convergence, not delivery order.** Write on both nodes, then
-  expect the *same* final list on each; that is the property Conclave
+  expect the *same* final list on each; that is the property Passnote
   guarantees.
 - **One bus per network shape.** Partitions are just two buses; "the laptop
   went offline" is closing one node and opening a fresh one on the same bus
@@ -101,6 +101,6 @@ test('an item put on one device appears on a paired device', () async {
   `openDatabase` per node costs real milliseconds. Reuse nodes across
   assertions inside one test instead of rebuilding them per expectation.
 - **Unit tests below the sync layer need no nodes at all.** Merge behaviour
-  is testable on a bare table; the [conclave package
-  example](https://pub.dev/packages/conclave/example) merges two
+  is testable on a bare table; the [passnote package
+  example](https://pub.dev/packages/passnote/example) merges two
   `MapCrdtTable`s directly.

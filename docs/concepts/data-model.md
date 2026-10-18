@@ -12,14 +12,14 @@
 
 ```mermaid
 flowchart TD
-  Conclave["Conclave (app handle)"] --> DB1["Database 'home'"]
-  Conclave --> DB2["Database 'work'"]
+  Passnote["Passnote (app handle)"] --> DB1["Database 'home'"]
+  Passnote --> DB2["Database 'work'"]
   DB1 --> C1["Collection&lt;Item&gt; 'items'"]
   DB1 --> C2["Collection&lt;Note&gt; 'notes'"]
   C1 --> D1["Document (one Item)"]
 ```
 
-- A `Conclave` is the app-level handle: one per app, created with the
+- A `Passnote` is the app-level handle: one per app, created with the
   [builder](../reference/builder.md). It owns the transport and any number of
   databases.
 - A `Database` is one shared, encrypted dataset with its own keys, its own

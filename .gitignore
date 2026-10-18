@@ -31,7 +31,7 @@ Thumbs.db
 # Zensical docs site
 /site/
 .venv/
-packages/conclave/test/web/sqlite3.wasm
+packages/passnote/test/web/sqlite3.wasm
 
 # Editor swap files
 *.swp

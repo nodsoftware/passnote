@@ -1,0 +1,17 @@
+{
+  "primitive": "root = HKDF(groupKey, nonces, node ids); per-frame message keys from an HMAC-SHA256 hash chain, one per seal, previous key wiped",
+  "case": {
+    "group_key": "01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3da",
+    "nonce_a": "020910171e252c333a41484f565d646b",
+    "nonce_b": "030a11181f262d343b424950575e656c",
+    "node_a": "node-a",
+    "node_b": "node-b",
+    "root": "ed08ad9255cb162dade254110461ee1526ed87b16ebcec9401a051c2573ba2a9",
+    "low_side_send_keys": [
+      "dd515d83ac7e4cd5366bc9616969488efc4fa79f9a6a139c269a5e85d33062e5",
+      "c823f22a51b579c6121df4aca88ef7c681c64026bec93d732171505f5a946547",
+      "e3f896331f7263b8c1d784e50c65cfdc0a544af90a2a74a9b5a470a972f61f8c",
+      "e7a8d50f3038f93b67a16b02de9e8452feeb50f4782bd40aa9fd07fe086b750d"
+    ]
+  }
+}

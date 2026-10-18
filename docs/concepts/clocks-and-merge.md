@@ -11,7 +11,7 @@
 ### Hybrid logical clocks
 
 "Last write wins" needs a meaning of *last* that survives clock skew, offline
-periods, and simultaneous edits. Conclave stamps every record with an
+periods, and simultaneous edits. Passnote stamps every record with an
 [HLC](glossary.md#hlc): wall-clock time, plus a counter, plus the device id.
 
 - **Never backwards.** If a device's clock jumps back, the counter keeps the

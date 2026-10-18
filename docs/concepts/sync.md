@@ -14,7 +14,7 @@ When two devices meet on the transport, each sends a handshake: the
 [wire versions](glossary.md#wire-version) it speaks, optional capabilities,
 and its device public key. Sync starts on the highest version both share. If
 there is none (one app is too old), a `PeerIncompatible` event is emitted on
-`Conclave.events` and nothing further is exchanged, so the app can tell the
+`Passnote.events` and nothing further is exchanged, so the app can tell the
 user to update. After a successful handshake the pair also establishes its
 forward-secrecy [ratchet](glossary.md#ratchet); see
 [Identity](identity.md).
@@ -67,7 +67,7 @@ hello/state/delta round.
 
 Every device holds a full copy, so reads and writes never wait for the
 network. On reconnect, the handshake and catch-up run again and both sides
-converge. `Conclave.forceSync()` triggers the full exchange on demand, for a
+converge. `Passnote.forceSync()` triggers the full exchange on demand, for a
 pull-to-refresh gesture.
 
 ## Edge cases and guarantees

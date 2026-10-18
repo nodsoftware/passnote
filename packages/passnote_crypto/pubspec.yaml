@@ -1,0 +1,26 @@
+name: passnote_crypto
+version: 1.0.0
+description: >-
+  Crypto for Passnote: XChaCha20-Poly1305, Argon2id key derivation from a
+  BIP39 passphrase, X25519/Ed25519 device identity, and SPAKE2 pairing.
+homepage: https://github.com/nodsoftware/passnote
+repository: https://github.com/nodsoftware/passnote
+screenshots:
+  - description: The Passnote logo, a locked chapel door with a keyhole.
+    path: doc/passnote-logo.png
+resolution: workspace
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  bip39: ^1.0.6
+  crypto: ^3.0.6
+  cryptography: ^2.7.0
+  meta: ^1.18.0
+  passnote: ^1.0.0
+  pointycastle: ^3.9.1
+
+dev_dependencies:
+  lints: ^4.0.0
+  test: ^1.25.0

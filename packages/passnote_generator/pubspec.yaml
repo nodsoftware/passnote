@@ -1,0 +1,25 @@
+name: passnote_generator
+version: 1.0.0
+description: >-
+  Code generator for Passnote document models: one @Document annotation yields
+  the codec, the document-id extractor, and the per-field CRDT schema.
+homepage: https://github.com/nodsoftware/passnote
+repository: https://github.com/nodsoftware/passnote
+screenshots:
+  - description: The Passnote logo, a locked chapel door with a keyhole.
+    path: doc/passnote-logo.png
+resolution: workspace
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  analyzer: '>=8.0.0 <15.0.0'
+  build: '>=2.4.2 <5.0.0'
+  passnote: ^1.0.0
+  source_gen: '>=2.0.0 <5.0.0'
+
+dev_dependencies:
+  build_runner: '>=2.4.15 <5.0.0'
+  lints: ^4.0.0
+  test: ^1.25.0

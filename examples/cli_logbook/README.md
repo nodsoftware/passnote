@@ -1,14 +1,14 @@
 # cli_logbook
 
-Conclave in a plain Dart process — no Flutter. A tiny shared logbook two
+Passnote in a plain Dart process — no Flutter. A tiny shared logbook two
 machines on the same network keep in sync, end-to-end encrypted, with no
 server.
 
 It demonstrates the three things the Flutter examples cannot:
 
 - **Wiring the production adapters yourself.** `installLogbookDefaults`
-  (in `lib/logbook.dart`) fills every `ConclaveDefaults` slot the way
-  `conclave_flutter`'s `conclaveBuilder` does for Flutter apps: SQLCipher
+  (in `lib/logbook.dart`) fills every `PassnoteDefaults` slot the way
+  `passnote_flutter`'s `passnoteBuilder` does for Flutter apps: SQLCipher
   SQLite engine, LAN transport, XChaCha20-Poly1305, Argon2id, device
   identity, SPAKE2.
 - **A `KeyStore` without an OS keychain.** `FileKeyStore` keeps keys in one

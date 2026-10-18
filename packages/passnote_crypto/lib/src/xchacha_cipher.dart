@@ -1,0 +1,79 @@
+import 'dart:typed_data';
+
+import 'package:passnote/passnote.dart';
+import 'package:cryptography/cryptography.dart' hide Cipher;
+import 'package:meta/meta.dart';
+
+/// XChaCha20-Poly1305 implementation of the [Cipher] port, and the default
+/// cipher.
+///
+/// Wire / at-rest format is a single byte buffer:
+///
+/// ```
+/// ┌────────────┬────────────────────┬──────────────┐
+/// │ nonce (24) │ ciphertext (n)     │ tag (16)     │
+/// └────────────┴────────────────────┴──────────────┘
+/// ```
+///
+/// A fresh random 24-byte nonce is generated for every [encrypt] call. The
+/// 192-bit nonce is wide enough that random generation never has a practical
+/// collision risk, whatever the message volume. The 16-byte Poly1305 tag makes
+/// [decrypt] fail closed for any frame not produced with the same 256-bit key —
+/// this is what authenticates peers.
+class XChaChaPoly1305Cipher implements Cipher {
+  /// Creates a cipher bound to a 32-byte (256-bit) [key].
+  XChaChaPoly1305Cipher(this.key)
+      : assert(key.length == 32, 'XChaCha20-Poly1305 requires a 32-byte key'),
+        _secretKey = SecretKey(key);
+
+  /// The raw 256-bit key bytes.
+  final List<int> key;
+
+  final SecretKey _secretKey;
+  final Xchacha20 _algorithm = Xchacha20.poly1305Aead();
+
+  static const int _nonceLength = 24;
+  static const int _tagLength = 16;
+
+  @override
+  Future<List<int>> encrypt(List<int> plaintext) =>
+      encryptWithNonce(plaintext, _algorithm.newNonce());
+
+  /// [encrypt] with the nonce supplied, for the published known-answer test
+  /// vectors only. Production callers use [encrypt]: reusing a nonce under one
+  /// key breaks the cipher's guarantees.
+  @visibleForTesting
+  Future<List<int>> encryptWithNonce(
+    List<int> plaintext,
+    List<int> nonce,
+  ) async {
+    final box = await _algorithm.encrypt(
+      plaintext,
+      secretKey: _secretKey,
+      nonce: nonce,
+    );
+    return Uint8List.fromList([
+      ...box.nonce,
+      ...box.cipherText,
+      ...box.mac.bytes,
+    ]);
+  }
+
+  @override
+  Future<List<int>> decrypt(List<int> ciphertext) async {
+    if (ciphertext.length < _nonceLength + _tagLength) {
+      throw const CipherAuthError();
+    }
+    final nonce = ciphertext.sublist(0, _nonceLength);
+    final mac = ciphertext.sublist(ciphertext.length - _tagLength);
+    final cipherBytes =
+        ciphertext.sublist(_nonceLength, ciphertext.length - _tagLength);
+
+    final box = SecretBox(cipherBytes, nonce: nonce, mac: Mac(mac));
+    try {
+      return await _algorithm.decrypt(box, secretKey: _secretKey);
+    } on SecretBoxAuthenticationError {
+      throw const CipherAuthError();
+    }
+  }
+}

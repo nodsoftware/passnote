@@ -1,28 +1,28 @@
 # The builder
 
-`conclaveBuilder(appId:, salt:)` (from `conclave_flutter`) returns a
-`ConclaveBuilder` with the production pieces installed; chain overrides, then
+`passnoteBuilder(appId:, salt:)` (from `passnote_flutter`) returns a
+`PassnoteBuilder` with the production pieces installed; chain overrides, then
 `await .open()`. Each override may be set at most once.
 
 ```dart
-final conclave = await conclaveBuilder(appId: 'shopping', salt: 'shopping:v1')
+final passnote = await passnoteBuilder(appId: 'shopping', salt: 'shopping:v1')
     .passphrase(words: 12)
     .compactionHorizon(const Duration(days: 60))
     .open();
 ```
 
 The frozen surface and its guarantees are described in
-[`VERSIONING.md`](https://github.com/nodsoftware/conclave/blob/main/VERSIONING.md).
+[`VERSIONING.md`](https://github.com/nodsoftware/passnote/blob/main/VERSIONING.md).
 
 ## Pure Dart (no Flutter)
 
-A plain Dart process uses `Conclave.builder(appId:, salt:)` from
-`package:conclave` after installing defaults once with
-`ConclaveBuilder.installDefaults`, filling every `ConclaveDefaults` slot with
-the production adapters from `conclave_crypto` and `conclave_lan`:
+A plain Dart process uses `Passnote.builder(appId:, salt:)` from
+`package:passnote` after installing defaults once with
+`PassnoteBuilder.installDefaults`, filling every `PassnoteDefaults` slot with
+the production adapters from `passnote_crypto` and `passnote_lan`:
 
 ```dart
-ConclaveBuilder.installDefaults(ConclaveDefaults(
+PassnoteBuilder.installDefaults(PassnoteDefaults(
   engine: (databaseId, collection, key) => SqliteCrdtTable(
       '$dataDir/$databaseId/$collection.sqlite', encryptionKey: key),
   keyStore: (appId) => FileKeyStore(File('$dataDir/$appId.keys.json')),
@@ -42,9 +42,9 @@ ConclaveBuilder.installDefaults(ConclaveDefaults(
 There is no OS keychain in a bare process, so bring your own `KeyStore`. The
 runnable version of all of this — including an example-grade file-backed
 `FileKeyStore` and a generated per-field merge strategy in use — is
-[`examples/cli_logbook`](https://github.com/nodsoftware/conclave/tree/main/examples/cli_logbook),
+[`examples/cli_logbook`](https://github.com/nodsoftware/passnote/tree/main/examples/cli_logbook),
 a two-device terminal logbook. To skip the builder entirely, wire every
-dependency explicitly with `conclaveLowLevel` (see [Ports](ports.md)).
+dependency explicitly with `passnoteLowLevel` (see [Ports](ports.md)).
 
 ## Overrides
 
@@ -61,9 +61,9 @@ dependency explicitly with `conclaveLowLevel` (see [Ports](ports.md)).
 | `.compactionHorizon(duration)` | 30 days | How old a tombstone must be before `compact` removes it. |
 | `.maxInboundFramesPerSecond(n)` | 100 | Per-peer inbound rate limit. |
 
-## ConclaveConfig
+## PassnoteConfig
 
-`conclaveLowLevel` takes the same knobs as a `ConclaveConfig`:
+`passnoteLowLevel` takes the same knobs as a `PassnoteConfig`:
 
 | Field | Default | Meaning |
 | --- | --- | --- |

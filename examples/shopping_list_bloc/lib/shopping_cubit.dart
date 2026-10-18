@@ -1,11 +1,11 @@
 import 'dart:async';
 
-import 'package:conclave_flutter/conclave_flutter.dart';
+import 'package:passnote_flutter/passnote_flutter.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'item.dart';
 
-/// A [Cubit] that mirrors a Conclave [Collection] of [Item]s.
+/// A [Cubit] that mirrors a Passnote [Collection] of [Item]s.
 ///
 /// It subscribes to [Collection.watch] and emits the current list — sorted by
 /// name — on every local or synced change. Mutations are written straight

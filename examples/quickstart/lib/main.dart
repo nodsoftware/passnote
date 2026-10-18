@@ -1,7 +1,7 @@
 // The tutorial, compiled. Each numbered section matches a step in
 // docs/start-here/tutorial.md; keep the two in sync.
 
-import 'package:conclave_flutter/conclave_flutter.dart';
+import 'package:passnote_flutter/passnote_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -27,12 +27,12 @@ class Item {
 // toMap/fromMap over the fields, with `id` as the document id.
 final itemCodec = _$ItemCodec;
 
-// 3. Open Conclave and 4. open a database with a passphrase
+// 3. Open Passnote and 4. open a database with a passphrase
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final conclave = await conclaveBuilder(
+  final passnote = await passnoteBuilder(
     appId: 'shopping', // scopes discovery + storage
     salt: 'shopping:v1', // stable, app-specific key-derivation salt
   )
@@ -41,10 +41,10 @@ Future<void> main() async {
       .open();
 
   // On the first device, generate a passphrase to show the user:
-  final words = conclave.generatePassphrase().join(' ');
+  final words = passnote.generatePassphrase().join(' ');
 
   // On that same device, open the database with it:
-  final db = await conclave.openDatabase('home', passphrase: words);
+  final db = await passnote.openDatabase('home', passphrase: words);
 
   final items = db.collection<Item>('items', itemCodec);
 
@@ -56,10 +56,10 @@ Future<void> main() async {
 
 // 4b. On every later launch: reopen without the passphrase
 
-Future<Database> reopenOnNextLaunch(Conclave conclave) {
+Future<Database> reopenOnNextLaunch(Passnote passnote) {
   // The derived key was stored in the key store (the OS keychain in
   // production) by openDatabase, so later launches skip the passphrase.
-  return conclave.reopenDatabase('home');
+  return passnote.reopenDatabase('home');
 }
 
 // 5. Read and write a collection
@@ -87,16 +87,16 @@ void logChanges(Collection<Item> items) {
 
 // 7. Pair a second device
 
-Future<void> sponsorPairing(Conclave conclave) async {
+Future<void> sponsorPairing(Passnote passnote) async {
   // On a device that already has the data: create a one-time code.
-  final code = await conclave.startPairing('home', joinerLabel: 'new phone');
+  final code = await passnote.startPairing('home', joinerLabel: 'new phone');
   debugPrint('On the new device, enter: ${code.display}');
 }
 
-Future<Database> joinWithCode(Conclave conclave, String typedCode) {
+Future<Database> joinWithCode(Passnote passnote, String typedCode) {
   // On the new device: enter the code. The exchange authenticates both
   // sides, hands over the keys, and returns a ready database.
-  return conclave.pairWith('home', PairingCode.parse(typedCode));
+  return passnote.pairWith('home', PairingCode.parse(typedCode));
 }
 
 class ShoppingList extends StatelessWidget {

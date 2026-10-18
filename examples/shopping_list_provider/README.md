@@ -1,10 +1,10 @@
 # Shopping List — Provider
 
-A minimal [Conclave](../../) example using
+A minimal [Passnote](../../) example using
 [`provider`](https://pub.dev/packages/provider) for state management.
 
 It wires the collection to the UI with `CollectionNotifier<Item>` (a
-`ChangeNotifier` from `conclave_flutter`) exposed via `ChangeNotifierProvider`,
+`ChangeNotifier` from `passnote_flutter`) exposed via `ChangeNotifierProvider`,
 and reads it with `context.watch`.
 
 ## Run
@@ -30,5 +30,5 @@ flutter run
    deterministic winner on both devices.
 
 > The demo uses a fixed passphrase for convenience. A real app would call
-> `conclave.generatePassphrase()` on the first device and have the user enter
+> `passnote.generatePassphrase()` on the first device and have the user enter
 > those words on the second to pair.

@@ -18,11 +18,11 @@ An app that wants a way back enables recovery and mints a phrase once, after
 setup:
 
 ```dart
-final conclave = await conclaveBuilder(appId: 'x', salt: 'x:v1')
+final passnote = await passnoteBuilder(appId: 'x', salt: 'x:v1')
     .recovery(enabled: true)
     .open();
 
-final words = await conclave.enableRecovery('home');
+final words = await passnote.enableRecovery('home');
 // Show the 24 words once. Never store them.
 ```
 
@@ -33,7 +33,7 @@ On a fresh install, with at least one peer reachable (a housemate's device,
 for example):
 
 ```dart
-final db = await conclave.recoverFrom(
+final db = await passnote.recoverFrom(
   'home',
   enteredWords,
   passphrase: databasePassphrase,

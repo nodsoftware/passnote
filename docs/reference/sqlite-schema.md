@@ -54,7 +54,7 @@ when a readable one exists, otherwise empty, followed by an automatic re-sync
 from peers. `snapshotInterval` (default 30 minutes) controls how often the
 snapshot is refreshed with `VACUUM INTO` (the snapshot inherits the
 encryption key). Either recovery surfaces a `StoreRecovered` event on
-`Conclave.events`.
+`Passnote.events`.
 
 For an **encrypted** database the corrupt and mis-keyed cases can look
 identical: SQLCipher answers header damage and a wrong key with the same

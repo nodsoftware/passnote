@@ -4,8 +4,8 @@ When the words have been seen by the wrong person — or written on a whiteboard
 in a photo — change them:
 
 ```dart
-final words = conclave.generatePassphrase();       // show these, once
-await conclave.rotatePassphrase(
+final words = passnote.generatePassphrase();       // show these, once
+await passnote.rotatePassphrase(
   'home',
   oldPassphrase: oldWords.join(' '),
   newPassphrase: words.join(' '),
@@ -51,7 +51,7 @@ finishes itself the next time the database is opened, with or without a
 passphrase:
 
 ```dart
-if (await conclave.hasPendingRotation('home')) {
+if (await passnote.hasPendingRotation('home')) {
   // Already handled by the next open; this is only so the UI can say so.
 }
 ```

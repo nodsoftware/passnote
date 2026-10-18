@@ -1,13 +1,13 @@
 // The "Test your app" guide, compiled. Each section matches
 // docs/guides/test-your-app.md; keep the two in sync.
 //
-// Two complete Conclave nodes run inside one test: real crypto, real
+// Two complete Passnote nodes run inside one test: real crypto, real
 // pairing, real sync. Only the pieces that touch the environment are
 // swapped: storage is in-memory, keys live in a map, and frames travel
 // over an in-process bus instead of the network.
 
-import 'package:conclave/engine.dart';
-import 'package:conclave_flutter/conclave_flutter.dart';
+import 'package:passnote/engine.dart';
+import 'package:passnote_flutter/passnote_flutter.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quickstart/main.dart';
 
@@ -24,8 +24,8 @@ class MemoryKeyStore implements KeyStore {
   Future<void> clear(String id) async => _keys.remove(id);
 }
 
-Future<Conclave> testNode(InMemoryBus bus) =>
-    conclaveBuilder(appId: 'shopping', salt: 'shopping:v1')
+Future<Passnote> testNode(InMemoryBus bus) =>
+    passnoteBuilder(appId: 'shopping', salt: 'shopping:v1')
         .engine(MapCrdtTable.new)
         .keyStore(MemoryKeyStore.new)
         .transport(() => InMemoryTransport(bus))

@@ -1,4 +1,4 @@
-import 'package:conclave_flutter/conclave_flutter.dart';
+import 'package:passnote_flutter/passnote_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -8,17 +8,17 @@ import 'shopping_cubit.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final conclave = await conclaveBuilder(appId: 'shopping', salt: 'shopping:v1')
+  final passnote = await passnoteBuilder(appId: 'shopping', salt: 'shopping:v1')
       // Override any default before open(); here, keep deleted items
       // recoverable for 60 days instead of the default 30.
       .compactionHorizon(const Duration(days: 60))
       .open();
   // For the demo we use a fixed passphrase so a second device can pair by
   // entering the same words. A real app would generate one and let the user
-  // share it: `final words = conclave.generatePassphrase().join(' ');`
+  // share it: `final words = passnote.generatePassphrase().join(' ');`
   const passphrase =
       'legal winner thank year wave sausage worth useful legal winner thank yellow';
-  final db = await conclave.openDatabase('home', passphrase: passphrase);
+  final db = await passnote.openDatabase('home', passphrase: passphrase);
   final items = db.collection<Item>('items', Item.codec);
 
   runApp(_ShoppingApp(items: items));

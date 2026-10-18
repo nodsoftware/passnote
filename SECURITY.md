@@ -2,11 +2,11 @@
 
 ## Reporting a vulnerability
 
-If you believe you have found a security vulnerability in Conclave, please report
+If you believe you have found a security vulnerability in Passnote, please report
 it **privately**. Do not open a public issue, pull request, or discussion for
 security problems.
 
-- Use GitHub's [private vulnerability reporting](https://github.com/nodsoftware/conclave/security/advisories/new)
+- Use GitHub's [private vulnerability reporting](https://github.com/nodsoftware/passnote/security/advisories/new)
   for this repository, or
 - Email [wouter@nodsoftware.net](mailto:wouter@nodsoftware.net).
 
@@ -28,12 +28,12 @@ upgrade them together and promptly when a fix ships.
 
 ## Threat model summary
 
-Conclave provides authenticated end-to-end encryption between a group of
+Passnote provides authenticated end-to-end encryption between a group of
 devices, with per-device identity keys, PAKE-authenticated pairing, device
 revocation by group-key rotation, and a forward-secrecy ratchet on every
 connection.
 
-**Conclave protects:**
+**Passnote protects:**
 
 - Confidentiality and integrity of data at rest (SQLCipher) and in transit
   (XChaCha20-Poly1305); tampered frames are rejected.
@@ -46,10 +46,10 @@ connection.
 
 - A compromised device or OS, or an unlocked keychain, holds that device's
   keys; the remedy is revocation from a surviving device.
-- Local-network metadata: an observer sees that a Conclave service exists, its
+- Local-network metadata: an observer sees that a Passnote service exists, its
   opaque room tag, and frame sizes and timing.
 - Recovery is opt-in; by default, losing every device loses the data.
 - Denial-of-service by a network neighbour is rate-limited, not prevented.
 
-Conclave has not yet had an independent security audit; one is planned. For the
+Passnote has not yet had an independent security audit; one is planned. For the
 full discussion, see [`docs/security.md`](docs/security.md).

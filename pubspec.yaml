@@ -1,4 +1,4 @@
-name: conclave_workspace
+name: passnote_workspace
 publish_to: none
 environment:
   sdk: ^3.6.0
@@ -14,11 +14,11 @@ hooks:
     sqlite3:
       source: sqlcipher
 workspace:
-  - packages/conclave
-  - packages/conclave_crypto
-  - packages/conclave_generator
-  - packages/conclave_lan
-  - packages/conclave_flutter
+  - packages/passnote
+  - packages/passnote_crypto
+  - packages/passnote_generator
+  - packages/passnote_lan
+  - packages/passnote_flutter
   - examples/quickstart
   - examples/shopping_list_provider
   - examples/shopping_list_bloc
@@ -40,7 +40,7 @@ melos:
     format:
       run: dart format --output=none --set-exit-if-changed .
 
-    # Regenerates every package that uses conclave_generator (annotated
+    # Regenerates every package that uses passnote_generator (annotated
     # document models). Generated *.g.dart files are checked in; CI runs this
     # and fails on drift.
     generate:

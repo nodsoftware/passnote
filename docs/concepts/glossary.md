@@ -19,7 +19,7 @@ storage: each entry carries a key, a value, a deletion flag, and an
 
 A conflict-free replicated data type: a data structure that devices can edit
 independently and still merge to one identical result, in any order, without
-coordination. Conclave models every collection this way.
+coordination. Passnote models every collection this way.
 
 ## Existence register
 

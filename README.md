@@ -1,22 +1,22 @@
 <h1>
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/conclave-horizontal-on-dark.svg">
-    <img src="docs/assets/conclave-horizontal.svg" alt="Conclave" width="320">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/passnote-horizontal-on-dark.svg">
+    <img src="docs/assets/passnote-horizontal.svg" alt="Passnote" width="320">
   </picture>
 </h1>
 
 **End-to-end encrypted, server-less, local-first sync for Dart and Flutter.**
 
-Conclave lets a small group of devices share a live, mergeable dataset with no
+Passnote lets a small group of devices share a live, mergeable dataset with no
 server and no account. Every device holds a full copy and works offline; new
 devices join with a short one-time code; a lost device can be revoked. No
 plaintext ever leaves a device.
 
 ```dart
-import 'package:conclave_flutter/conclave_flutter.dart';
+import 'package:passnote_flutter/passnote_flutter.dart';
 
-final conclave = await conclaveBuilder(appId: 'shopping', salt: 'shopping:v1').open();
-final list = await conclave.openDatabase('home', passphrase: words);
+final passnote = await passnoteBuilder(appId: 'shopping', salt: 'shopping:v1').open();
+final list = await passnote.openDatabase('home', passphrase: words);
 final items = list.collection<Item>('items', Item.codec);
 
 await items.put(Item(id: newId(), name: 'Milk'));
@@ -50,11 +50,11 @@ This is a [Melos](https://melos.invertase.dev/) monorepo.
 
 | Package | Description |
 | --- | --- |
-| [`conclave_flutter`](packages/conclave_flutter) | Flutter entry point: `conclaveBuilder`, keychain key store, notifiers; re-exports the rest |
-| [`conclave`](packages/conclave) | Pure-Dart engine: collections, CRDTs, queries, protocol, SQLite store, device identity |
-| [`conclave_crypto`](packages/conclave_crypto) | XChaCha20-Poly1305, Argon2id, BIP39, SPAKE2, device identity keys |
-| [`conclave_lan`](packages/conclave_lan) | Transports: mDNS LAN discovery (native), WebSockets (everywhere), reference relay |
-| [`conclave_generator`](packages/conclave_generator) | Codecs and CRDT schemas generated from `@Document()` annotations |
+| [`passnote_flutter`](packages/passnote_flutter) | Flutter entry point: `passnoteBuilder`, keychain key store, notifiers; re-exports the rest |
+| [`passnote`](packages/passnote) | Pure-Dart engine: collections, CRDTs, queries, protocol, SQLite store, device identity |
+| [`passnote_crypto`](packages/passnote_crypto) | XChaCha20-Poly1305, Argon2id, BIP39, SPAKE2, device identity keys |
+| [`passnote_lan`](packages/passnote_lan) | Transports: mDNS LAN discovery (native), WebSockets (everywhere), reference relay |
+| [`passnote_generator`](packages/passnote_generator) | Codecs and CRDT schemas generated from `@Document()` annotations |
 
 ## Quick start
 
@@ -62,7 +62,7 @@ Add the Flutter package (it pulls in the rest):
 
 ```yaml
 dependencies:
-  conclave_flutter: ^1.0.0
+  passnote_flutter: ^1.0.0
 ```
 
 Then follow the [tutorial](docs/start-here/tutorial.md): model, builder,
@@ -122,7 +122,7 @@ on broken links.
 On the web the SQLite engine runs via `sqlite3/wasm`. Serve a `sqlite3.wasm`
 build matching the `sqlite3` package version (from its GitHub releases) and
 call `SqliteCrdtTable.configureWeb(wasmUri: ...)` before opening. Browser
-tests (`dart test -P web` in `packages/conclave` and `packages/conclave_lan`)
+tests (`dart test -P web` in `packages/passnote` and `packages/passnote_lan`)
 cover the wasm engine and the browser transport.
 
 ```sh
@@ -135,14 +135,14 @@ melos run test      # test:dart, then test:flutter, then a runner-wiring check
 ```
 
 The mDNS loopback integration test is excluded from the default run; run it
-with `dart test --run-skipped -t integration` in `packages/conclave_lan`. See
+with `dart test --run-skipped -t integration` in `packages/passnote_lan`. See
 [the contributing guide](docs/guides/contributing.md) for the rest.
 
 ## Security
 
-Read [`docs/security.md`](docs/security.md) for what Conclave protects and
+Read [`docs/security.md`](docs/security.md) for what Passnote protects and
 where its boundaries are, and [`SECURITY.md`](SECURITY.md) for reporting a
-vulnerability privately. Conclave has not yet had an independent audit.
+vulnerability privately. Passnote has not yet had an independent audit.
 
 ## Versioning
 

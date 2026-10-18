@@ -13,7 +13,7 @@ trap 'rm -rf "$dir"' EXIT
 
 # Path-consumable copies: `resolution: workspace` only resolves inside the
 # workspace, so it is stripped from the copies.
-for p in conclave conclave_generator; do
+for p in passnote passnote_generator; do
   cp -R "$root/packages/$p" "$dir/$p"
   sed -i.bak '/^resolution: workspace$/d' "$dir/$p/pubspec.yaml"
 done
@@ -26,22 +26,22 @@ publish_to: none
 environment:
   sdk: ^3.6.0
 dependencies:
-  conclave:
-    path: ../conclave
+  passnote:
+    path: ../passnote
 dev_dependencies:
   build_runner: ^2.15.0
-  conclave_generator:
-    path: ../conclave_generator
-# The generator names `conclave` as a hosted dependency (it is unpublished
+  passnote_generator:
+    path: ../passnote_generator
+# The generator names `passnote` as a hosted dependency (it is unpublished
 # while this check runs pre-release); route it to the local copy.
 dependency_overrides:
-  conclave:
-    path: ../conclave
+  passnote:
+    path: ../passnote
 EOF
 
 mkdir lib
 cat > lib/model.dart <<'EOF'
-import 'package:conclave/conclave.dart';
+import 'package:passnote/passnote.dart';
 
 part 'model.g.dart';
 
@@ -78,8 +78,8 @@ echo "OK: generator built an @Document model against the freshly resolved $resol
 # generated codec AND merge strategy, increment the counter, read back.
 mkdir bin
 cat > bin/smoke.dart <<'EOF2'
-import 'package:conclave/conclave.dart';
-import 'package:conclave/engine.dart';
+import 'package:passnote/passnote.dart';
+import 'package:passnote/engine.dart';
 
 import 'package:consumer/model.dart';
 
@@ -101,8 +101,8 @@ class _NoopCipher implements Cipher {
 }
 
 Future<void> main() async {
-  final conclave = await conclaveLowLevel(
-    config: const ConclaveConfig(appId: 's', salt: 's:v1'),
+  final passnote = await passnoteLowLevel(
+    config: const PassnoteConfig(appId: 's', salt: 's:v1'),
     keyStore: _MemKeyStore(),
     transport: InMemoryTransport(InMemoryBus()),
     deriveKey: (_, __) async => List<int>.filled(32, 1),
@@ -112,7 +112,7 @@ Future<void> main() async {
     validateMnemonic: (_) => true,
     engine: (dbId, collection, _) => MapCrdtTable(collection),
   );
-  final db = await conclave.openDatabase('d', passphrase: 'p');
+  final db = await passnote.openDatabase('d', passphrase: 'p');
   final notes = db.collection<Note>('notes', noteCodec, merge: noteMerge);
   await notes.put(const Note(id: 'x', title: 'hello'));
   await notes.increment('x', 'count', by: 3);
@@ -120,7 +120,7 @@ Future<void> main() async {
   if (note == null || note.title != 'hello' || note.count != 3) {
     throw StateError('smoke round-trip failed');
   }
-  await conclave.close();
+  await passnote.close();
   print('smoke ok');
 }
 EOF2
