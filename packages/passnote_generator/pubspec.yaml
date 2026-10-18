@@ -6,7 +6,7 @@ description: >-
 homepage: https://github.com/nodsoftware/passnote
 repository: https://github.com/nodsoftware/passnote
 screenshots:
-  - description: The Passnote logo, a locked chapel door with a keyhole.
+  - description: The Passnote logo, a letter P cut from a sheet of paper, its corner folded back like a passed note.
     path: doc/passnote-logo.png
 resolution: workspace
 

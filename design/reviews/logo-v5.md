@@ -43,3 +43,13 @@ Ballpoint blue is the ink of a school pen. The fold colour is decorative and isn
 - `logo/export-v5/svg/` and `logo/export-v5/png/`.
 
 Trademark clearance has not been done.
+
+## Applied to the docs, README and pub.dev
+
+| Where | File |
+| --- | --- |
+| Docs header logo | `docs/assets/logo.svg` (light), `docs/assets/logo-dark.svg` (dark) |
+| Docs favicon | `docs/assets/favicon.svg`, switches colour with the system theme |
+| Docs palette | `docs/stylesheets/passnote.css`: Ballpoint links on a near-white page (7.9:1); Fold links on Night (6.9:1) |
+| README | `docs/assets/passnote-horizontal.svg`, with `passnote-horizontal-on-dark.svg` for dark mode (16.8:1 on GitHub's dark background) |
+| pub.dev thumbnail | `packages/*/doc/passnote-logo.png`, the app icon |

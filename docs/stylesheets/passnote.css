@@ -1,51 +1,50 @@
-/* Passnote house style. Palette and contrast ratios: design/reviews/logo-v2.md. */
-@import url("https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap");
+/* Passnote house style. Palette and contrast ratios: design/reviews/logo-v5.md. */
 
 :root {
-  --passnote-cardinal: #a3162b;
-  --passnote-cardinal-deep: #7e0f20;
-  --passnote-rose: #f0909c;
-  --passnote-ink: #1a1416;
-  --passnote-parchment: #f2e8dc;
-  --passnote-paper: #fbf8f4;
-  /* The theme tints greys with this hue; 340deg is the ink's own hue. */
-  --md-hue: 340deg;
+  --passnote-ballpoint: #2443b8;
+  --passnote-ballpoint-deep: #1a3290;
+  --passnote-fold: #8fa3e6;
+  --passnote-night: #141b33;
+  --passnote-paper: #f4f1e8;
+  --passnote-page: #fcfbf8;
+  /* The theme tints greys with this hue; 227deg is Night's own hue. */
+  --md-hue: 227deg;
 }
 
-/* Light: ink on paper, cardinal links (7.3:1). */
+/* Light: Night on a near-white page, Ballpoint links (7.9:1). */
 [data-md-color-scheme="default"] {
-  --md-primary-fg-color: var(--passnote-cardinal);
-  --md-primary-fg-color--light: var(--passnote-cardinal);
-  --md-primary-fg-color--dark: var(--passnote-cardinal-deep);
-  --md-accent-fg-color: var(--passnote-cardinal-deep);
-  --md-accent-fg-color--transparent: #a3162b14;
-  --md-typeset-a-color: var(--passnote-cardinal);
-  --md-default-fg-color: var(--passnote-ink);
-  --md-default-bg-color: var(--passnote-paper);
+  --md-primary-fg-color: var(--passnote-ballpoint);
+  --md-primary-fg-color--light: var(--passnote-ballpoint);
+  --md-primary-fg-color--dark: var(--passnote-ballpoint-deep);
+  --md-accent-fg-color: var(--passnote-ballpoint-deep);
+  --md-accent-fg-color--transparent: #2443b814;
+  --md-typeset-a-color: var(--passnote-ballpoint);
+  --md-default-fg-color: var(--passnote-night);
+  --md-default-bg-color: var(--passnote-page);
 }
 
-/* Dark: parchment on ink. Cardinal on ink is only 2.4:1, so links use rose (7.9:1). */
+/* Dark: Paper on Night. Ballpoint on Night is too dark, so links use Fold (6.9:1). */
 [data-md-color-scheme="slate"] {
-  --md-primary-fg-color: var(--passnote-rose);
-  --md-primary-fg-color--light: var(--passnote-rose);
-  --md-primary-fg-color--dark: var(--passnote-rose);
-  --md-accent-fg-color: var(--passnote-parchment);
-  --md-accent-fg-color--transparent: #f0909c1f;
-  --md-typeset-a-color: var(--passnote-rose);
-  --md-default-fg-color: var(--passnote-parchment);
-  --md-default-bg-color: var(--passnote-ink);
+  --md-primary-fg-color: var(--passnote-fold);
+  --md-primary-fg-color--light: var(--passnote-fold);
+  --md-primary-fg-color--dark: var(--passnote-fold);
+  --md-accent-fg-color: var(--passnote-paper);
+  --md-accent-fg-color--transparent: #8fa3e61f;
+  --md-typeset-a-color: var(--passnote-fold);
+  --md-default-fg-color: var(--passnote-paper);
+  --md-default-bg-color: var(--passnote-night);
 }
 
-/* The cardinal door fails contrast on ink, so the dark scheme swaps in the parchment door. */
+/* The Ballpoint mark is too dark on Night, so the dark scheme swaps in the Paper mark. */
 [data-md-color-scheme="slate"] .md-logo img {
   content: url("../assets/logo-dark.svg");
 }
 
+/* Headings use the wordmark's face and weight. */
 .md-typeset h1,
 .md-typeset h2,
 .md-typeset h3,
 .md-header__topic {
-  font-family: "Source Serif 4", Georgia, serif;
   font-weight: 600;
   letter-spacing: -0.01em;
 }

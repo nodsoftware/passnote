@@ -17,6 +17,5 @@ The docs load these from Google Fonts at runtime; nothing is bundled.
 
 | Asset | Use | Licence |
 | --- | --- | --- |
-| Source Sans 3 (Adobe) | Body text | SIL Open Font License 1.1 |
-| Source Serif 4 (Adobe) | Headings | SIL Open Font License 1.1 |
+| Source Sans 3 (Adobe) | Body text and headings | SIL Open Font License 1.1 |
 | Source Code Pro (Adobe) | Code | SIL Open Font License 1.1 |

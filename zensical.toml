@@ -68,8 +68,8 @@ features = [
 logo = "assets/logo.svg"
 favicon = "assets/favicon.svg"
 
-# Brand fonts (SIL OFL): Source Sans 3 for text; headings use Source Serif 4,
-# the wordmark's face, loaded in stylesheets/passnote.css.
+# Brand fonts (SIL OFL): Source Sans 3, the wordmark's face, for text and
+# headings.
 [project.theme.font]
 text = "Source Sans 3"
 code = "Source Code Pro"
