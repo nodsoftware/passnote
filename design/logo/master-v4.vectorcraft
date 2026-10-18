@@ -1,0 +1,5099 @@
+{
+  "format": "vectorcraft",
+  "version": 4,
+  "generator": "VectorCraft 0.10.0",
+  "document": {
+    "version": 1,
+    "title": "kinfold-v4",
+    "units": "Pixels",
+    "color_mode": "Rgb",
+    "artboards": [
+      {
+        "id": 1,
+        "name": "symbol-mono",
+        "rect": {
+          "x0": 0.0,
+          "y0": 0.0,
+          "x1": 512.0,
+          "y1": 512.0
+        },
+        "show_center_mark": false,
+        "show_cross_hairs": false
+      },
+      {
+        "id": 2,
+        "name": "symbol",
+        "rect": {
+          "x0": 552.0,
+          "y0": 0.0,
+          "x1": 1064.0,
+          "y1": 512.0
+        },
+        "show_center_mark": false,
+        "show_cross_hairs": false
+      },
+      {
+        "id": 3,
+        "name": "symbol-reversed",
+        "rect": {
+          "x0": 1104.0,
+          "y0": 0.0,
+          "x1": 1616.0,
+          "y1": 512.0
+        },
+        "show_center_mark": false,
+        "show_cross_hairs": false
+      },
+      {
+        "id": 4,
+        "name": "horizontal",
+        "rect": {
+          "x0": 0.0,
+          "y0": 552.0,
+          "x1": 944.0,
+          "y1": 920.0
+        },
+        "show_center_mark": false,
+        "show_cross_hairs": false
+      },
+      {
+        "id": 5,
+        "name": "horizontal-reversed",
+        "rect": {
+          "x0": 0.0,
+          "y0": 1040.0,
+          "x1": 944.0,
+          "y1": 1408.0
+        },
+        "show_center_mark": false,
+        "show_cross_hairs": false
+      }
+    ],
+    "layers": [
+      {
+        "id": 1,
+        "name": "Layer 1",
+        "kind": {
+          "type": "layer",
+          "color": {
+            "Preset": 0
+          },
+          "template": false,
+          "printable": true,
+          "children": [
+            {
+              "id": 2,
+              "appearance": {
+                "items": [
+                  {
+                    "kind": "fill",
+                    "paint": {
+                      "type": "solid",
+                      "color": {
+                        "model": "rgb",
+                        "r": 0.10980392,
+                        "g": 0.12156863,
+                        "b": 0.16470589
+                      }
+                    }
+                  },
+                  {
+                    "kind": "stroke",
+                    "paint": {
+                      "type": "none"
+                    },
+                    "width": 44.0
+                  }
+                ]
+              },
+              "kind": {
+                "type": "path",
+                "path": {
+                  "subpaths": [
+                    {
+                      "anchors": [
+                        {
+                          "p": [
+                            1104.0,
+                            0.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            1616.0,
+                            0.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            1616.0,
+                            512.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            1104.0,
+                            512.0
+                          ]
+                        }
+                      ],
+                      "closed": true
+                    }
+                  ]
+                },
+                "live": {
+                  "shape": "rectangle",
+                  "w": 512.0,
+                  "h": 512.0,
+                  "radii": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "xf": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    1104.0,
+                    0.0
+                  ]
+                }
+              }
+            },
+            {
+              "id": 3,
+              "appearance": {
+                "items": [
+                  {
+                    "kind": "fill",
+                    "paint": {
+                      "type": "solid",
+                      "color": {
+                        "model": "rgb",
+                        "r": 0.10980392,
+                        "g": 0.12156863,
+                        "b": 0.16470589
+                      }
+                    }
+                  },
+                  {
+                    "kind": "stroke",
+                    "paint": {
+                      "type": "none"
+                    },
+                    "width": 44.0
+                  }
+                ]
+              },
+              "kind": {
+                "type": "path",
+                "path": {
+                  "subpaths": [
+                    {
+                      "anchors": [
+                        {
+                          "p": [
+                            0.00007999999996854967,
+                            1040.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            943.99992,
+                            1040.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            943.99992,
+                            1408.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            0.00007999999996854967,
+                            1408.0
+                          ]
+                        }
+                      ],
+                      "closed": true
+                    }
+                  ]
+                },
+                "live": {
+                  "shape": "rectangle",
+                  "w": 943.9998400000001,
+                  "h": 368.0,
+                  "radii": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "xf": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.00007999999996854967,
+                    1040.0
+                  ]
+                }
+              }
+            },
+            {
+              "id": 4,
+              "appearance": {
+                "items": [
+                  {
+                    "kind": "fill",
+                    "paint": {
+                      "type": "solid",
+                      "color": {
+                        "model": "rgb",
+                        "r": 0.10980392,
+                        "g": 0.12156863,
+                        "b": 0.16470589
+                      }
+                    }
+                  },
+                  {
+                    "kind": "stroke",
+                    "paint": {
+                      "type": "none"
+                    },
+                    "width": 44.0
+                  }
+                ]
+              },
+              "kind": {
+                "type": "path",
+                "path": {
+                  "subpaths": [
+                    {
+                      "anchors": [
+                        {
+                          "p": [
+                            112.0,
+                            80.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            196.0,
+                            80.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            196.0,
+                            432.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            112.0,
+                            432.0
+                          ]
+                        }
+                      ],
+                      "closed": true
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "id": 6,
+              "appearance": {
+                "items": [
+                  {
+                    "kind": "fill",
+                    "paint": {
+                      "type": "solid",
+                      "color": {
+                        "model": "rgb",
+                        "r": 0.10980392,
+                        "g": 0.12156863,
+                        "b": 0.16470589
+                      }
+                    }
+                  },
+                  {
+                    "kind": "stroke",
+                    "paint": {
+                      "type": "none"
+                    },
+                    "width": 44.0
+                  }
+                ]
+              },
+              "kind": {
+                "type": "path",
+                "path": {
+                  "subpaths": [
+                    {
+                      "anchors": [
+                        {
+                          "p": [
+                            212.0,
+                            318.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            212.0,
+                            228.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            360.0,
+                            80.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            412.0,
+                            80.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            412.0,
+                            112.0
+                          ]
+                        }
+                      ],
+                      "closed": true
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "id": 21,
+              "appearance": {
+                "items": [
+                  {
+                    "kind": "fill",
+                    "paint": {
+                      "type": "solid",
+                      "color": {
+                        "model": "rgb",
+                        "r": 0.10980392,
+                        "g": 0.12156863,
+                        "b": 0.16470589
+                      }
+                    }
+                  },
+                  {
+                    "kind": "stroke",
+                    "paint": {
+                      "type": "none"
+                    },
+                    "width": 44.0
+                  }
+                ]
+              },
+              "kind": {
+                "type": "path",
+                "path": {
+                  "subpaths": [
+                    {
+                      "anchors": [
+                        {
+                          "p": [
+                            244.6945461202497,
+                            295.8092855366218
+                          ]
+                        },
+                        {
+                          "p": [
+                            301.6435208729637,
+                            237.15184154132646
+                          ]
+                        },
+                        {
+                          "p": [
+                            412.0,
+                            432.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            320.0,
+                            432.0
+                          ]
+                        }
+                      ],
+                      "closed": true
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "id": 7,
+              "appearance": {
+                "items": [
+                  {
+                    "kind": "fill",
+                    "paint": {
+                      "type": "solid",
+                      "color": {
+                        "model": "rgb",
+                        "r": 0.7607843,
+                        "g": 0.30588236,
+                        "b": 0.16470589
+                      }
+                    }
+                  },
+                  {
+                    "kind": "stroke",
+                    "paint": {
+                      "type": "none"
+                    },
+                    "width": 44.0
+                  }
+                ]
+              },
+              "kind": {
+                "type": "path",
+                "path": {
+                  "subpaths": [
+                    {
+                      "anchors": [
+                        {
+                          "p": [
+                            664.0,
+                            80.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            748.0,
+                            80.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            748.0,
+                            432.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            664.0,
+                            432.0
+                          ]
+                        }
+                      ],
+                      "closed": true
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "id": 8,
+              "appearance": {
+                "items": [
+                  {
+                    "kind": "fill",
+                    "paint": {
+                      "type": "solid",
+                      "color": {
+                        "model": "rgb",
+                        "r": 0.5411765,
+                        "g": 0.18431373,
+                        "b": 0.08627451
+                      }
+                    }
+                  },
+                  {
+                    "kind": "stroke",
+                    "paint": {
+                      "type": "none"
+                    },
+                    "width": 44.0
+                  }
+                ]
+              },
+              "kind": {
+                "type": "path",
+                "path": {
+                  "subpaths": [
+                    {
+                      "anchors": [
+                        {
+                          "p": [
+                            778.0,
+                            262.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            836.0,
+                            206.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            964.0,
+                            432.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            872.0,
+                            432.0
+                          ]
+                        }
+                      ],
+                      "closed": true
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "id": 9,
+              "appearance": {
+                "items": [
+                  {
+                    "kind": "fill",
+                    "paint": {
+                      "type": "solid",
+                      "color": {
+                        "model": "rgb",
+                        "r": 0.7607843,
+                        "g": 0.30588236,
+                        "b": 0.16470589
+                      }
+                    }
+                  },
+                  {
+                    "kind": "stroke",
+                    "paint": {
+                      "type": "none"
+                    },
+                    "width": 44.0
+                  }
+                ]
+              },
+              "kind": {
+                "type": "path",
+                "path": {
+                  "subpaths": [
+                    {
+                      "anchors": [
+                        {
+                          "p": [
+                            764.0,
+                            318.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            764.0,
+                            228.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            912.0,
+                            80.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            964.0,
+                            80.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            964.0,
+                            112.0
+                          ]
+                        }
+                      ],
+                      "closed": true
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "id": 10,
+              "appearance": {
+                "items": [
+                  {
+                    "kind": "fill",
+                    "paint": {
+                      "type": "solid",
+                      "color": {
+                        "model": "rgb",
+                        "r": 0.9529412,
+                        "g": 0.92941177,
+                        "b": 0.89411765
+                      }
+                    }
+                  },
+                  {
+                    "kind": "stroke",
+                    "paint": {
+                      "type": "none"
+                    },
+                    "width": 44.0
+                  }
+                ]
+              },
+              "kind": {
+                "type": "path",
+                "path": {
+                  "subpaths": [
+                    {
+                      "anchors": [
+                        {
+                          "p": [
+                            1216.0,
+                            80.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            1300.0,
+                            80.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            1300.0,
+                            432.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            1216.0,
+                            432.0
+                          ]
+                        }
+                      ],
+                      "closed": true
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "id": 11,
+              "appearance": {
+                "items": [
+                  {
+                    "kind": "fill",
+                    "paint": {
+                      "type": "solid",
+                      "color": {
+                        "model": "rgb",
+                        "r": 0.9098039,
+                        "g": 0.5019608,
+                        "b": 0.37254903
+                      }
+                    }
+                  },
+                  {
+                    "kind": "stroke",
+                    "paint": {
+                      "type": "none"
+                    },
+                    "width": 44.0
+                  }
+                ]
+              },
+              "kind": {
+                "type": "path",
+                "path": {
+                  "subpaths": [
+                    {
+                      "anchors": [
+                        {
+                          "p": [
+                            1330.0,
+                            262.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            1388.0,
+                            206.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            1516.0,
+                            432.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            1424.0,
+                            432.0
+                          ]
+                        }
+                      ],
+                      "closed": true
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "id": 12,
+              "appearance": {
+                "items": [
+                  {
+                    "kind": "fill",
+                    "paint": {
+                      "type": "solid",
+                      "color": {
+                        "model": "rgb",
+                        "r": 0.9529412,
+                        "g": 0.92941177,
+                        "b": 0.89411765
+                      }
+                    }
+                  },
+                  {
+                    "kind": "stroke",
+                    "paint": {
+                      "type": "none"
+                    },
+                    "width": 44.0
+                  }
+                ]
+              },
+              "kind": {
+                "type": "path",
+                "path": {
+                  "subpaths": [
+                    {
+                      "anchors": [
+                        {
+                          "p": [
+                            1316.0,
+                            318.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            1316.0,
+                            228.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            1464.0,
+                            80.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            1516.0,
+                            80.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            1516.0,
+                            112.0
+                          ]
+                        }
+                      ],
+                      "closed": true
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "id": 13,
+              "appearance": {
+                "items": [
+                  {
+                    "kind": "fill",
+                    "paint": {
+                      "type": "solid",
+                      "color": {
+                        "model": "rgb",
+                        "r": 0.7607843,
+                        "g": 0.30588236,
+                        "b": 0.16470589
+                      }
+                    }
+                  },
+                  {
+                    "kind": "stroke",
+                    "paint": {
+                      "type": "none"
+                    },
+                    "width": 44.0
+                  }
+                ]
+              },
+              "kind": {
+                "type": "path",
+                "path": {
+                  "subpaths": [
+                    {
+                      "anchors": [
+                        {
+                          "p": [
+                            96.0,
+                            688.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            138.0,
+                            688.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            138.0,
+                            864.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            96.0,
+                            864.0
+                          ]
+                        }
+                      ],
+                      "closed": true
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "id": 14,
+              "appearance": {
+                "items": [
+                  {
+                    "kind": "fill",
+                    "paint": {
+                      "type": "solid",
+                      "color": {
+                        "model": "rgb",
+                        "r": 0.5411765,
+                        "g": 0.18431373,
+                        "b": 0.08627451
+                      }
+                    }
+                  },
+                  {
+                    "kind": "stroke",
+                    "paint": {
+                      "type": "none"
+                    },
+                    "width": 44.0
+                  }
+                ]
+              },
+              "kind": {
+                "type": "path",
+                "path": {
+                  "subpaths": [
+                    {
+                      "anchors": [
+                        {
+                          "p": [
+                            153.0,
+                            779.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            182.0,
+                            751.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            246.0,
+                            864.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            200.0,
+                            864.0
+                          ]
+                        }
+                      ],
+                      "closed": true
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "id": 15,
+              "appearance": {
+                "items": [
+                  {
+                    "kind": "fill",
+                    "paint": {
+                      "type": "solid",
+                      "color": {
+                        "model": "rgb",
+                        "r": 0.7607843,
+                        "g": 0.30588236,
+                        "b": 0.16470589
+                      }
+                    }
+                  },
+                  {
+                    "kind": "stroke",
+                    "paint": {
+                      "type": "none"
+                    },
+                    "width": 44.0
+                  }
+                ]
+              },
+              "kind": {
+                "type": "path",
+                "path": {
+                  "subpaths": [
+                    {
+                      "anchors": [
+                        {
+                          "p": [
+                            146.0,
+                            807.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            146.0,
+                            762.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            220.0,
+                            688.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            246.0,
+                            688.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            246.0,
+                            704.0
+                          ]
+                        }
+                      ],
+                      "closed": true
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "id": 16,
+              "appearance": {
+                "items": [
+                  {
+                    "kind": "fill",
+                    "paint": {
+                      "type": "solid",
+                      "color": {
+                        "model": "rgb",
+                        "r": 0.9529412,
+                        "g": 0.92941177,
+                        "b": 0.89411765
+                      }
+                    }
+                  },
+                  {
+                    "kind": "stroke",
+                    "paint": {
+                      "type": "none"
+                    },
+                    "width": 44.0
+                  }
+                ]
+              },
+              "kind": {
+                "type": "path",
+                "path": {
+                  "subpaths": [
+                    {
+                      "anchors": [
+                        {
+                          "p": [
+                            96.0,
+                            1176.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            138.0,
+                            1176.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            138.0,
+                            1352.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            96.0,
+                            1352.0
+                          ]
+                        }
+                      ],
+                      "closed": true
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "id": 17,
+              "appearance": {
+                "items": [
+                  {
+                    "kind": "fill",
+                    "paint": {
+                      "type": "solid",
+                      "color": {
+                        "model": "rgb",
+                        "r": 0.9098039,
+                        "g": 0.5019608,
+                        "b": 0.37254903
+                      }
+                    }
+                  },
+                  {
+                    "kind": "stroke",
+                    "paint": {
+                      "type": "none"
+                    },
+                    "width": 44.0
+                  }
+                ]
+              },
+              "kind": {
+                "type": "path",
+                "path": {
+                  "subpaths": [
+                    {
+                      "anchors": [
+                        {
+                          "p": [
+                            153.0,
+                            1267.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            182.0,
+                            1239.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            246.0,
+                            1352.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            200.0,
+                            1352.0
+                          ]
+                        }
+                      ],
+                      "closed": true
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "id": 18,
+              "appearance": {
+                "items": [
+                  {
+                    "kind": "fill",
+                    "paint": {
+                      "type": "solid",
+                      "color": {
+                        "model": "rgb",
+                        "r": 0.9529412,
+                        "g": 0.92941177,
+                        "b": 0.89411765
+                      }
+                    }
+                  },
+                  {
+                    "kind": "stroke",
+                    "paint": {
+                      "type": "none"
+                    },
+                    "width": 44.0
+                  }
+                ]
+              },
+              "kind": {
+                "type": "path",
+                "path": {
+                  "subpaths": [
+                    {
+                      "anchors": [
+                        {
+                          "p": [
+                            146.0,
+                            1295.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            146.0,
+                            1250.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            220.0,
+                            1176.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            246.0,
+                            1176.0
+                          ]
+                        },
+                        {
+                          "p": [
+                            246.0,
+                            1192.0
+                          ]
+                        }
+                      ],
+                      "closed": true
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "id": 65,
+              "kind": {
+                "type": "group",
+                "children": [
+                  {
+                    "id": 53,
+                    "appearance": {
+                      "items": [
+                        {
+                          "kind": "fill",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.10980392,
+                              "g": 0.12156863,
+                              "b": 0.16470589
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "compound",
+                      "children": [
+                        {
+                          "id": 54,
+                          "kind": {
+                            "type": "path",
+                            "path": {
+                              "subpaths": [
+                                {
+                                  "anchors": [
+                                    {
+                                      "p": [
+                                        279.52,
+                                        864.0
+                                      ]
+                                    },
+                                    {
+                                      "p": [
+                                        279.52,
+                                        746.16
+                                      ]
+                                    },
+                                    {
+                                      "p": [
+                                        307.12,
+                                        746.16
+                                      ]
+                                    },
+                                    {
+                                      "p": [
+                                        307.12,
+                                        864.0
+                                      ]
+                                    }
+                                  ],
+                                  "closed": true
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "id": 55,
+                          "kind": {
+                            "type": "path",
+                            "path": {
+                              "subpaths": [
+                                {
+                                  "anchors": [
+                                    {
+                                      "p": [
+                                        293.2,
+                                        725.52
+                                      ],
+                                      "in": [
+                                        298.15999999999997,
+                                        725.52
+                                      ],
+                                      "out": [
+                                        288.24,
+                                        725.52
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        281.2,
+                                        721.2
+                                      ],
+                                      "in": [
+                                        284.24,
+                                        724.08
+                                      ],
+                                      "out": [
+                                        278.16,
+                                        718.3199999999999
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        276.64,
+                                        709.6800000000001
+                                      ],
+                                      "in": [
+                                        276.64,
+                                        714.48
+                                      ],
+                                      "out": [
+                                        276.64,
+                                        705.04
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        281.2,
+                                        698.4
+                                      ],
+                                      "in": [
+                                        278.16,
+                                        701.28
+                                      ],
+                                      "out": [
+                                        284.24,
+                                        695.52
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        293.2,
+                                        694.08
+                                      ],
+                                      "in": [
+                                        288.24,
+                                        694.08
+                                      ],
+                                      "out": [
+                                        298.15999999999997,
+                                        694.08
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        305.2,
+                                        698.4
+                                      ],
+                                      "in": [
+                                        302.15999999999997,
+                                        695.52
+                                      ],
+                                      "out": [
+                                        308.24,
+                                        701.28
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        309.76,
+                                        709.6800000000001
+                                      ],
+                                      "in": [
+                                        309.76,
+                                        705.04
+                                      ],
+                                      "out": [
+                                        309.76,
+                                        714.48
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        305.2,
+                                        721.2
+                                      ],
+                                      "in": [
+                                        308.24,
+                                        718.3199999999999
+                                      ],
+                                      "out": [
+                                        302.15999999999997,
+                                        724.08
+                                      ],
+                                      "kind": "Smooth"
+                                    }
+                                  ],
+                                  "closed": true
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      ],
+                      "rule": "NonZero"
+                    }
+                  },
+                  {
+                    "id": 56,
+                    "appearance": {
+                      "items": [
+                        {
+                          "kind": "fill",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.10980392,
+                              "g": 0.12156863,
+                              "b": 0.16470589
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "path",
+                      "path": {
+                        "subpaths": [
+                          {
+                            "anchors": [
+                              {
+                                "p": [
+                                  342.4,
+                                  864.0
+                                ]
+                              },
+                              {
+                                "p": [
+                                  342.4,
+                                  746.16
+                                ]
+                              },
+                              {
+                                "p": [
+                                  365.2,
+                                  746.16
+                                ]
+                              },
+                              {
+                                "p": [
+                                  367.12,
+                                  762.0
+                                ]
+                              },
+                              {
+                                "p": [
+                                  368.08,
+                                  762.0
+                                ],
+                                "out": [
+                                  373.36,
+                                  756.88
+                                ]
+                              },
+                              {
+                                "p": [
+                                  385.36,
+                                  748.8
+                                ],
+                                "in": [
+                                  379.12,
+                                  752.48
+                                ],
+                                "out": [
+                                  391.6,
+                                  745.12
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  406.72,
+                                  743.28
+                                ],
+                                "in": [
+                                  398.72,
+                                  743.28
+                                ],
+                                "out": [
+                                  419.36,
+                                  743.28
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  434.32,
+                                  755.52
+                                ],
+                                "in": [
+                                  428.56,
+                                  747.36
+                                ],
+                                "out": [
+                                  440.08,
+                                  763.6800000000001
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  442.96,
+                                  790.08
+                                ],
+                                "in": [
+                                  442.96,
+                                  775.2
+                                ]
+                              },
+                              {
+                                "p": [
+                                  442.96,
+                                  864.0
+                                ]
+                              },
+                              {
+                                "p": [
+                                  415.36,
+                                  864.0
+                                ]
+                              },
+                              {
+                                "p": [
+                                  415.36,
+                                  793.6800000000001
+                                ],
+                                "out": [
+                                  415.36,
+                                  783.92
+                                ]
+                              },
+                              {
+                                "p": [
+                                  411.03999999999996,
+                                  773.04
+                                ],
+                                "in": [
+                                  413.91999999999996,
+                                  777.04
+                                ],
+                                "out": [
+                                  408.15999999999997,
+                                  769.04
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  396.88,
+                                  767.04
+                                ],
+                                "in": [
+                                  403.44,
+                                  767.04
+                                ],
+                                "out": [
+                                  391.76,
+                                  767.04
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  383.32,
+                                  770.76
+                                ],
+                                "in": [
+                                  387.24,
+                                  768.28
+                                ],
+                                "out": [
+                                  379.4,
+                                  773.24
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  370.0,
+                                  781.6800000000001
+                                ],
+                                "in": [
+                                  374.96,
+                                  776.88
+                                ]
+                              },
+                              {
+                                "p": [
+                                  370.0,
+                                  864.0
+                                ]
+                              }
+                            ],
+                            "closed": true
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "id": 57,
+                    "appearance": {
+                      "items": [
+                        {
+                          "kind": "fill",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.10980392,
+                              "g": 0.12156863,
+                              "b": 0.16470589
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "path",
+                      "path": {
+                        "subpaths": [
+                          {
+                            "anchors": [
+                              {
+                                "p": [
+                                  481.6,
+                                  864.0
+                                ]
+                              },
+                              {
+                                "p": [
+                                  481.6,
+                                  768.0
+                                ]
+                              },
+                              {
+                                "p": [
+                                  464.08000000000004,
+                                  768.0
+                                ]
+                              },
+                              {
+                                "p": [
+                                  464.08000000000004,
+                                  747.36
+                                ]
+                              },
+                              {
+                                "p": [
+                                  481.6,
+                                  746.16
+                                ]
+                              },
+                              {
+                                "p": [
+                                  481.6,
+                                  733.9200000000001
+                                ],
+                                "out": [
+                                  481.6,
+                                  721.6
+                                ]
+                              },
+                              {
+                                "p": [
+                                  490.72,
+                                  703.56
+                                ],
+                                "in": [
+                                  484.64,
+                                  711.48
+                                ],
+                                "out": [
+                                  496.8,
+                                  695.64
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  520.72,
+                                  691.6800000000001
+                                ],
+                                "in": [
+                                  506.8,
+                                  691.6800000000001
+                                ],
+                                "out": [
+                                  524.88,
+                                  691.6800000000001
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  532.72,
+                                  692.88
+                                ],
+                                "in": [
+                                  528.88,
+                                  692.08
+                                ],
+                                "out": [
+                                  536.56,
+                                  693.6800000000001
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  542.3199999999999,
+                                  695.76
+                                ],
+                                "in": [
+                                  539.76,
+                                  694.64
+                                ]
+                              },
+                              {
+                                "p": [
+                                  536.56,
+                                  715.6800000000001
+                                ],
+                                "out": [
+                                  532.24,
+                                  714.24
+                                ]
+                              },
+                              {
+                                "p": [
+                                  524.0799999999999,
+                                  713.52
+                                ],
+                                "in": [
+                                  528.0799999999999,
+                                  713.52
+                                ],
+                                "out": [
+                                  514.16,
+                                  713.52
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  509.2,
+                                  733.44
+                                ],
+                                "in": [
+                                  509.2,
+                                  720.16
+                                ]
+                              },
+                              {
+                                "p": [
+                                  509.2,
+                                  746.16
+                                ]
+                              },
+                              {
+                                "p": [
+                                  532.24,
+                                  746.16
+                                ]
+                              },
+                              {
+                                "p": [
+                                  532.24,
+                                  768.0
+                                ]
+                              },
+                              {
+                                "p": [
+                                  509.2,
+                                  768.0
+                                ]
+                              },
+                              {
+                                "p": [
+                                  509.2,
+                                  864.0
+                                ]
+                              }
+                            ],
+                            "closed": true
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "id": 58,
+                    "appearance": {
+                      "items": [
+                        {
+                          "kind": "fill",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.10980392,
+                              "g": 0.12156863,
+                              "b": 0.16470589
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "compound",
+                      "children": [
+                        {
+                          "id": 59,
+                          "kind": {
+                            "type": "path",
+                            "path": {
+                              "subpaths": [
+                                {
+                                  "anchors": [
+                                    {
+                                      "p": [
+                                        598.72,
+                                        866.88
+                                      ],
+                                      "in": [
+                                        608.64,
+                                        866.88
+                                      ],
+                                      "out": [
+                                        588.96,
+                                        866.88
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        571.3599999999999,
+                                        859.56
+                                      ],
+                                      "in": [
+                                        579.8399999999999,
+                                        864.44
+                                      ],
+                                      "out": [
+                                        562.88,
+                                        854.68
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        550.72,
+                                        838.44
+                                      ],
+                                      "in": [
+                                        556.0,
+                                        847.64
+                                      ],
+                                      "out": [
+                                        545.4399999999999,
+                                        829.24
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        542.8,
+                                        805.2
+                                      ],
+                                      "in": [
+                                        542.8,
+                                        818.16
+                                      ],
+                                      "out": [
+                                        542.8,
+                                        792.08
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        550.72,
+                                        771.72
+                                      ],
+                                      "in": [
+                                        545.4399999999999,
+                                        780.92
+                                      ],
+                                      "out": [
+                                        556.0,
+                                        762.52
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        571.3599999999999,
+                                        750.6
+                                      ],
+                                      "in": [
+                                        562.88,
+                                        755.48
+                                      ],
+                                      "out": [
+                                        579.8399999999999,
+                                        745.72
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        598.72,
+                                        743.28
+                                      ],
+                                      "in": [
+                                        588.96,
+                                        743.28
+                                      ],
+                                      "out": [
+                                        608.64,
+                                        743.28
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        626.3199999999999,
+                                        750.6
+                                      ],
+                                      "in": [
+                                        617.8399999999999,
+                                        745.72
+                                      ],
+                                      "out": [
+                                        634.8,
+                                        755.48
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        646.96,
+                                        771.72
+                                      ],
+                                      "in": [
+                                        641.68,
+                                        762.52
+                                      ],
+                                      "out": [
+                                        652.24,
+                                        780.92
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        654.88,
+                                        805.2
+                                      ],
+                                      "in": [
+                                        654.88,
+                                        792.08
+                                      ],
+                                      "out": [
+                                        654.88,
+                                        818.16
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        646.96,
+                                        838.44
+                                      ],
+                                      "in": [
+                                        652.24,
+                                        829.24
+                                      ],
+                                      "out": [
+                                        641.68,
+                                        847.64
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        626.3199999999999,
+                                        859.56
+                                      ],
+                                      "in": [
+                                        634.8,
+                                        854.68
+                                      ],
+                                      "out": [
+                                        617.8399999999999,
+                                        864.44
+                                      ],
+                                      "kind": "Smooth"
+                                    }
+                                  ],
+                                  "closed": true
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "id": 60,
+                          "kind": {
+                            "type": "path",
+                            "path": {
+                              "subpaths": [
+                                {
+                                  "anchors": [
+                                    {
+                                      "p": [
+                                        598.72,
+                                        844.32
+                                      ],
+                                      "in": [
+                                        590.0799999999999,
+                                        844.32
+                                      ],
+                                      "out": [
+                                        607.3599999999999,
+                                        844.32
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        619.12,
+                                        833.52
+                                      ],
+                                      "in": [
+                                        614.16,
+                                        840.72
+                                      ],
+                                      "out": [
+                                        624.0799999999999,
+                                        826.32
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        626.56,
+                                        805.2
+                                      ],
+                                      "in": [
+                                        626.56,
+                                        816.88
+                                      ],
+                                      "out": [
+                                        626.56,
+                                        793.36
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        619.12,
+                                        776.64
+                                      ],
+                                      "in": [
+                                        624.0799999999999,
+                                        783.84
+                                      ],
+                                      "out": [
+                                        614.16,
+                                        769.44
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        598.72,
+                                        765.84
+                                      ],
+                                      "in": [
+                                        607.3599999999999,
+                                        765.84
+                                      ],
+                                      "out": [
+                                        590.0799999999999,
+                                        765.84
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        578.44,
+                                        776.64
+                                      ],
+                                      "in": [
+                                        583.3199999999999,
+                                        769.44
+                                      ],
+                                      "out": [
+                                        573.56,
+                                        783.84
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        571.12,
+                                        805.2
+                                      ],
+                                      "in": [
+                                        571.12,
+                                        793.36
+                                      ],
+                                      "out": [
+                                        571.12,
+                                        816.88
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        578.44,
+                                        833.52
+                                      ],
+                                      "in": [
+                                        573.56,
+                                        826.32
+                                      ],
+                                      "out": [
+                                        583.3199999999999,
+                                        840.72
+                                      ],
+                                      "kind": "Smooth"
+                                    }
+                                  ],
+                                  "closed": true
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      ],
+                      "rule": "NonZero"
+                    }
+                  },
+                  {
+                    "id": 61,
+                    "appearance": {
+                      "items": [
+                        {
+                          "kind": "fill",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.10980392,
+                              "g": 0.12156863,
+                              "b": 0.16470589
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "path",
+                      "path": {
+                        "subpaths": [
+                          {
+                            "anchors": [
+                              {
+                                "p": [
+                                  709.1199999999999,
+                                  866.4
+                                ],
+                                "in": [
+                                  712.3199999999999,
+                                  866.4
+                                ],
+                                "out": [
+                                  699.3599999999999,
+                                  866.4
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  688.3599999999999,
+                                  857.52
+                                ],
+                                "in": [
+                                  692.4399999999999,
+                                  863.44
+                                ],
+                                "out": [
+                                  684.28,
+                                  851.6
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  682.24,
+                                  833.28
+                                ],
+                                "in": [
+                                  682.24,
+                                  843.52
+                                ]
+                              },
+                              {
+                                "p": [
+                                  682.24,
+                                  694.56
+                                ]
+                              },
+                              {
+                                "p": [
+                                  709.8399999999999,
+                                  694.56
+                                ]
+                              },
+                              {
+                                "p": [
+                                  709.8399999999999,
+                                  834.72
+                                ],
+                                "out": [
+                                  709.8399999999999,
+                                  838.24
+                                ]
+                              },
+                              {
+                                "p": [
+                                  711.76,
+                                  841.92
+                                ],
+                                "in": [
+                                  710.48,
+                                  840.64
+                                ],
+                                "out": [
+                                  713.04,
+                                  843.2
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  716.0799999999999,
+                                  843.84
+                                ],
+                                "in": [
+                                  714.48,
+                                  843.84
+                                ],
+                                "out": [
+                                  716.72,
+                                  843.84
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  717.88,
+                                  843.72
+                                ],
+                                "in": [
+                                  717.3199999999999,
+                                  843.8
+                                ],
+                                "out": [
+                                  718.44,
+                                  843.64
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  720.16,
+                                  843.36
+                                ],
+                                "in": [
+                                  719.2,
+                                  843.52
+                                ]
+                              },
+                              {
+                                "p": [
+                                  723.76,
+                                  864.0
+                                ],
+                                "out": [
+                                  722.16,
+                                  864.64
+                                ]
+                              },
+                              {
+                                "p": [
+                                  717.64,
+                                  865.68
+                                ],
+                                "in": [
+                                  720.1199999999999,
+                                  865.2
+                                ],
+                                "out": [
+                                  715.16,
+                                  866.16
+                                ],
+                                "kind": "Smooth"
+                              }
+                            ],
+                            "closed": true
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "id": 62,
+                    "appearance": {
+                      "items": [
+                        {
+                          "kind": "fill",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.10980392,
+                              "g": 0.12156863,
+                              "b": 0.16470589
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "compound",
+                      "children": [
+                        {
+                          "id": 63,
+                          "kind": {
+                            "type": "path",
+                            "path": {
+                              "subpaths": [
+                                {
+                                  "anchors": [
+                                    {
+                                      "p": [
+                                        788.56,
+                                        866.88
+                                      ],
+                                      "in": [
+                                        794.9599999999999,
+                                        866.88
+                                      ],
+                                      "out": [
+                                        773.8399999999999,
+                                        866.88
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        753.28,
+                                        850.56
+                                      ],
+                                      "in": [
+                                        762.0799999999999,
+                                        861.44
+                                      ],
+                                      "out": [
+                                        744.48,
+                                        839.68
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        740.0799999999999,
+                                        805.2
+                                      ],
+                                      "in": [
+                                        740.0799999999999,
+                                        824.56
+                                      ],
+                                      "out": [
+                                        740.0799999999999,
+                                        792.4
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        747.16,
+                                        772.08
+                                      ],
+                                      "in": [
+                                        742.44,
+                                        781.36
+                                      ],
+                                      "out": [
+                                        751.88,
+                                        762.8
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        765.76,
+                                        750.72
+                                      ],
+                                      "in": [
+                                        758.0799999999999,
+                                        755.6800000000001
+                                      ],
+                                      "out": [
+                                        773.44,
+                                        745.76
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        790.0,
+                                        743.28
+                                      ],
+                                      "in": [
+                                        781.52,
+                                        743.28
+                                      ],
+                                      "out": [
+                                        796.7199999999999,
+                                        743.28
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        807.16,
+                                        746.76
+                                      ],
+                                      "in": [
+                                        802.4399999999999,
+                                        744.44
+                                      ],
+                                      "out": [
+                                        811.88,
+                                        749.08
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        820.96,
+                                        756.24
+                                      ],
+                                      "in": [
+                                        816.48,
+                                        752.24
+                                      ]
+                                    },
+                                    {
+                                      "p": [
+                                        820.0,
+                                        737.28
+                                      ]
+                                    },
+                                    {
+                                      "p": [
+                                        820.0,
+                                        694.56
+                                      ]
+                                    },
+                                    {
+                                      "p": [
+                                        847.6,
+                                        694.56
+                                      ]
+                                    },
+                                    {
+                                      "p": [
+                                        847.6,
+                                        864.0
+                                      ]
+                                    },
+                                    {
+                                      "p": [
+                                        824.8,
+                                        864.0
+                                      ]
+                                    },
+                                    {
+                                      "p": [
+                                        822.88,
+                                        851.28
+                                      ]
+                                    },
+                                    {
+                                      "p": [
+                                        821.92,
+                                        851.28
+                                      ],
+                                      "out": [
+                                        817.5999999999999,
+                                        855.6
+                                      ]
+                                    },
+                                    {
+                                      "p": [
+                                        806.8,
+                                        862.32
+                                      ],
+                                      "in": [
+                                        812.56,
+                                        859.28
+                                      ],
+                                      "out": [
+                                        801.04,
+                                        865.36
+                                      ],
+                                      "kind": "Smooth"
+                                    }
+                                  ],
+                                  "closed": true
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "id": 64,
+                          "kind": {
+                            "type": "path",
+                            "path": {
+                              "subpaths": [
+                                {
+                                  "anchors": [
+                                    {
+                                      "p": [
+                                        795.28,
+                                        844.08
+                                      ],
+                                      "in": [
+                                        786.8,
+                                        844.08
+                                      ],
+                                      "out": [
+                                        804.08,
+                                        844.08
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        820.0,
+                                        830.88
+                                      ],
+                                      "in": [
+                                        812.32,
+                                        839.68
+                                      ]
+                                    },
+                                    {
+                                      "p": [
+                                        820.0,
+                                        775.92
+                                      ],
+                                      "out": [
+                                        816.0,
+                                        772.24
+                                      ]
+                                    },
+                                    {
+                                      "p": [
+                                        808.0,
+                                        768.24
+                                      ],
+                                      "in": [
+                                        812.0,
+                                        769.6800000000001
+                                      ],
+                                      "out": [
+                                        804.0,
+                                        766.8
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        796.0,
+                                        766.08
+                                      ],
+                                      "in": [
+                                        800.0,
+                                        766.08
+                                      ],
+                                      "out": [
+                                        788.48,
+                                        766.08
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        776.68,
+                                        776.28
+                                      ],
+                                      "in": [
+                                        782.04,
+                                        769.48
+                                      ],
+                                      "out": [
+                                        771.3199999999999,
+                                        783.08
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        768.64,
+                                        804.96
+                                      ],
+                                      "in": [
+                                        768.64,
+                                        792.64
+                                      ],
+                                      "out": [
+                                        768.64,
+                                        817.6
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        775.6,
+                                        834.0
+                                      ],
+                                      "in": [
+                                        770.96,
+                                        827.28
+                                      ],
+                                      "out": [
+                                        780.24,
+                                        840.72
+                                      ],
+                                      "kind": "Smooth"
+                                    }
+                                  ],
+                                  "closed": true
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      ],
+                      "rule": "NonZero"
+                    }
+                  }
+                ],
+                "clip": false
+              }
+            },
+            {
+              "id": 78,
+              "kind": {
+                "type": "group",
+                "children": [
+                  {
+                    "id": 66,
+                    "appearance": {
+                      "items": [
+                        {
+                          "kind": "fill",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.9529412,
+                              "g": 0.92941177,
+                              "b": 0.89411765
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "compound",
+                      "children": [
+                        {
+                          "id": 67,
+                          "kind": {
+                            "type": "path",
+                            "path": {
+                              "subpaths": [
+                                {
+                                  "anchors": [
+                                    {
+                                      "p": [
+                                        279.52,
+                                        1352.0
+                                      ]
+                                    },
+                                    {
+                                      "p": [
+                                        279.52,
+                                        1234.16
+                                      ]
+                                    },
+                                    {
+                                      "p": [
+                                        307.12,
+                                        1234.16
+                                      ]
+                                    },
+                                    {
+                                      "p": [
+                                        307.12,
+                                        1352.0
+                                      ]
+                                    }
+                                  ],
+                                  "closed": true
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "id": 68,
+                          "kind": {
+                            "type": "path",
+                            "path": {
+                              "subpaths": [
+                                {
+                                  "anchors": [
+                                    {
+                                      "p": [
+                                        293.2,
+                                        1213.52
+                                      ],
+                                      "in": [
+                                        298.15999999999997,
+                                        1213.52
+                                      ],
+                                      "out": [
+                                        288.24,
+                                        1213.52
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        281.2,
+                                        1209.2
+                                      ],
+                                      "in": [
+                                        284.24,
+                                        1212.08
+                                      ],
+                                      "out": [
+                                        278.16,
+                                        1206.32
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        276.64,
+                                        1197.68
+                                      ],
+                                      "in": [
+                                        276.64,
+                                        1202.48
+                                      ],
+                                      "out": [
+                                        276.64,
+                                        1193.04
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        281.2,
+                                        1186.4
+                                      ],
+                                      "in": [
+                                        278.16,
+                                        1189.28
+                                      ],
+                                      "out": [
+                                        284.24,
+                                        1183.52
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        293.2,
+                                        1182.08
+                                      ],
+                                      "in": [
+                                        288.24,
+                                        1182.08
+                                      ],
+                                      "out": [
+                                        298.15999999999997,
+                                        1182.08
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        305.2,
+                                        1186.4
+                                      ],
+                                      "in": [
+                                        302.15999999999997,
+                                        1183.52
+                                      ],
+                                      "out": [
+                                        308.24,
+                                        1189.28
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        309.76,
+                                        1197.68
+                                      ],
+                                      "in": [
+                                        309.76,
+                                        1193.04
+                                      ],
+                                      "out": [
+                                        309.76,
+                                        1202.48
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        305.2,
+                                        1209.2
+                                      ],
+                                      "in": [
+                                        308.24,
+                                        1206.32
+                                      ],
+                                      "out": [
+                                        302.15999999999997,
+                                        1212.08
+                                      ],
+                                      "kind": "Smooth"
+                                    }
+                                  ],
+                                  "closed": true
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      ],
+                      "rule": "NonZero"
+                    }
+                  },
+                  {
+                    "id": 69,
+                    "appearance": {
+                      "items": [
+                        {
+                          "kind": "fill",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.9529412,
+                              "g": 0.92941177,
+                              "b": 0.89411765
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "path",
+                      "path": {
+                        "subpaths": [
+                          {
+                            "anchors": [
+                              {
+                                "p": [
+                                  342.4,
+                                  1352.0
+                                ]
+                              },
+                              {
+                                "p": [
+                                  342.4,
+                                  1234.16
+                                ]
+                              },
+                              {
+                                "p": [
+                                  365.2,
+                                  1234.16
+                                ]
+                              },
+                              {
+                                "p": [
+                                  367.12,
+                                  1250.0
+                                ]
+                              },
+                              {
+                                "p": [
+                                  368.08,
+                                  1250.0
+                                ],
+                                "out": [
+                                  373.36,
+                                  1244.88
+                                ]
+                              },
+                              {
+                                "p": [
+                                  385.36,
+                                  1236.8
+                                ],
+                                "in": [
+                                  379.12,
+                                  1240.48
+                                ],
+                                "out": [
+                                  391.6,
+                                  1233.12
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  406.72,
+                                  1231.28
+                                ],
+                                "in": [
+                                  398.72,
+                                  1231.28
+                                ],
+                                "out": [
+                                  419.36,
+                                  1231.28
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  434.32,
+                                  1243.52
+                                ],
+                                "in": [
+                                  428.56,
+                                  1235.36
+                                ],
+                                "out": [
+                                  440.08,
+                                  1251.68
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  442.96,
+                                  1278.08
+                                ],
+                                "in": [
+                                  442.96,
+                                  1263.2
+                                ]
+                              },
+                              {
+                                "p": [
+                                  442.96,
+                                  1352.0
+                                ]
+                              },
+                              {
+                                "p": [
+                                  415.36,
+                                  1352.0
+                                ]
+                              },
+                              {
+                                "p": [
+                                  415.36,
+                                  1281.68
+                                ],
+                                "out": [
+                                  415.36,
+                                  1271.92
+                                ]
+                              },
+                              {
+                                "p": [
+                                  411.03999999999996,
+                                  1261.04
+                                ],
+                                "in": [
+                                  413.91999999999996,
+                                  1265.04
+                                ],
+                                "out": [
+                                  408.15999999999997,
+                                  1257.04
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  396.88,
+                                  1255.04
+                                ],
+                                "in": [
+                                  403.44,
+                                  1255.04
+                                ],
+                                "out": [
+                                  391.76,
+                                  1255.04
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  383.32,
+                                  1258.76
+                                ],
+                                "in": [
+                                  387.24,
+                                  1256.28
+                                ],
+                                "out": [
+                                  379.4,
+                                  1261.24
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  370.0,
+                                  1269.68
+                                ],
+                                "in": [
+                                  374.96,
+                                  1264.88
+                                ]
+                              },
+                              {
+                                "p": [
+                                  370.0,
+                                  1352.0
+                                ]
+                              }
+                            ],
+                            "closed": true
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "id": 70,
+                    "appearance": {
+                      "items": [
+                        {
+                          "kind": "fill",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.9529412,
+                              "g": 0.92941177,
+                              "b": 0.89411765
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "path",
+                      "path": {
+                        "subpaths": [
+                          {
+                            "anchors": [
+                              {
+                                "p": [
+                                  481.6,
+                                  1352.0
+                                ]
+                              },
+                              {
+                                "p": [
+                                  481.6,
+                                  1256.0
+                                ]
+                              },
+                              {
+                                "p": [
+                                  464.08000000000004,
+                                  1256.0
+                                ]
+                              },
+                              {
+                                "p": [
+                                  464.08000000000004,
+                                  1235.36
+                                ]
+                              },
+                              {
+                                "p": [
+                                  481.6,
+                                  1234.16
+                                ]
+                              },
+                              {
+                                "p": [
+                                  481.6,
+                                  1221.92
+                                ],
+                                "out": [
+                                  481.6,
+                                  1209.6
+                                ]
+                              },
+                              {
+                                "p": [
+                                  490.72,
+                                  1191.56
+                                ],
+                                "in": [
+                                  484.64,
+                                  1199.48
+                                ],
+                                "out": [
+                                  496.8,
+                                  1183.64
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  520.72,
+                                  1179.68
+                                ],
+                                "in": [
+                                  506.8,
+                                  1179.68
+                                ],
+                                "out": [
+                                  524.88,
+                                  1179.68
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  532.72,
+                                  1180.88
+                                ],
+                                "in": [
+                                  528.88,
+                                  1180.08
+                                ],
+                                "out": [
+                                  536.56,
+                                  1181.68
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  542.3199999999999,
+                                  1183.76
+                                ],
+                                "in": [
+                                  539.76,
+                                  1182.64
+                                ]
+                              },
+                              {
+                                "p": [
+                                  536.56,
+                                  1203.68
+                                ],
+                                "out": [
+                                  532.24,
+                                  1202.24
+                                ]
+                              },
+                              {
+                                "p": [
+                                  524.0799999999999,
+                                  1201.52
+                                ],
+                                "in": [
+                                  528.0799999999999,
+                                  1201.52
+                                ],
+                                "out": [
+                                  514.16,
+                                  1201.52
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  509.2,
+                                  1221.44
+                                ],
+                                "in": [
+                                  509.2,
+                                  1208.16
+                                ]
+                              },
+                              {
+                                "p": [
+                                  509.2,
+                                  1234.16
+                                ]
+                              },
+                              {
+                                "p": [
+                                  532.24,
+                                  1234.16
+                                ]
+                              },
+                              {
+                                "p": [
+                                  532.24,
+                                  1256.0
+                                ]
+                              },
+                              {
+                                "p": [
+                                  509.2,
+                                  1256.0
+                                ]
+                              },
+                              {
+                                "p": [
+                                  509.2,
+                                  1352.0
+                                ]
+                              }
+                            ],
+                            "closed": true
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "id": 71,
+                    "appearance": {
+                      "items": [
+                        {
+                          "kind": "fill",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.9529412,
+                              "g": 0.92941177,
+                              "b": 0.89411765
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "compound",
+                      "children": [
+                        {
+                          "id": 72,
+                          "kind": {
+                            "type": "path",
+                            "path": {
+                              "subpaths": [
+                                {
+                                  "anchors": [
+                                    {
+                                      "p": [
+                                        598.72,
+                                        1354.88
+                                      ],
+                                      "in": [
+                                        608.64,
+                                        1354.88
+                                      ],
+                                      "out": [
+                                        588.96,
+                                        1354.88
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        571.3599999999999,
+                                        1347.56
+                                      ],
+                                      "in": [
+                                        579.8399999999999,
+                                        1352.44
+                                      ],
+                                      "out": [
+                                        562.88,
+                                        1342.68
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        550.72,
+                                        1326.44
+                                      ],
+                                      "in": [
+                                        556.0,
+                                        1335.64
+                                      ],
+                                      "out": [
+                                        545.4399999999999,
+                                        1317.24
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        542.8,
+                                        1293.2
+                                      ],
+                                      "in": [
+                                        542.8,
+                                        1306.16
+                                      ],
+                                      "out": [
+                                        542.8,
+                                        1280.08
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        550.72,
+                                        1259.72
+                                      ],
+                                      "in": [
+                                        545.4399999999999,
+                                        1268.92
+                                      ],
+                                      "out": [
+                                        556.0,
+                                        1250.52
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        571.3599999999999,
+                                        1238.6
+                                      ],
+                                      "in": [
+                                        562.88,
+                                        1243.48
+                                      ],
+                                      "out": [
+                                        579.8399999999999,
+                                        1233.72
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        598.72,
+                                        1231.28
+                                      ],
+                                      "in": [
+                                        588.96,
+                                        1231.28
+                                      ],
+                                      "out": [
+                                        608.64,
+                                        1231.28
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        626.3199999999999,
+                                        1238.6
+                                      ],
+                                      "in": [
+                                        617.8399999999999,
+                                        1233.72
+                                      ],
+                                      "out": [
+                                        634.8,
+                                        1243.48
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        646.96,
+                                        1259.72
+                                      ],
+                                      "in": [
+                                        641.68,
+                                        1250.52
+                                      ],
+                                      "out": [
+                                        652.24,
+                                        1268.92
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        654.88,
+                                        1293.2
+                                      ],
+                                      "in": [
+                                        654.88,
+                                        1280.08
+                                      ],
+                                      "out": [
+                                        654.88,
+                                        1306.16
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        646.96,
+                                        1326.44
+                                      ],
+                                      "in": [
+                                        652.24,
+                                        1317.24
+                                      ],
+                                      "out": [
+                                        641.68,
+                                        1335.64
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        626.3199999999999,
+                                        1347.56
+                                      ],
+                                      "in": [
+                                        634.8,
+                                        1342.68
+                                      ],
+                                      "out": [
+                                        617.8399999999999,
+                                        1352.44
+                                      ],
+                                      "kind": "Smooth"
+                                    }
+                                  ],
+                                  "closed": true
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "id": 73,
+                          "kind": {
+                            "type": "path",
+                            "path": {
+                              "subpaths": [
+                                {
+                                  "anchors": [
+                                    {
+                                      "p": [
+                                        598.72,
+                                        1332.32
+                                      ],
+                                      "in": [
+                                        590.0799999999999,
+                                        1332.32
+                                      ],
+                                      "out": [
+                                        607.3599999999999,
+                                        1332.32
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        619.12,
+                                        1321.52
+                                      ],
+                                      "in": [
+                                        614.16,
+                                        1328.72
+                                      ],
+                                      "out": [
+                                        624.0799999999999,
+                                        1314.32
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        626.56,
+                                        1293.2
+                                      ],
+                                      "in": [
+                                        626.56,
+                                        1304.88
+                                      ],
+                                      "out": [
+                                        626.56,
+                                        1281.36
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        619.12,
+                                        1264.64
+                                      ],
+                                      "in": [
+                                        624.0799999999999,
+                                        1271.84
+                                      ],
+                                      "out": [
+                                        614.16,
+                                        1257.44
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        598.72,
+                                        1253.84
+                                      ],
+                                      "in": [
+                                        607.3599999999999,
+                                        1253.84
+                                      ],
+                                      "out": [
+                                        590.0799999999999,
+                                        1253.84
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        578.44,
+                                        1264.64
+                                      ],
+                                      "in": [
+                                        583.3199999999999,
+                                        1257.44
+                                      ],
+                                      "out": [
+                                        573.56,
+                                        1271.84
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        571.12,
+                                        1293.2
+                                      ],
+                                      "in": [
+                                        571.12,
+                                        1281.36
+                                      ],
+                                      "out": [
+                                        571.12,
+                                        1304.88
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        578.44,
+                                        1321.52
+                                      ],
+                                      "in": [
+                                        573.56,
+                                        1314.32
+                                      ],
+                                      "out": [
+                                        583.3199999999999,
+                                        1328.72
+                                      ],
+                                      "kind": "Smooth"
+                                    }
+                                  ],
+                                  "closed": true
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      ],
+                      "rule": "NonZero"
+                    }
+                  },
+                  {
+                    "id": 74,
+                    "appearance": {
+                      "items": [
+                        {
+                          "kind": "fill",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.9529412,
+                              "g": 0.92941177,
+                              "b": 0.89411765
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "path",
+                      "path": {
+                        "subpaths": [
+                          {
+                            "anchors": [
+                              {
+                                "p": [
+                                  709.1199999999999,
+                                  1354.4
+                                ],
+                                "in": [
+                                  712.3199999999999,
+                                  1354.4
+                                ],
+                                "out": [
+                                  699.3599999999999,
+                                  1354.4
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  688.3599999999999,
+                                  1345.52
+                                ],
+                                "in": [
+                                  692.4399999999999,
+                                  1351.44
+                                ],
+                                "out": [
+                                  684.28,
+                                  1339.6
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  682.24,
+                                  1321.28
+                                ],
+                                "in": [
+                                  682.24,
+                                  1331.52
+                                ]
+                              },
+                              {
+                                "p": [
+                                  682.24,
+                                  1182.56
+                                ]
+                              },
+                              {
+                                "p": [
+                                  709.8399999999999,
+                                  1182.56
+                                ]
+                              },
+                              {
+                                "p": [
+                                  709.8399999999999,
+                                  1322.72
+                                ],
+                                "out": [
+                                  709.8399999999999,
+                                  1326.24
+                                ]
+                              },
+                              {
+                                "p": [
+                                  711.76,
+                                  1329.92
+                                ],
+                                "in": [
+                                  710.48,
+                                  1328.64
+                                ],
+                                "out": [
+                                  713.04,
+                                  1331.2
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  716.0799999999999,
+                                  1331.84
+                                ],
+                                "in": [
+                                  714.48,
+                                  1331.84
+                                ],
+                                "out": [
+                                  716.72,
+                                  1331.84
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  717.88,
+                                  1331.72
+                                ],
+                                "in": [
+                                  717.3199999999999,
+                                  1331.8
+                                ],
+                                "out": [
+                                  718.44,
+                                  1331.64
+                                ],
+                                "kind": "Smooth"
+                              },
+                              {
+                                "p": [
+                                  720.16,
+                                  1331.36
+                                ],
+                                "in": [
+                                  719.2,
+                                  1331.52
+                                ]
+                              },
+                              {
+                                "p": [
+                                  723.76,
+                                  1352.0
+                                ],
+                                "out": [
+                                  722.16,
+                                  1352.64
+                                ]
+                              },
+                              {
+                                "p": [
+                                  717.64,
+                                  1353.68
+                                ],
+                                "in": [
+                                  720.1199999999999,
+                                  1353.2
+                                ],
+                                "out": [
+                                  715.16,
+                                  1354.16
+                                ],
+                                "kind": "Smooth"
+                              }
+                            ],
+                            "closed": true
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "id": 75,
+                    "appearance": {
+                      "items": [
+                        {
+                          "kind": "fill",
+                          "paint": {
+                            "type": "solid",
+                            "color": {
+                              "model": "rgb",
+                              "r": 0.9529412,
+                              "g": 0.92941177,
+                              "b": 0.89411765
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "kind": {
+                      "type": "compound",
+                      "children": [
+                        {
+                          "id": 76,
+                          "kind": {
+                            "type": "path",
+                            "path": {
+                              "subpaths": [
+                                {
+                                  "anchors": [
+                                    {
+                                      "p": [
+                                        788.56,
+                                        1354.88
+                                      ],
+                                      "in": [
+                                        794.9599999999999,
+                                        1354.88
+                                      ],
+                                      "out": [
+                                        773.8399999999999,
+                                        1354.88
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        753.28,
+                                        1338.56
+                                      ],
+                                      "in": [
+                                        762.0799999999999,
+                                        1349.44
+                                      ],
+                                      "out": [
+                                        744.48,
+                                        1327.68
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        740.0799999999999,
+                                        1293.2
+                                      ],
+                                      "in": [
+                                        740.0799999999999,
+                                        1312.56
+                                      ],
+                                      "out": [
+                                        740.0799999999999,
+                                        1280.4
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        747.16,
+                                        1260.08
+                                      ],
+                                      "in": [
+                                        742.44,
+                                        1269.36
+                                      ],
+                                      "out": [
+                                        751.88,
+                                        1250.8
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        765.76,
+                                        1238.72
+                                      ],
+                                      "in": [
+                                        758.0799999999999,
+                                        1243.68
+                                      ],
+                                      "out": [
+                                        773.44,
+                                        1233.76
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        790.0,
+                                        1231.28
+                                      ],
+                                      "in": [
+                                        781.52,
+                                        1231.28
+                                      ],
+                                      "out": [
+                                        796.7199999999999,
+                                        1231.28
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        807.16,
+                                        1234.76
+                                      ],
+                                      "in": [
+                                        802.4399999999999,
+                                        1232.44
+                                      ],
+                                      "out": [
+                                        811.88,
+                                        1237.08
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        820.96,
+                                        1244.24
+                                      ],
+                                      "in": [
+                                        816.48,
+                                        1240.24
+                                      ]
+                                    },
+                                    {
+                                      "p": [
+                                        820.0,
+                                        1225.28
+                                      ]
+                                    },
+                                    {
+                                      "p": [
+                                        820.0,
+                                        1182.56
+                                      ]
+                                    },
+                                    {
+                                      "p": [
+                                        847.6,
+                                        1182.56
+                                      ]
+                                    },
+                                    {
+                                      "p": [
+                                        847.6,
+                                        1352.0
+                                      ]
+                                    },
+                                    {
+                                      "p": [
+                                        824.8,
+                                        1352.0
+                                      ]
+                                    },
+                                    {
+                                      "p": [
+                                        822.88,
+                                        1339.28
+                                      ]
+                                    },
+                                    {
+                                      "p": [
+                                        821.92,
+                                        1339.28
+                                      ],
+                                      "out": [
+                                        817.5999999999999,
+                                        1343.6
+                                      ]
+                                    },
+                                    {
+                                      "p": [
+                                        806.8,
+                                        1350.32
+                                      ],
+                                      "in": [
+                                        812.56,
+                                        1347.28
+                                      ],
+                                      "out": [
+                                        801.04,
+                                        1353.36
+                                      ],
+                                      "kind": "Smooth"
+                                    }
+                                  ],
+                                  "closed": true
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "id": 77,
+                          "kind": {
+                            "type": "path",
+                            "path": {
+                              "subpaths": [
+                                {
+                                  "anchors": [
+                                    {
+                                      "p": [
+                                        795.28,
+                                        1332.08
+                                      ],
+                                      "in": [
+                                        786.8,
+                                        1332.08
+                                      ],
+                                      "out": [
+                                        804.08,
+                                        1332.08
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        820.0,
+                                        1318.88
+                                      ],
+                                      "in": [
+                                        812.32,
+                                        1327.68
+                                      ]
+                                    },
+                                    {
+                                      "p": [
+                                        820.0,
+                                        1263.92
+                                      ],
+                                      "out": [
+                                        816.0,
+                                        1260.24
+                                      ]
+                                    },
+                                    {
+                                      "p": [
+                                        808.0,
+                                        1256.24
+                                      ],
+                                      "in": [
+                                        812.0,
+                                        1257.68
+                                      ],
+                                      "out": [
+                                        804.0,
+                                        1254.8
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        796.0,
+                                        1254.08
+                                      ],
+                                      "in": [
+                                        800.0,
+                                        1254.08
+                                      ],
+                                      "out": [
+                                        788.48,
+                                        1254.08
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        776.68,
+                                        1264.28
+                                      ],
+                                      "in": [
+                                        782.04,
+                                        1257.48
+                                      ],
+                                      "out": [
+                                        771.3199999999999,
+                                        1271.08
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        768.64,
+                                        1292.96
+                                      ],
+                                      "in": [
+                                        768.64,
+                                        1280.64
+                                      ],
+                                      "out": [
+                                        768.64,
+                                        1305.6
+                                      ],
+                                      "kind": "Smooth"
+                                    },
+                                    {
+                                      "p": [
+                                        775.6,
+                                        1322.0
+                                      ],
+                                      "in": [
+                                        770.96,
+                                        1315.28
+                                      ],
+                                      "out": [
+                                        780.24,
+                                        1328.72
+                                      ],
+                                      "kind": "Smooth"
+                                    }
+                                  ],
+                                  "closed": true
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      ],
+                      "rule": "NonZero"
+                    }
+                  }
+                ],
+                "clip": false
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "swatches": [
+      {
+        "name": "[None]",
+        "paint": {
+          "type": "none"
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "White",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 1.0,
+            "g": 1.0,
+            "b": 1.0
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Black",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.0,
+            "g": 0.0,
+            "b": 0.0
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Red",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.92941177,
+            "g": 0.10980392,
+            "b": 0.14117648
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Orange Red",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.94509804,
+            "g": 0.3529412,
+            "b": 0.14117648
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Orange",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.96862745,
+            "g": 0.5764706,
+            "b": 0.11764706
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Amber",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.9843137,
+            "g": 0.6901961,
+            "b": 0.23137255
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Yellow",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.9882353,
+            "g": 0.93333334,
+            "b": 0.12941177
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Yellow Green",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.8509804,
+            "g": 0.8784314,
+            "b": 0.12941177
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Lime",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.54901963,
+            "g": 0.7764706,
+            "b": 0.24705882
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Green",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.22352941,
+            "g": 0.70980394,
+            "b": 0.2901961
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Emerald",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.0,
+            "g": 0.57254905,
+            "b": 0.27058825
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Teal",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.0,
+            "g": 0.40784314,
+            "b": 0.21568628
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Aqua",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.13333334,
+            "g": 0.70980394,
+            "b": 0.4509804
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Cyan Green",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.0,
+            "g": 0.6627451,
+            "b": 0.6156863
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Cyan",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.16078432,
+            "g": 0.67058825,
+            "b": 0.8862745
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Azure",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.0,
+            "g": 0.44313726,
+            "b": 0.7372549
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Blue",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.18039216,
+            "g": 0.19215687,
+            "b": 0.57254905
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Indigo",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.105882354,
+            "g": 0.078431375,
+            "b": 0.39215687
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Violet",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.4,
+            "g": 0.1764706,
+            "b": 0.5686275
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Purple",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.5764706,
+            "g": 0.15294118,
+            "b": 0.56078434
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Magenta",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.61960787,
+            "g": 0.0,
+            "b": 0.3647059
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Rose",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.83137256,
+            "g": 0.078431375,
+            "b": 0.3529412
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Pink",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.92941177,
+            "g": 0.11764706,
+            "b": 0.4745098
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Brown",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.78039217,
+            "g": 0.69803923,
+            "b": 0.6
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Tan",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.6,
+            "g": 0.5254902,
+            "b": 0.45882353
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Coffee",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.4509804,
+            "g": 0.3882353,
+            "b": 0.34117648
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Chocolate",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.3254902,
+            "g": 0.2784314,
+            "b": 0.25490198
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Sand",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.7764706,
+            "g": 0.6117647,
+            "b": 0.42745098
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Copper",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.6509804,
+            "g": 0.4862745,
+            "b": 0.32156864
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Rust",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.54901963,
+            "g": 0.38431373,
+            "b": 0.22352941
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Walnut",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.45882353,
+            "g": 0.29803923,
+            "b": 0.14117648
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Espresso",
+        "paint": {
+          "type": "solid",
+          "color": {
+            "model": "rgb",
+            "r": 0.3764706,
+            "g": 0.21960784,
+            "b": 0.07450981
+          }
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "White, Black",
+        "paint": {
+          "type": "gradient",
+          "gradient": {
+            "kind": "Linear",
+            "stops": [
+              {
+                "offset": 0.0,
+                "color": {
+                  "model": "rgb",
+                  "r": 1.0,
+                  "g": 1.0,
+                  "b": 1.0
+                },
+                "opacity": 1.0,
+                "midpoint": 0.5
+              },
+              {
+                "offset": 1.0,
+                "color": {
+                  "model": "rgb",
+                  "r": 0.0,
+                  "g": 0.0,
+                  "b": 0.0
+                },
+                "opacity": 1.0,
+                "midpoint": 0.5
+              }
+            ]
+          },
+          "angle": 0.0
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Radial White, Black",
+        "paint": {
+          "type": "gradient",
+          "gradient": {
+            "kind": "Radial",
+            "stops": [
+              {
+                "offset": 0.0,
+                "color": {
+                  "model": "rgb",
+                  "r": 1.0,
+                  "g": 1.0,
+                  "b": 1.0
+                },
+                "opacity": 1.0,
+                "midpoint": 0.5
+              },
+              {
+                "offset": 1.0,
+                "color": {
+                  "model": "rgb",
+                  "r": 0.0,
+                  "g": 0.0,
+                  "b": 0.0
+                },
+                "opacity": 1.0,
+                "midpoint": 0.5
+              }
+            ]
+          },
+          "angle": 0.0
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Sunset",
+        "paint": {
+          "type": "gradient",
+          "gradient": {
+            "kind": "Linear",
+            "stops": [
+              {
+                "offset": 0.0,
+                "color": {
+                  "model": "rgb",
+                  "r": 0.9843137,
+                  "g": 0.6901961,
+                  "b": 0.23137255
+                },
+                "opacity": 1.0,
+                "midpoint": 0.5
+              },
+              {
+                "offset": 1.0,
+                "color": {
+                  "model": "rgb",
+                  "r": 0.83137256,
+                  "g": 0.078431375,
+                  "b": 0.3529412
+                },
+                "opacity": 1.0,
+                "midpoint": 0.5
+              }
+            ]
+          },
+          "angle": 0.0
+        },
+        "global": false,
+        "spot": false
+      },
+      {
+        "name": "Ocean",
+        "paint": {
+          "type": "gradient",
+          "gradient": {
+            "kind": "Linear",
+            "stops": [
+              {
+                "offset": 0.0,
+                "color": {
+                  "model": "rgb",
+                  "r": 0.16078432,
+                  "g": 0.67058825,
+                  "b": 0.8862745
+                },
+                "opacity": 1.0,
+                "midpoint": 0.5
+              },
+              {
+                "offset": 1.0,
+                "color": {
+                  "model": "rgb",
+                  "r": 0.18039216,
+                  "g": 0.19215687,
+                  "b": 0.57254905
+                },
+                "opacity": 1.0,
+                "midpoint": 0.5
+              }
+            ]
+          },
+          "angle": 0.0
+        },
+        "global": false,
+        "spot": false
+      }
+    ],
+    "swatch_groups": [
+      {
+        "name": "Grays",
+        "swatches": [
+          {
+            "name": "K=90",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "gray",
+                "k": 0.9
+              }
+            },
+            "global": false,
+            "spot": false
+          },
+          {
+            "name": "K=80",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "gray",
+                "k": 0.8
+              }
+            },
+            "global": false,
+            "spot": false
+          },
+          {
+            "name": "K=70",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "gray",
+                "k": 0.7
+              }
+            },
+            "global": false,
+            "spot": false
+          },
+          {
+            "name": "K=60",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "gray",
+                "k": 0.6
+              }
+            },
+            "global": false,
+            "spot": false
+          },
+          {
+            "name": "K=50",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "gray",
+                "k": 0.5
+              }
+            },
+            "global": false,
+            "spot": false
+          },
+          {
+            "name": "K=40",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "gray",
+                "k": 0.4
+              }
+            },
+            "global": false,
+            "spot": false
+          },
+          {
+            "name": "K=30",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "gray",
+                "k": 0.3
+              }
+            },
+            "global": false,
+            "spot": false
+          },
+          {
+            "name": "K=20",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "gray",
+                "k": 0.2
+              }
+            },
+            "global": false,
+            "spot": false
+          },
+          {
+            "name": "K=10",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "gray",
+                "k": 0.1
+              }
+            },
+            "global": false,
+            "spot": false
+          }
+        ]
+      },
+      {
+        "name": "Brights",
+        "swatches": [
+          {
+            "name": "Bright Red",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "rgb",
+                "r": 1.0,
+                "g": 0.11372549,
+                "b": 0.14509805
+              }
+            },
+            "global": false,
+            "spot": false
+          },
+          {
+            "name": "Bright Yellow",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "rgb",
+                "r": 1.0,
+                "g": 0.9019608,
+                "b": 0.0
+              }
+            },
+            "global": false,
+            "spot": false
+          },
+          {
+            "name": "Bright Green",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "rgb",
+                "r": 0.0,
+                "g": 0.9019608,
+                "b": 0.4627451
+              }
+            },
+            "global": false,
+            "spot": false
+          },
+          {
+            "name": "Bright Blue",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "rgb",
+                "r": 0.16078432,
+                "g": 0.4745098,
+                "b": 1.0
+              }
+            },
+            "global": false,
+            "spot": false
+          },
+          {
+            "name": "Bright Violet",
+            "paint": {
+              "type": "solid",
+              "color": {
+                "model": "rgb",
+                "r": 0.8352941,
+                "g": 0.0,
+                "b": 0.9764706
+              }
+            },
+            "global": false,
+            "spot": false
+          }
+        ]
+      }
+    ],
+    "graphic_styles": [
+      {
+        "name": "Default Graphic Style",
+        "appearance": {
+          "items": [
+            {
+              "kind": "fill",
+              "paint": {
+                "type": "solid",
+                "color": {
+                  "model": "rgb",
+                  "r": 1.0,
+                  "g": 1.0,
+                  "b": 1.0
+                }
+              }
+            },
+            {
+              "kind": "stroke",
+              "paint": {
+                "type": "solid",
+                "color": {
+                  "model": "rgb",
+                  "r": 0.0,
+                  "g": 0.0,
+                  "b": 0.0
+                }
+              },
+              "width": 1.0
+            }
+          ]
+        },
+        "id": 1,
+        "unit_box": true
+      },
+      {
+        "name": "Black Outline",
+        "appearance": {
+          "items": [
+            {
+              "kind": "fill",
+              "paint": {
+                "type": "none"
+              }
+            },
+            {
+              "kind": "stroke",
+              "paint": {
+                "type": "solid",
+                "color": {
+                  "model": "rgb",
+                  "r": 0.0,
+                  "g": 0.0,
+                  "b": 0.0
+                }
+              },
+              "width": 1.0
+            }
+          ]
+        },
+        "id": 2,
+        "unit_box": true
+      },
+      {
+        "name": "Heavy Ink",
+        "appearance": {
+          "items": [
+            {
+              "kind": "fill",
+              "paint": {
+                "type": "solid",
+                "color": {
+                  "model": "rgb",
+                  "r": 0.105882354,
+                  "g": 0.078431375,
+                  "b": 0.39215687
+                }
+              }
+            },
+            {
+              "kind": "stroke",
+              "paint": {
+                "type": "solid",
+                "color": {
+                  "model": "rgb",
+                  "r": 0.0,
+                  "g": 0.0,
+                  "b": 0.0
+                }
+              },
+              "width": 4.0
+            }
+          ]
+        },
+        "id": 3,
+        "unit_box": true
+      },
+      {
+        "name": "Sunshine",
+        "appearance": {
+          "items": [
+            {
+              "kind": "fill",
+              "paint": {
+                "type": "solid",
+                "color": {
+                  "model": "rgb",
+                  "r": 0.9843137,
+                  "g": 0.6901961,
+                  "b": 0.23137255
+                }
+              }
+            },
+            {
+              "kind": "stroke",
+              "paint": {
+                "type": "solid",
+                "color": {
+                  "model": "rgb",
+                  "r": 0.94509804,
+                  "g": 0.3529412,
+                  "b": 0.14117648
+                }
+              },
+              "width": 2.0
+            }
+          ]
+        },
+        "id": 4,
+        "unit_box": true
+      }
+    ],
+    "symbols": [],
+    "guides": [],
+    "grid": {
+      "spacing": 72.0,
+      "subdivisions": 8
+    },
+    "raster_effects_ppi": 72.0,
+    "images": {},
+    "next_id": 79,
+    "metadata": {
+      "author": "",
+      "authorTitle": "",
+      "description": "",
+      "keywords": [],
+      "rating": 0,
+      "copyrightStatus": "unknown",
+      "copyrightNotice": "",
+      "copyrightUrl": "",
+      "created": 1792246833,
+      "modified": 1792246871
+    }
+  },
+  "images": {}
+}

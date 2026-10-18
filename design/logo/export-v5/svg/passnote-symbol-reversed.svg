@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="512" height="512" viewBox="0 0 512 512">
+  <title>passnote</title>
+  <g id="Layer_1" data-name="Layer 1">
+    <path d="M0 0 L512 0 L512 512 L0 512 Z" fill="#141b33"/>
+    <path d="M112 80 L392 80 L392 232 L304 320 L200 320 L200 432 L112 432 Z M200 152 L288 152 L288 224 L200 224 Z" fill="#f4f1e8" fill-rule="evenodd"/>
+    <path d="M392 232 L304 320 L304 232 Z" fill="#8fa3e6"/>
+  </g>
+</svg>

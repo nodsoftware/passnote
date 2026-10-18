@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="512" height="512" viewBox="0 0 512 512">
+  <title>kinfold-v4</title>
+  <g id="Layer_1" data-name="Layer 1">
+    <path d="M0 0 L512 0 L512 512 L0 512 Z" fill="#1c1f2a"/>
+    <path d="M112 80 L196 80 L196 432 L112 432 Z" fill="#f3ede4"/>
+    <path d="M226 262 L284 206 L412 432 L320 432 Z" fill="#e8805f"/>
+    <path d="M212 318 L212 228 L360 80 L412 80 L412 112 Z" fill="#f3ede4"/>
+  </g>
+</svg>
