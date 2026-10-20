@@ -26,7 +26,7 @@ jobs:
           python-version: "3.x"
 
       - name: Install Zensical
-        run: pip install zensical
+        run: pip install zensical==0.0.60
 
       - name: Build site
         run: zensical build
