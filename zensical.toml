@@ -51,9 +51,6 @@ nav = [
   { "Security" = "security.md" },
 ]
 
-# getting-started.md is intentionally NOT in nav: it is a stub redirect kept at
-# the old URL, pointing to start-here/tutorial.md.
-
 [project.theme]
 variant = "modern"
 features = [
