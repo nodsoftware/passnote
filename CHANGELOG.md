@@ -4,17 +4,6 @@ All five packages release together with matching versions. Per-package detail
 lives in each package's own `CHANGELOG.md`; this file is the cross-package
 summary.
 
-## Unreleased
-
-- **Passphrase rotation.** `Passnote.rotatePassphrase` re-encrypts a database's
-  roster and control key under new words, in place, leaving the group key, the
-  data and every device's membership untouched. Crash-safe: the new key is
-  journalled before any store is touched, and an interrupted rotation finishes
-  itself on the next `openDatabase` or `reopenDatabase`.
-  `hasPendingRotation` reports one that was interrupted. The discovery room
-  tag moves with the passphrase, so each device is rotated or paired again —
-  see [Rotate the passphrase](docs/guides/rotate-the-passphrase.md).
-
 ## 1.0.0
 
 The first release: an end-to-end encrypted, server-less, local-first sync
@@ -36,6 +25,14 @@ engine for Dart and Flutter.
   pairing by a nine-digit one-time code, revocation with group-key rotation,
   a forward-secrecy ratchet per connection, and an opt-in recovery phrase.
   Every primitive is pinned by published known-answer test vectors.
+- **Passphrase rotation.** `Passnote.rotatePassphrase` re-encrypts a database's
+  roster and control key under new words, in place, leaving the group key, the
+  data and every device's membership untouched. Crash-safe: the new key is
+  journalled before any store is touched, and an interrupted rotation finishes
+  itself on the next `openDatabase` or `reopenDatabase`.
+  `hasPendingRotation` reports one that was interrupted. The discovery room
+  tag moves with the passphrase, so each device is rotated or paired again —
+  see [Rotate the passphrase](docs/guides/rotate-the-passphrase.md).
 - **Transports.** Zero-configuration mDNS discovery on the LAN, WebSockets
   everywhere (including the browser), and a self-hostable reference relay
   that only ever sees ciphertext.
