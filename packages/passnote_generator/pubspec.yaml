@@ -1,5 +1,5 @@
 name: passnote_generator
-version: 1.0.0
+version: 1.1.0
 description: >-
   Code generator for Passnote document models: one @Document annotation yields
   the codec, the document-id extractor, and the per-field CRDT schema.
@@ -16,7 +16,7 @@ environment:
 dependencies:
   analyzer: '>=8.0.0 <15.0.0'
   build: '>=2.4.2 <5.0.0'
-  passnote: ^1.0.0
+  passnote: ^1.1.0
   source_gen: '>=2.0.0 <5.0.0'
 
 dev_dependencies:

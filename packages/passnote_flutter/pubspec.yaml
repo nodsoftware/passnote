@@ -1,5 +1,5 @@
 name: passnote_flutter
-version: 1.0.0
+version: 1.1.0
 description: "Passnote for Flutter: the full library plus keychain key store, collection notifier, and batteries-included setup."
 homepage: https://github.com/nodsoftware/passnote
 repository: https://github.com/nodsoftware/passnote
@@ -16,9 +16,9 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_secure_storage: ^9.2.4
-  passnote: ^1.0.0
-  passnote_crypto: ^1.0.0
-  passnote_lan: ^1.0.0
+  passnote: ^1.1.0
+  passnote_crypto: ^1.1.0
+  passnote_lan: ^1.1.0
   path: ^1.9.0
   path_provider: ^2.1.0
 

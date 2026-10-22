@@ -12,8 +12,9 @@ independent implementation a concrete target.
 | `room_tag.json` | The discovery tag: truncated base32 SHA-256 under the `passnote-room` domain. |
 | `xchacha.json` | XChaCha20-Poly1305 frames (`nonce ‖ ciphertext ‖ tag`) for fixed key, nonce, and plaintext. |
 | `spake2.json` | A full SPAKE2 (P-256, RFC 9382) exchange with fixed scalars: both messages, the transcript, the shared secret, both confirmation MACs. |
-| `key_wrap.json` | The X25519 → HKDF-SHA256 → AES-256-GCM key wrap with a fixed ephemeral seed and GCM nonce, recipient derived from a recorded recovery phrase. |
-| `ratchet.json` | The session root derivation and the first message keys of the send chain for fixed inputs. |
+| `key_wrap.json` | The X25519 → HKDF-SHA256 → AES-256-GCM key wrap (`passnote-key-wrap-v2`, bound to the ephemeral and recipient keys) with a fixed ephemeral seed and GCM nonce, recipient derived from a recorded recovery phrase. |
+| `key_wrap_v1.json` | Frozen: a wrap under the 1.0 derivation (`passnote-key-wrap-v1`, recipient key only), asserted to still open. Not regenerated. |
+| `ratchet.json` | The ephemeral X25519 agreement from fixed seeds, the session root derived from it and the group key, and the first message keys of the send chain. |
 
 ## Reproducing independently
 

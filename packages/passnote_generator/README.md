@@ -11,7 +11,7 @@ Add to a package that defines document models:
 ```yaml
 dev_dependencies:
   build_runner: ^2.15.0
-  passnote_generator: ^1.0.0
+  passnote_generator: ^1.1.0
 ```
 
 Annotate the model and add a `part` directive:

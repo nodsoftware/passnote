@@ -31,19 +31,34 @@ one-way [room tag](concepts/glossary.md#room-tag) that reveals nothing.
 - **Membership you can manage.** Each device has an X25519 + Ed25519 keypair
   whose private halves never leave it. Joining requires a live pairing: a
   nine-digit one-time code runs a PAKE (peer points are validated on-curve per
-  RFC 9382 §4), so guesses cost one visible failure each and the sponsor stops
-  after three. Every roster row is Ed25519-signed by the member that wrote it
-  and validated against a trust chain rooted at the founding device, so
-  holding the roster key alone admits nobody. Revoking a device rotates the
-  group key to everyone else: the revoked device can read nothing written
-  after, and its signatures stop counting, so it cannot re-admit itself (or a
-  fresh identity it controls) even though it still holds the roster key.
-- **Yesterday's traffic, tomorrow's theft.** Each connection encrypts every
-  frame with a one-use key from a hash chain and destroys the previous key.
-  Recording traffic now and stealing a device later does not decrypt the
-  recording.
-- **Unlinkable discovery.** The room tag peers advertise is a one-way hash.
-  It grants no access and reveals nothing about keys or content.
+  RFC 9382 §4), so guesses cost one visible failure each; a peer gets three
+  tries and the code is withdrawn after twenty in total. The sponsor hands
+  the joiner its validated roster trust state with the grant, so a new device
+  never trusts a roster just because it arrived first. Every roster row is
+  Ed25519-signed by the member that wrote it and validated against a trust
+  chain rooted at the founding device, with each device id bound to the
+  fingerprint of its key, so holding the roster key alone admits nobody.
+  Revoking a device rotates the group key to everyone else: the revoked device
+  can read nothing written after, and its signatures stop counting, so it
+  cannot re-admit itself (or a fresh identity it controls) even though it
+  still holds the roster key.
+- **Only members write.** With device identities, user data flows only inside
+  a session opened by a hello signed with a non-revoked member's key. A frame
+  that proves only knowledge of the passphrase key (which revoked devices
+  keep) can carry the roster and nothing else, so neither a leaked passphrase
+  nor a revoked device can insert, change or delete user data, or learn which
+  collections exist. A record stamped far in the future, which would win every
+  later merge, is refused until the receiving clock catches up.
+- **Yesterday's traffic, tomorrow's theft.** Each connection starts with an
+  exchange of ephemeral X25519 keys, signed by both devices, whose private
+  halves are wiped once the session exists; every frame then uses a one-use
+  key from a hash chain and the previous key is destroyed. Recording traffic
+  now and stealing a device later, with all its long-term keys, does not
+  decrypt the recording.
+- **Opaque discovery.** The room tag peers advertise is a one-way hash. It
+  grants no access and reveals nothing about keys or content. It is stable
+  for as long as the passphrase is, so it does let an observer recognise the
+  same group across networks.
 - **At-rest opacity.** SQLCipher encrypts the whole database file: schema, row
   counts, and content are all ciphertext to whoever has only the file. This is
   enforced, not assumed: after keying, the engine checks `PRAGMA
@@ -81,26 +96,46 @@ Each of these is a deliberate scope decision, stated with its reason.
   unauthenticated, so anyone who can reach it can claim a node id that is not
   currently connected, silencing that node and collecting its (encrypted)
   traffic and metadata. Deploy it only on a network you control, or behind an
-  authenticating proxy; see [transports](reference/transports.md).
+  authenticating proxy; see [transports](reference/transports.md). On any
+  transport a node id is only a claim: claiming someone else's can disrupt
+  them, but sessions are bound to signed roster identities, so it cannot read
+  or write their data.
 - **A compromised device is out of scope.** Passnote protects data between
   devices. An attacker who controls a device's OS or unlocked keychain has
   that device's keys, exactly as with any end-to-end encrypted system. Your
   remedy is revocation from a surviving device.
+- **Revocation does not change the passphrase.** The roster key derives from
+  the passphrase, so a revoked device can still find the group, read the
+  roster (labels, public keys, sealed wraps) and send frames that others
+  refuse. It cannot read or write user data. Where that residue matters,
+  [rotate the passphrase](guides/rotate-the-passphrase.md) after revoking.
 - **Replay is harmless by construction.** There is no anti-replay nonce
   because none is needed: records merge idempotently by
   [HLC](concepts/glossary.md#hlc), so a replayed frame changes nothing and
-  forges nothing.
-- **Roster trust is pinned locally, first-use for newcomers.** Each device
-  pins the founder, every member key it has validated, and every revocation it
-  has seen; the pins are monotone and persist in the key store, so a revoked
-  device cannot rewrite pre-revocation history against a restarted peer. A
-  device that syncs a roster it has never seen before necessarily trusts the
-  snapshot it receives, the same trust-on-first-use as the pairing exchange
-  that admits it. Roster rows are also vetted at merge time: a row whose
-  writer is not a known, non-revoked member is dropped before it touches
-  storage, so a revoked device (which keeps the roster key) cannot fill
-  peers' disks with junk rows either. The CPU spent refusing such frames is
-  bounded by the inbound rate limiter, in the same hygiene class.
+  forges nothing. Inside a session, a frame whose key the chain has moved
+  past does not open at all.
+- **Roster trust is pinned locally and handed over at pairing.** Each device
+  pins the founder, every member key it has validated, and every revocation
+  it has seen; the pins are monotone and persist in the key store, so a
+  revoked device cannot rewrite pre-revocation history against a restarted
+  peer. Unreadable pins refuse to open (`RosterPinsCorruptException`) rather
+  than fall back to trusting anew. A paired device starts from its sponsor's
+  pins. Only a device restored from a recovery phrase, which has no sponsor,
+  trusts the first roster snapshot it receives. Roster rows are also vetted
+  at merge time: a row whose writer is not a known, non-revoked member is
+  dropped before it touches storage, so a revoked device (which keeps the
+  roster key) cannot fill peers' disks with junk rows either. The CPU spent
+  refusing such frames is bounded by the inbound rate limiter, in the same
+  hygiene class.
+- **Pairing can be disrupted, not subverted.** The rendezvous is app-wide so
+  that every guess reaches the sponsor and is counted. The flip side is that
+  anyone on the network can spend a code's tries or answer in the sponsor's
+  place; neither completes a join without the code, and the user can start a
+  new one.
+- **Side channels on the device.** The SPAKE2 implementation uses
+  variable-time big-integer arithmetic. Code running on the same device could
+  in principle time it; the code is one-time and expires with the exchange,
+  and a co-resident attacker is already inside the device boundary.
 - **Rate limiting is hygiene, not a boundary.** A noisy peer's excess frames
   are dropped (`maxInboundFramesPerSecond`, default 100/s) so it cannot starve
   the event loop. Authorisation comes from keys, not from rate limits, and a
@@ -114,9 +149,10 @@ Each of these is a deliberate scope decision, stated with its reason.
 | Frame layout | `nonce ‖ ciphertext ‖ tag` |
 | Passphrase KDF | BIP39 seed, then Argon2id (19 MiB, 2 passes, 1 lane); PBKDF2-HMAC-SHA256 available for FIPS |
 | Device identity | X25519 (key agreement) + Ed25519 (signatures) |
-| Key wrap | X25519 ephemeral agreement, HKDF-SHA256, AES-256-GCM |
-| Pairing | SPAKE2 over P-256 (RFC 9382), nine-digit one-time code |
-| Forward secrecy | HKDF/HMAC-SHA256 hash-chain ratchet, one key per frame |
+| Key wrap | X25519 ephemeral agreement, HKDF-SHA256 bound to both public keys, AES-256-GCM; low-order points refused |
+| Pairing | SPAKE2 over P-256 (RFC 9382), nine-digit one-time code, HKDF-derived channel key |
+| Session | Ephemeral X25519 per connection, Ed25519-signed by each device; root HKDF-SHA256(group key ‖ agreement) |
+| Forward secrecy | Ephemeral keys wiped at session start, then an HMAC-SHA256 hash-chain ratchet, one key per frame |
 | Roster rows | Ed25519 signature per row, trust chain from the founder |
 | At rest | SQLCipher (whole-file), `cipher_version`-verified on open |
 | Room tag | truncated SHA-256 of key material, domain-separated |
@@ -130,7 +166,8 @@ Every primitive is pinned by published known-answer
 - Choose a stable, app-specific `salt` (like `"myapp:v1"`) and never reuse it
   across unrelated apps.
 - Show pairing codes and recovery phrases to the user once; never store them.
-- Revoke lost devices promptly, from any surviving device.
+- Revoke lost devices promptly, from any surviving device, and rotate the
+  passphrase afterwards if the device may be in hostile hands.
 - Do not log plaintext documents or derived keys.
 
 ## Reporting a vulnerability

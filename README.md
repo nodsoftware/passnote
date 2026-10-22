@@ -62,7 +62,7 @@ Add the Flutter package (it pulls in the rest):
 
 ```yaml
 dependencies:
-  passnote_flutter: ^1.0.0
+  passnote_flutter: ^1.1.0
 ```
 
 Then follow the [tutorial](docs/start-here/tutorial.md): model, builder,

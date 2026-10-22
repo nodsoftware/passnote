@@ -15,9 +15,17 @@ When two devices meet on the transport, each sends a handshake: the
 and its device public key. Sync starts on the highest version both share. If
 there is none (one app is too old), a `PeerIncompatible` event is emitted on
 `Passnote.events` and nothing further is exchanged, so the app can tell the
-user to update. After a successful handshake the pair also establishes its
-forward-secrecy [ratchet](glossary.md#ratchet); see
-[Identity](identity.md).
+user to update. After a successful handshake the pair establishes its signed,
+forward-secret [ratchet](glossary.md#ratchet) session; see
+[Identity](identity.md). With device identities in use, user data,
+collection names and reconciliation flow only inside that session: before it
+exists, two devices exchange the roster and nothing else.
+
+Every received record is also checked against the local clock: one stamped
+more than `maxClockDrift` (10 minutes by default) in the future is refused
+with the rest of its document, because it would otherwise win every later
+merge. Anti-entropy offers it again, so a peer with a skewed clock is delayed,
+not lost.
 
 ### Push, then catch up
 
