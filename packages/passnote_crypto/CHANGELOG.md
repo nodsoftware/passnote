@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.0
+
+- `DeviceIdentity` key wraps bind the ephemeral and the recipient public keys
+  (`passnote-key-wrap-v2`); wraps written by 1.0 still open. Wrapping to, or
+  unwrapping from, a low-order X25519 key is refused.
+- Vectors: `key_wrap.json` pins the v2 wrap and `ratchet.json` the v2 session
+  root (ephemeral X25519 agreement); the 1.0 wrap is kept, frozen, as
+  `key_wrap_v1.json`.
+- Requires `passnote` 1.1.0.
+
 ## 1.0.0
 
 First release.

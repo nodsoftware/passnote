@@ -26,8 +26,20 @@ the new key.
   already holds; revocation protects the future, not the past.
 - The roster (it still holds the roster key), including the fact that it was
   revoked, so its UI can say so (`DeviceState.revoked`).
-- Nothing else: new user-data frames fail authentication on it, and other
-  devices ignore its data frames.
+- Nothing else: user data travels only inside sessions with non-revoked
+  members, and its signature no longer opens one. Anything it sends outside a
+  session that is not a roster row is ignored, and its roster rows no longer
+  count.
+
+The roster key is derived from the passphrase and does not change on
+revocation, so the revoked device can still find the group on the network,
+see who is in the roster, and send frames that others must spend effort
+refusing. If the device is in hostile hands, also
+[rotate the passphrase](rotate-the-passphrase.md) on the remaining devices:
+it moves the room and the roster to a key the revoked device does not hold.
+
+Devices the revoked one had paired keep their membership: the revoking
+device re-signs their roster records as part of the revocation.
 
 ## Why there is no server
 

@@ -13,11 +13,11 @@ encryption:
 
 ```yaml
 dependencies:
-  passnote_flutter: ^1.0.0
+  passnote_flutter: ^1.1.0
 
 dev_dependencies:
   build_runner: ^2.15.0
-  passnote_generator: ^1.0.0
+  passnote_generator: ^1.1.0
 
 hooks:
   user_defines:
@@ -194,7 +194,7 @@ Add an item on either device. It appears on the other within a moment.
   ([PAKE](../concepts/glossary.md#pake)) that proved both devices held the
   same code, then sealed the data keys to the new device's own keypair.
   Guessing costs an attacker one visible failed attempt per guess, and the
-  sponsor stops after three.
+  sponsor withdraws the code after twenty.
 - Edits made on both devices at once merge automatically and every device
   arrives at the same result. How that works is in
   [Clocks and merge](../concepts/clocks-and-merge.md).

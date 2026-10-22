@@ -75,6 +75,7 @@ dependency explicitly with `passnoteLowLevel` (see [Ports](ports.md)).
 | `snapshotInterval` | 30 minutes | How often the disk engine writes its recovery snapshot; `Duration.zero` disables. |
 | `antiEntropyInterval` | 3 minutes | How often the repair exchange runs; `Duration.zero` disables. |
 | `maxInFlightFrames` | 16 | Send-window bound per peer. |
+| `maxClockDrift` | 10 minutes | How far ahead of the local clock a received record may be stamped; documents beyond it are refused until the clock catches up. |
 | `recoveryEnabled` | `false` | See `.recovery()`. |
 
 ## Main handle operations

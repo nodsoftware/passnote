@@ -81,10 +81,12 @@ final db = await passnote.pairWith('home', PairingCode.parse(input));
 
 Under the code runs a [PAKE](glossary.md#pake) (SPAKE2): both sides prove they
 hold the same code without revealing it and derive a private channel. The
-sponsor then admits the joiner to the roster and seals the group key to the
-joiner's public key. A wrong code fails visibly; the sponsor disarms the code
-after three failed attempts; an eavesdropper who misses the code learns
-nothing.
+sponsor then admits the joiner to the roster, seals the group key to the
+joiner's public key, and hands over its own roster trust state (the founder,
+the member keys, the revocations it has validated), which the joiner adopts
+before it syncs anything. A wrong code fails visibly; each peer gets three
+tries and the code is withdrawn after twenty in total; an eavesdropper who
+misses the code learns nothing.
 
 ### Revocation
 
@@ -100,18 +102,29 @@ new write is under a key it will never receive. Revocation is monotone and
 sticky: each device pins every revocation it sees, and rows signed by a
 revoked device stop counting, so the revoked device cannot rotate the key,
 re-admit itself, or smuggle a fresh identity into the roster with the roster
-key it still holds. Two devices revoking different peers at the same time
+key it still holds. Devices the revoked one had admitted keep their standing,
+because the revoking device re-signs their roster records. Revocations are
+judged in epoch order with the trust chain recomputed after each, so the
+outcome does not depend on the order rows arrive in. The revoked device does
+keep the passphrase key: it can still find the group and read the roster
+(names, public keys, sealed wraps), though no user data or new key. Rotate
+the passphrase afterwards if that matters; see
+[Revoke a device](../guides/revoke-a-device.md). Two devices revoking different peers at the same time
 converge: the surviving device with the lowest id performs one final rotation
 covering both.
 
 ### Forward secrecy
 
-Each pair of devices additionally runs a per-connection
-[ratchet](glossary.md#ratchet): message keys derive from a hash chain seeded
-by the group key and per-session randomness, each key is used once and wiped.
-Someone who records traffic today and steals a device next month cannot
-decrypt the recording. Ratchet handshakes are tagged with the key generation
-they belong to, so sessions never pair across a rotation.
+Each pair of devices runs a per-connection [ratchet](glossary.md#ratchet).
+On connect, each side sends an ephemeral X25519 public key signed with its
+roster identity; the session root is derived from the group key and the
+agreement of the two ephemeral keys, whose private halves are wiped as soon as
+the session exists. Message keys then come from a hash chain, each used once
+and wiped. Someone who records traffic today and steals a device next month
+holds every long-term key, but not the ephemeral ones, so cannot decrypt the
+recording. Only a non-revoked roster member can complete the handshake, and
+user data travels only inside such a session. Handshakes are tagged with the
+key generation they belong to, so sessions never pair across a rotation.
 
 ### Optional recovery phrase
 

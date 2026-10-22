@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.0
+
+- No changes of its own; released with the 1.1.0 security release of the
+  other packages, which it now requires. See the repository `CHANGELOG.md`.
+
 ## 1.0.0
 
 First release.

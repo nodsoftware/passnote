@@ -27,7 +27,15 @@ to the device [roster](../concepts/glossary.md#roster) and seals the
 [group key](../concepts/glossary.md#group-key) to it.
 
 - A wrong code fails visibly on both sides (`PairingRejected`).
-- The sponsor disarms the code after three failed attempts.
+- Each device gets three tries at a code, and the sponsor withdraws the code
+  after twenty failed tries in total. Every try is one online guess at a
+  one-in-a-billion code.
+- The joiner adopts the sponsor's roster trust state, so the first roster it
+  syncs is judged against the founder and members the sponsor vouched for.
+  A 1.1 joiner refuses a sponsor that sends none (one running Passnote 1.0).
+- Anyone on the network can disturb a pairing (by spending its tries, or by
+  answering in the sponsor's place), but cannot complete it without the
+  code. If a join is refused for no visible reason, start a new code.
 - An eavesdropper who never saw the code learns nothing and cannot brute-force
   offline.
 - The code is single-use; `startPairing` again for the next device, and
