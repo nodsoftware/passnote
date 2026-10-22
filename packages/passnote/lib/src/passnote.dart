@@ -87,6 +87,7 @@ class PassnoteConfig {
     this.recoveryEnabled = false,
     this.antiEntropyInterval = const Duration(minutes: 3),
     this.maxInFlightFrames = 16,
+    this.maxClockDrift = const Duration(minutes: 10),
   });
 
   /// Scopes mDNS discovery and storage namespacing for this app.
@@ -139,6 +140,17 @@ class PassnoteConfig {
   /// changeset to a slow peer pauses at this bound instead of buffering
   /// without limit. Defaults to 16.
   final int maxInFlightFrames;
+
+  /// How far ahead of this device's clock a received record's timestamp may
+  /// be.
+  ///
+  /// Merging is last-write-wins by hybrid logical clock, so a record stamped
+  /// far in the future would beat every later edit, permanently. A record
+  /// beyond this bound is refused, together with the rest of its document;
+  /// it is not lost, since anti-entropy offers it again and it is accepted
+  /// once this device's clock has caught up. Defaults to 10 minutes, which
+  /// absorbs ordinary clock skew between devices.
+  final Duration maxClockDrift;
 
   /// Whether this app offers a written recovery phrase
   /// ([Passnote.enableRecovery] / [Passnote.recoverFrom]).
@@ -641,6 +653,7 @@ class Passnote {
       wireCapabilities: _wireCapabilities,
       antiEntropyInterval: _config.antiEntropyInterval,
       maxInFlightFrames: _config.maxInFlightFrames,
+      maxClockDrift: _config.maxClockDrift,
       onIncompatiblePeer: (peer, local, remote) => _emit(PeerIncompatible(
         peer: peer,
         localVersions: local,

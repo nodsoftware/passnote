@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:crdt/crdt.dart' show CrdtChangeset, Hlc;
 import 'package:meta/meta.dart';
 
 import 'codec.dart';
@@ -42,6 +43,7 @@ class Database {
     required List<String> wireCapabilities,
     required Duration antiEntropyInterval,
     required int maxInFlightFrames,
+    required Duration maxClockDrift,
     void Function(PeerId peer, List<int> local, List<int> remote)?
         onIncompatiblePeer,
   })  : _id = id,
@@ -58,6 +60,7 @@ class Database {
         _wireVersions = wireVersions,
         _wireCapabilities = wireCapabilities,
         _maxInFlightFrames = maxInFlightFrames,
+        _maxClockDrift = maxClockDrift,
         _onIncompatiblePeer = onIncompatiblePeer {
     _antiEntropy = AntiEntropy(
       interval: antiEntropyInterval,
@@ -152,6 +155,10 @@ class Database {
 
   /// Cap on outstanding frames per peer ([PassnoteConfig.maxInFlightFrames]).
   final int _maxInFlightFrames;
+
+  /// How far ahead of the local clock an inbound record may be stamped
+  /// ([PassnoteConfig.maxClockDrift]).
+  final Duration _maxClockDrift;
 
   /// Per-peer ordered, bounded send queues. Every encrypted frame flows
   /// through its peer's window: FIFO order protects the ratchet chain, and the
@@ -1081,7 +1088,9 @@ class Database {
   ) async {
     final col = _collections[colName] as Collection<dynamic>?;
     if (col == null) return;
-    var changeset = parseDeltaChangeset(colName, rawRecords);
+    var changeset =
+        _refuseFutureRecords(parseDeltaChangeset(colName, rawRecords));
+    if (changeset.values.every((records) => records.isEmpty)) return;
     // Roster rows are vetted before they touch storage: any holder of the
     // roster key (including a revoked device) can send frames, but only rows
     // written by a known, non-revoked member are worth persisting.
@@ -1104,6 +1113,37 @@ class Database {
         _broadcastCollection(col);
       }
     }
+  }
+
+  /// [changeset] without the documents that carry a record stamped more than
+  /// [_maxClockDrift] ahead of this device's clock. Such a record would win
+  /// last-write-wins against every later edit; refusing the whole document
+  /// keeps its records together, and anti-entropy offers it again later.
+  CrdtChangeset _refuseFutureRecords(CrdtChangeset changeset) {
+    final limit = DateTime.now().toUtc().add(_maxClockDrift);
+    return {
+      for (final entry in changeset.entries)
+        entry.key: () {
+          final tooNew = <String>{
+            for (final record in entry.value)
+              if ((record['hlc'] as Hlc).dateTime.isAfter(limit))
+                _documentOf(record['key'] as String),
+          };
+          if (tooNew.isEmpty) return entry.value;
+          return [
+            for (final record in entry.value)
+              if (!tooNew.contains(_documentOf(record['key'] as String)))
+                record,
+          ];
+        }(),
+    };
+  }
+
+  /// The document id a record key belongs to (the key up to the unit
+  /// separator).
+  static String _documentOf(String key) {
+    final sep = key.indexOf('\x1F');
+    return sep < 0 ? key : key.substring(0, sep);
   }
 
   // ---------------------------------------------------------------------------
@@ -1339,6 +1379,7 @@ class Database {
     List<String> wireCapabilities = const [reconCapability],
     Duration antiEntropyInterval = Duration.zero,
     int maxInFlightFrames = 16,
+    Duration maxClockDrift = const Duration(minutes: 10),
     void Function(PeerId peer, List<int> local, List<int> remote)?
         onIncompatiblePeer,
   }) async {
@@ -1358,6 +1399,7 @@ class Database {
       wireCapabilities: wireCapabilities,
       antiEntropyInterval: antiEntropyInterval,
       maxInFlightFrames: maxInFlightFrames,
+      maxClockDrift: maxClockDrift,
       onIncompatiblePeer: onIncompatiblePeer,
     );
   }
