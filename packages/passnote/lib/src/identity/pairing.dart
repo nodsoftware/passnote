@@ -2,16 +2,19 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:crypto/crypto.dart' show sha256;
+
 import '../ports/cipher.dart';
 import '../ports/identity.dart';
 import '../ports/pake.dart';
 import '../ports/transport.dart';
+import 'hkdf.dart';
 
 /// A one-time code that authorises a device join.
 ///
 /// Nine digits, shown grouped (`123 456 789`). Entropy is deliberately low —
 /// the PAKE makes an offline guess impossible and limits an online attacker to
-/// one try per exchange, and the sponsor rate-limits failed tries.
+/// one try per exchange, and the sponsor caps the tries per code.
 class PairingCode {
   const PairingCode._(this.digits);
 
@@ -73,14 +76,20 @@ class PairingTimeout implements Exception {
 }
 
 /// What a sponsor hands a newly paired device: the key for the reserved roster
-/// collection. The database room tag derives from it, and the device's own
-/// wrapped group key arrives by normal sync once it opens the database.
+/// collection, and the sponsor's roster trust pins. The database room tag
+/// derives from the key, and the device's own wrapped group key arrives by
+/// normal sync once it opens the database.
 class PairingBundle {
   /// Creates the bundle.
-  const PairingBundle({required this.rosterKey});
+  const PairingBundle({required this.rosterKey, this.rosterPins = const []});
 
   /// The key that unlocks the reserved roster collection.
   final List<int> rosterKey;
+
+  /// The sponsor's validated roster trust state (founder, member keys,
+  /// revocations), which the new device adopts before its first sync instead
+  /// of trusting whichever roster reaches it first.
+  final List<int> rosterPins;
 }
 
 /// Sends one rendezvous frame to a peer (backed by the transport).
@@ -89,12 +98,9 @@ typedef PairingFrameSender = Future<void> Function(PeerId to, Frame frame);
 /// The currently connected peers, for broadcasting the joiner's hello.
 typedef PairingPeerSource = Set<PeerId> Function();
 
-/// Derives a key from a passphrase and salt (the app's KDF).
-typedef PairingKeyDeriver = Future<List<int>> Function(
-    String passphrase, String salt);
-
-/// Admits an authenticated joiner to the roster.
-typedef PairingAdmit = Future<void> Function(DevicePublicKey joiner);
+/// Admits an authenticated joiner to the roster and returns the sponsor's
+/// roster trust pins for it to adopt.
+typedef PairingAdmit = Future<List<int>> Function(DevicePublicKey joiner);
 
 /// Drives the pairing exchange over the [Transport], on both sides.
 ///
@@ -106,28 +112,27 @@ class PairingCoordinator {
   PairingCoordinator({
     required String appId,
     required Pake pake,
-    required PairingKeyDeriver deriveKey,
     required Cipher Function(List<int> key) cipherFactory,
     required String Function(List<int> key) roomTag,
     required PairingFrameSender send,
     required PairingPeerSource peers,
     Duration timeout = const Duration(seconds: 20),
     Duration discoveryTimeout = const Duration(seconds: 90),
-    int maxAttempts = 3,
+    int maxAttemptsPerPeer = 3,
+    int maxAttempts = 20,
   })  : _appId = appId,
         _discoveryTimeout = discoveryTimeout,
         _pake = pake,
-        _deriveKey = deriveKey,
         _cipherFactory = cipherFactory,
         _roomTag = roomTag,
         _send = send,
         _peers = peers,
         _timeout = timeout,
+        _maxAttemptsPerPeer = maxAttemptsPerPeer,
         _maxAttempts = maxAttempts;
 
   final String _appId;
   final Pake _pake;
-  final PairingKeyDeriver _deriveKey;
   final Cipher Function(List<int> key) _cipherFactory;
   final String Function(List<int> key) _roomTag;
   final PairingFrameSender _send;
@@ -137,6 +142,14 @@ class PairingCoordinator {
   /// How long a joiner waits to find any peer before giving up. Separate from
   /// [_timeout], which bounds the exchange once one is found.
   final Duration _discoveryTimeout;
+
+  /// Tries one peer may spend on one code: a person mistyping twice still
+  /// gets in.
+  final int _maxAttemptsPerPeer;
+
+  /// Tries all peers together may spend on one code before it is withdrawn.
+  /// Every try is one online guess at a one-in-a-billion code, so at the
+  /// default of 20 a guesser's odds stay below 2 in 100 million.
   final int _maxAttempts;
 
   static final List<int> _joinerId = utf8.encode('passnote-pair-joiner');
@@ -156,7 +169,7 @@ class PairingCoordinator {
   }) async {
     _sponsor?.dispose();
     final code = PairingCode.generate();
-    final room = _roomTag(await _rendezvousKey());
+    final room = _roomTag(_rendezvousKey());
     _sponsor = _SponsorState(
       code: code,
       room: room,
@@ -179,7 +192,7 @@ class PairingCoordinator {
     required DevicePublicKey joinerPublicKey,
   }) async {
     _joiner?.dispose();
-    final room = _roomTag(await _rendezvousKey());
+    final room = _roomTag(_rendezvousKey());
     final session = _pake.start(
       initiator: true,
       secret: code.secretBytes,
@@ -200,16 +213,15 @@ class PairingCoordinator {
     // discovery has found anybody, so the peer set is still empty and a single
     // broadcast would reach nobody and never be retried. Greet peers as they
     // arrive instead, and each one exactly once: the sponsor spends one of its
-    // [_maxAttempts] per hello, so re-sending to the same peer would deny a
-    // correct code.
-    final greeted = <PeerId>{};
+    // attempts per hello, so re-sending to the same peer would deny a correct
+    // code.
     final foundSomebody = Completer<void>();
     Future<void> greetNewPeers() async {
       // Copied before iterating: [_peers] is the live connection set, and this
       // runs while peers are still arriving, so awaiting a send inside a
       // direct iteration would race a concurrent modification.
       for (final peer in _peers().toList()) {
-        if (greeted.add(peer)) {
+        if (joiner.greeted.add(peer)) {
           await _send(peer, _frame(room, hello));
           if (!foundSomebody.isCompleted) foundSomebody.complete();
         }
@@ -231,6 +243,10 @@ class PairingCoordinator {
       await foundSomebody.future.timeout(_discoveryTimeout);
       return await joiner.done.future.timeout(_timeout);
     } on TimeoutException {
+      // A refusal heard on the way is the better explanation, when there is
+      // one: a peer said no, and nobody else said yes in time.
+      final refusal = joiner.lastRefusal;
+      if (refusal != null) throw refusal;
       throw const PairingTimeout();
     } finally {
       sweep.cancel();
@@ -257,14 +273,12 @@ class PairingCoordinator {
       case 'commit':
         await _onCommit(from, msg);
       case 'grant':
-        await _onGrant(msg);
+        await _onGrant(from, msg);
       case 'deny':
-        final joiner = _joiner;
-        if (joiner != null && !joiner.done.isCompleted) {
-          joiner.done.completeError(
-            PairingRejected((msg['reason'] as String?) ?? 'rejected'),
-          );
-        }
+        _joiner?.refuse(
+          from,
+          PairingRejected((msg['reason'] as String?) ?? 'rejected'),
+        );
     }
     return true;
   }
@@ -275,9 +289,12 @@ class PairingCoordinator {
     final sponsor = _sponsor;
     if (sponsor == null) return;
 
-    // Every join attempt costs one try. A wrong code fails on the joiner side
-    // (it can't match the sponsor's confirmation) and never reaches _onCommit,
-    // so the limit has to bite here.
+    // Every hello is one online guess at the code, whether or not the guesser
+    // ever answers: a wrong code fails on the joiner side (it can't match the
+    // sponsor's confirmation) and never reaches _onCommit. So the budget is
+    // spent here, per peer and in total.
+    final mine = (sponsor.attemptsBy[from] ?? 0) + 1;
+    sponsor.attemptsBy[from] = mine;
     sponsor.attempts++;
     if (sponsor.attempts > _maxAttempts) {
       await _send(
@@ -286,6 +303,14 @@ class PairingCoordinator {
             _encode({'t': 'deny', 'reason': 'too many attempts'})),
       );
       disarm();
+      return;
+    }
+    if (mine > _maxAttemptsPerPeer) {
+      await _send(
+        from,
+        _frame(sponsor.room,
+            _encode({'t': 'deny', 'reason': 'too many attempts'})),
+      );
       return;
     }
 
@@ -306,7 +331,8 @@ class PairingCoordinator {
               sponsor.room, _encode({'t': 'deny', 'reason': 'bad message'})));
       return;
     }
-    sponsor.pending = _SponsorExchange(peer: from, result: result);
+    // Kept per peer: one peer's hello must not displace another's exchange.
+    sponsor.pending[from] = result;
     await _send(
       from,
       _frame(
@@ -322,13 +348,11 @@ class PairingCoordinator {
 
   Future<void> _onCommit(PeerId from, Map<String, dynamic> msg) async {
     final sponsor = _sponsor;
-    final pending = sponsor?.pending;
-    if (sponsor == null || pending == null || pending.peer != from) return;
+    final pending = sponsor?.pending.remove(from);
+    if (sponsor == null || pending == null) return;
 
     final peerConf = base64.decode(msg['c'] as String);
-    if (!_constantTimeEquals(
-        peerConf, pending.result.expectedPeerConfirmation)) {
-      sponsor.pending = null;
+    if (!_constantTimeEquals(peerConf, pending.expectedPeerConfirmation)) {
       final exhausted = sponsor.attempts >= _maxAttempts;
       await _send(
         from,
@@ -344,30 +368,36 @@ class PairingCoordinator {
       return;
     }
 
-    final box = _cipherFactory(await _boxKey(pending.result.sharedSecret));
+    final box = _cipherFactory(_boxKey(pending.sharedSecret));
     final DevicePublicKey joinerKey;
     try {
       final plain = await box.decrypt(base64.decode(msg['box'] as String));
       joinerKey = DevicePublicKey.fromBytes(plain);
     } catch (_) {
-      sponsor.pending = null;
       await _send(from,
           _frame(sponsor.room, _encode({'t': 'deny', 'reason': 'bad key'})));
       return;
     }
 
-    await sponsor.onAdmit(joinerKey);
+    // Single use from here on: a second commit, even a correct one, finds
+    // nothing armed.
+    sponsor.dispose();
+    _sponsor = null;
+
+    final pins = await sponsor.onAdmit(joinerKey);
 
     final grant = await box.encrypt(
-      utf8.encode(jsonEncode({'rosterKey': base64.encode(sponsor.rosterKey)})),
+      utf8.encode(jsonEncode({
+        'v': 2,
+        'rosterKey': base64.encode(sponsor.rosterKey),
+        'pins': base64.encode(pins),
+      })),
     );
     await _send(
       from,
       _frame(
           sponsor.room, _encode({'t': 'grant', 'box': base64.encode(grant)})),
     );
-    sponsor.dispose();
-    _sponsor = null; // single use
   }
 
   // --- joiner handlers --------------------------------------------------
@@ -377,20 +407,25 @@ class PairingCoordinator {
     if (joiner == null || joiner.result != null || joiner.done.isCompleted) {
       return;
     }
+    // Only a peer this joiner greeted can answer it.
+    if (!joiner.greeted.contains(from)) return;
     final PakeResult result;
     try {
       result = joiner.session.finish(base64.decode(msg['m'] as String));
     } catch (e) {
-      joiner.done.completeError(PairingRejected('exchange failed: $e'));
+      joiner.refuse(from, PairingRejected('exchange failed: $e'));
       return;
     }
     final sponsorConf = base64.decode(msg['c'] as String);
     if (!_constantTimeEquals(sponsorConf, result.expectedPeerConfirmation)) {
-      joiner.done.completeError(const PairingRejected('wrong code'));
+      // A wrong code, or a peer that is not the sponsor: either way this peer
+      // is out, and the joiner keeps listening to the others.
+      joiner.refuse(from, const PairingRejected('wrong code'));
       return;
     }
     joiner.result = result;
-    final box = _cipherFactory(await _boxKey(result.sharedSecret));
+    joiner.sponsor = from;
+    final box = _cipherFactory(_boxKey(result.sharedSecret));
     final sealed = await box.encrypt(joiner.publicKey.toBytes());
     await _send(
       from,
@@ -405,17 +440,28 @@ class PairingCoordinator {
     );
   }
 
-  Future<void> _onGrant(Map<String, dynamic> msg) async {
+  Future<void> _onGrant(PeerId from, Map<String, dynamic> msg) async {
     final joiner = _joiner;
     final result = joiner?.result;
     if (joiner == null || result == null || joiner.done.isCompleted) return;
+    if (from != joiner.sponsor) return;
     try {
-      final box = _cipherFactory(await _boxKey(result.sharedSecret));
+      final box = _cipherFactory(_boxKey(result.sharedSecret));
       final plain = await box.decrypt(base64.decode(msg['box'] as String));
       final json = jsonDecode(utf8.decode(plain)) as Map<String, dynamic>;
-      joiner.done.complete(
-        PairingBundle(rosterKey: base64.decode(json['rosterKey'] as String)),
-      );
+      final pins = json['pins'] as String?;
+      if (pins == null) {
+        // A sponsor that sends no trust pins leaves this device to trust the
+        // first roster it is shown: refuse rather than join that way.
+        joiner.done.completeError(const PairingRejected(
+          'the sponsoring device runs an older Passnote; update it first',
+        ));
+        return;
+      }
+      joiner.done.complete(PairingBundle(
+        rosterKey: base64.decode(json['rosterKey'] as String),
+        rosterPins: base64.decode(pins),
+      ));
     } catch (e) {
       joiner.done.completeError(PairingRejected('could not open grant: $e'));
     }
@@ -425,12 +471,19 @@ class PairingCoordinator {
 
   // The rendezvous room is app-wide, not code-derived: every join attempt
   // reaches the sponsor, so a wrong guess costs the attacker one of the
-  // sponsor's [_maxAttempts] rather than being silently unroutable.
-  Future<List<int>> _rendezvousKey() =>
-      _deriveKey(_appId, 'passnote/$_appId/pairing-rendezvous-v1');
+  // sponsor's attempts rather than being silently unroutable. It is a public
+  // value, so a plain hash of the app id is enough.
+  List<int> _rendezvousKey() => sha256
+      .convert(utf8.encode('passnote-pairing-rendezvous-v2/$_appId'))
+      .bytes;
 
-  Future<List<int>> _boxKey(List<int> sharedSecret) => _deriveKey(
-      base64.encode(sharedSecret), 'passnote/$_appId/pairing-box-v1');
+  // The PAKE output is already a strong key: HKDF, not a password hash.
+  List<int> _boxKey(List<int> sharedSecret) => hkdfSha256(
+        sharedSecret,
+        const [],
+        utf8.encode('passnote-pairing-box-v2/$_appId'),
+        32,
+      );
 
   static Frame _frame(String room, List<int> payload) => Frame(room, payload);
 
@@ -463,16 +516,14 @@ class _SponsorState {
   final List<int> rosterKey;
   final PairingAdmit onAdmit;
 
+  /// Tries spent on this code, in total and per peer.
   int attempts = 0;
-  _SponsorExchange? pending;
+  final Map<PeerId, int> attemptsBy = {};
 
-  void dispose() => pending = null;
-}
+  /// PAKE results awaiting each peer's commit.
+  final Map<PeerId, PakeResult> pending = {};
 
-class _SponsorExchange {
-  _SponsorExchange({required this.peer, required this.result});
-  final PeerId peer;
-  final PakeResult result;
+  void dispose() => pending.clear();
 }
 
 class _JoinerState {
@@ -489,7 +540,33 @@ class _JoinerState {
   final DevicePublicKey publicKey;
   final Completer<PairingBundle> done = Completer<PairingBundle>();
 
+  /// Peers this joiner has said hello to.
+  final Set<PeerId> greeted = {};
+
+  /// Peers that refused or failed the exchange.
+  final Set<PeerId> refusedBy = {};
+
+  /// The most recent refusal, reported if no peer completes the exchange.
+  PairingRejected? lastRefusal;
+
+  /// The peer that proved the code; only it may grant.
+  PeerId? sponsor;
+
   PakeResult? result;
+
+  /// Records that [peer] refused. One peer's refusal ends the join only when
+  /// every greeted peer has refused: anyone on the network can send a
+  /// refusal, and it must not cut off the real sponsor's answer.
+  void refuse(PeerId peer, PairingRejected refusal) {
+    if (done.isCompleted || !greeted.contains(peer)) return;
+    // Once a sponsor has proved the code, only it can still refuse.
+    if (sponsor != null && peer != sponsor) return;
+    refusedBy.add(peer);
+    lastRefusal = refusal;
+    if (sponsor == peer || refusedBy.containsAll(greeted)) {
+      done.completeError(refusal);
+    }
+  }
 
   void dispose() {
     if (!done.isCompleted) {

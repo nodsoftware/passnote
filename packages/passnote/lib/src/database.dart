@@ -488,6 +488,11 @@ class Database {
     await roster.admit(peer, label: label);
   }
 
+  /// This device's roster trust pins, freshly validated, for a device it is
+  /// admitting to adopt ([Passnote.startPairing]).
+  @internal
+  Future<List<int>> exportRosterPins() => _requireRoster().exportPins();
+
   /// Unwraps the group key with [recovery] (a keypair derived from a recovery
   /// phrase) and admits this physical device to the roster as [label].
   ///
@@ -644,7 +649,8 @@ class Database {
   /// registered and known peers announced, when an [Identity] is configured.
   ///
   /// [autoFound] founds the group key when this device is demonstrably alone
-  /// (no connected peers) and no device has founded it yet — the first-run path.
+  /// (no connected peers), has never held trust pins for this database, and
+  /// no device has founded it yet — the first-run path.
   @internal
   Future<void> initDeviceRoster(
     Identity identity, {
@@ -655,18 +661,22 @@ class Database {
     // The roster's trust pins (founder, known device keys, revoked ids) are
     // local, monotone state: they must survive restarts or a revoked device
     // could rewrite pre-revocation history against a freshly started peer.
+    final pins = await _keyStore.getKey(_rosterPinsKey);
     final roster = DeviceRoster(
       col,
       identity,
-      pinBytes: await _keyStore.getKey(_rosterPinsKey),
+      pinBytes: pins,
       savePins: (bytes) => _keyStore.setKey(_rosterPinsKey, bytes),
     );
     _roster = roster;
     await roster.ready;
 
     final state = await roster.resolve();
+    // Only a database this device has never seen founds itself: one with
+    // pins already belongs to a group, and founding again would fork it.
     if (state == DeviceState.needsPairing &&
         autoFound &&
+        pins == null &&
         await roster.isUnfounded) {
       await roster.found(label: 'this device');
     }

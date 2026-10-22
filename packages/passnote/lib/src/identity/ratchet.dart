@@ -7,6 +7,7 @@ import 'package:cryptography/cryptography.dart'
     show KeyPairType, SimpleKeyPairData, SimplePublicKey, X25519;
 
 import '../ports/cipher.dart';
+import 'hkdf.dart';
 
 /// A forward-secret symmetric ratchet for a peer-to-peer transport session.
 ///
@@ -38,9 +39,10 @@ class RatchetSession {
     required bool thisNodeIsLow,
     required Cipher Function(List<int> key) cipherFactory,
   }) {
-    final low = _hkdf(root, const [], _ascii('passnote-ratchet-chain-low'), 32);
+    final low =
+        hkdfSha256(root, const [], _ascii('passnote-ratchet-chain-low'), 32);
     final high =
-        _hkdf(root, const [], _ascii('passnote-ratchet-chain-high'), 32);
+        hkdfSha256(root, const [], _ascii('passnote-ratchet-chain-high'), 32);
     return RatchetSession._(
       _Chain(thisNodeIsLow ? low : high),
       _Chain(thisNodeIsLow ? high : low),
@@ -129,7 +131,7 @@ List<int> deriveRatchetRoot({
     0,
     ...e2,
   ];
-  return _hkdf([...groupKey, ...sharedSecret], const [], info, 32);
+  return hkdfSha256([...groupKey, ...sharedSecret], const [], info, 32);
 }
 
 /// A cryptographically random 16-byte value.
@@ -235,8 +237,8 @@ class _Chain {
 
   (int, List<int>) next() {
     final ck = _chainKey!;
-    final messageKey = _hkdf(ck, const [], _msgInfo, 32);
-    final nextCk = _hkdf(ck, const [], _stepInfo, 32);
+    final messageKey = hkdfSha256(ck, const [], _msgInfo, 32);
+    final nextCk = hkdfSha256(ck, const [], _stepInfo, 32);
     _wipe(ck);
     _chainKey = Uint8List.fromList(nextCk);
     _wipe(nextCk);
@@ -269,20 +271,6 @@ class _Chain {
     }
     _skipped.clear();
   }
-}
-
-List<int> _hkdf(List<int> ikm, List<int> salt, List<int> info, int length) {
-  final prk =
-      Hmac(sha256, salt.isEmpty ? Uint8List(32) : salt).convert(ikm).bytes;
-  final out = <int>[];
-  var block = <int>[];
-  var counter = 1;
-  while (out.length < length) {
-    block = Hmac(sha256, prk).convert([...block, ...info, counter]).bytes;
-    out.addAll(block);
-    counter++;
-  }
-  return out.sublist(0, length);
 }
 
 List<int> _ascii(String s) => ascii.encode(s);

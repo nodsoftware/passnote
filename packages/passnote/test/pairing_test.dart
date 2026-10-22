@@ -169,14 +169,19 @@ final _noteCodec = JsonCodec<Map<String, dynamic>>(
 );
 
 void main() {
-  Future<Passnote> openNode(InMemoryBus bus, int seed, {Pake? pake}) =>
+  Future<Passnote> openNode(
+    InMemoryBus bus,
+    int seed, {
+    Pake? pake,
+    KeyStore? keyStore,
+  }) =>
       passnoteLowLevel(
         config: const PassnoteConfig(
           appId: 'pair',
           salt: 'pair:v1',
           snapshotInterval: Duration.zero,
         ),
-        keyStore: _MemKeyStore(),
+        keyStore: keyStore ?? _MemKeyStore(),
         transport: InMemoryTransport(bus),
         // Derived key varies with the passphrase so the roster key A shares with
         // B is meaningful; the pairing box/rendezvous use fixed salts.
@@ -352,7 +357,8 @@ void main() {
     await a.openDatabase('shared', passphrase: 'hunter2');
     final realCode = await a.startPairing('shared');
 
-    for (var i = 0; i < 3; i++) {
+    // 20 tries in total per code, across all peers.
+    for (var i = 0; i < 20; i++) {
       final b = await openNode(bus, 10 + i);
       await expectLater(
         b.pairWith('shared', PairingCode.parse('111 111 111')),
@@ -368,7 +374,77 @@ void main() {
       b.pairWith('shared', realCode),
       throwsA(anyOf(isA<PairingRejected>(), isA<PairingTimeout>())),
     );
+  }, timeout: const Timeout(Duration(seconds: 60)));
+
+  test('one peer exhausts only its own tries, not the code', () async {
+    final bus = InMemoryBus();
+    final a = await openNode(bus, 1);
+    addTearDown(a.close);
+    await a.openDatabase('shared', passphrase: 'hunter2');
+    final realCode = await a.startPairing('shared');
+
+    final noisy = await openNode(bus, 10);
+    addTearDown(noisy.close);
+    for (var i = 0; i < 4; i++) {
+      await expectLater(
+        noisy.pairWith('shared', PairingCode.parse('111 111 111')),
+        throwsA(isA<PairingRejected>()),
+      );
+    }
+
+    // Anyone else still pairs with the right code.
+    final b = await openNode(bus, 2);
+    addTearDown(b.close);
+    final dbB = await b.pairWith('shared', realCode);
+    expect(dbB.deviceState, DeviceState.ready);
   }, timeout: const Timeout(Duration(seconds: 30)));
+
+  test('a stray refusal from another peer does not cut the join off', () async {
+    final bus = InMemoryBus();
+    final a = await openNode(bus, 1);
+    addTearDown(a.close);
+    await a.openDatabase('shared', passphrase: 'hunter2');
+    final code = await a.startPairing('shared');
+
+    // A bystander that answers every rendezvous frame with a refusal.
+    final bystander = InMemoryTransport(bus);
+    await bystander.start(self: 'bystander', appId: 'pair');
+    addTearDown(bystander.stop);
+    bystander.inbound.listen((frame) {
+      bystander.send(
+        frame.from,
+        Frame(
+          frame.frame.room,
+          utf8.encode(jsonEncode({'t': 'deny', 'reason': 'go away'})),
+        ),
+      );
+    });
+
+    final b = await openNode(bus, 2);
+    addTearDown(b.close);
+    final dbB = await b.pairWith('shared', code);
+    expect(dbB.deviceState, DeviceState.ready);
+  });
+
+  test('the joiner adopts the sponsor\'s trust pins before it syncs', () async {
+    final bus = InMemoryBus();
+    final a = await openNode(bus, 1);
+    addTearDown(a.close);
+    await a.openDatabase('shared', passphrase: 'hunter2');
+    final code = await a.startPairing('shared');
+
+    final store = _MemKeyStore();
+    final b = await openNode(bus, 2, keyStore: store);
+    addTearDown(b.close);
+    await b.pairWith('shared', code);
+
+    final pins = jsonDecode(
+            utf8.decode((await store.getKey('pair/shared/roster-pins'))!))
+        as Map<String, dynamic>;
+    expect(pins['founder'], a.identity.deviceId,
+        reason: 'the founder comes from the sponsor, not from first sight');
+    expect((pins['known'] as Map).keys, contains(b.identity.deviceId));
+  });
 
   test('the pairing code is nine digits and parses back from its display form',
       () {
