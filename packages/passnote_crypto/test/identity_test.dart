@@ -70,6 +70,27 @@ void main() {
     await expectLater(mallory.unwrap(wrapped), throwsStateError);
   });
 
+  test('a low-order key on either side of a wrap is refused', () async {
+    // The all-zero point makes the X25519 agreement all zeroes, so a wrap
+    // keyed by it would be openable by anyone.
+    final alice = await DeviceIdentity.generate();
+    final bob = await DeviceIdentity.generate();
+    final key = Uint8List.fromList(List.filled(32, 9));
+    final lowOrder = DevicePublicKey(
+      keyExchange: List<int>.filled(32, 0),
+      signing: (await bob.publicKey).signing,
+    );
+    await expectLater(alice.wrapFor(lowOrder, key), throwsArgumentError);
+
+    final honest = await alice.wrapFor(await bob.publicKey, key);
+    final forged = WrappedKey(
+      ephemeralPublicKey: List<int>.filled(32, 0),
+      nonce: honest.nonce,
+      ciphertext: honest.ciphertext,
+    );
+    await expectLater(bob.unwrap(forged), throwsStateError);
+  });
+
   test('sign output verifies against publicKey.signing', () async {
     final identity = await DeviceIdentity.generate();
     final message = Uint8List.fromList('passnote pairing token'.codeUnits);

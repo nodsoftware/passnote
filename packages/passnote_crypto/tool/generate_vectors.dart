@@ -137,11 +137,13 @@ Future<void> main() async {
     bytesOf(32, 0x66),
     gcmNonce: bytesOf(12, 0x77),
   );
+  // key_wrap_v1.json is frozen: it is the 1.0 derivation, kept to prove old
+  // wraps still open, and this tool no longer writes it.
   _write(out, 'key_wrap.json', {
     'primitive':
-        'X25519(ephemeral, recipient) -> HKDF-SHA256(info="passnote-key-wrap-v1" '
-            '|| recipientPub) -> AES-256-GCM; encoding ephemeralPub(32) || '
-            'nonce(12) || ct || tag(16)',
+        'X25519(ephemeral, recipient) -> HKDF-SHA256(info="passnote-key-wrap-v2" '
+            '|| ephemeralPub || recipientPub) -> AES-256-GCM; encoding '
+            'ephemeralPub(32) || nonce(12) || ct || tag(16)',
     'case': {
       'recipient_phrase': mnemonic24,
       'recipient_salt': 'vectors:v1',
