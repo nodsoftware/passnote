@@ -620,11 +620,21 @@ class Passnote {
 
   /// Permanently forgets [localId]: removes it from the open set and deletes its
   /// encryption key from the [KeyStore].
+  ///
+  /// Works on a database that is not open too — including one that no longer
+  /// opens, such as after a [RosterPinsCorruptException] — by clearing its
+  /// key store entries directly.
   Future<void> forget(String localId) async {
     _databaseKeys.remove(localId);
     final db = _databases.remove(localId);
-    if (db == null) return;
-    await db.leave();
+    if (db != null) {
+      await db.leave();
+      return;
+    }
+    final entryKey = '${_config.appId}/$localId';
+    await _keyStore.clear(entryKey);
+    await _keyStore.clear(Database.rosterPinsKeyFor(entryKey));
+    await _keyStore.clear(_rotationEntryKey(localId));
   }
 
   /// Shared tail of [openDatabase] / [reopenDatabase]: builds the [Database],

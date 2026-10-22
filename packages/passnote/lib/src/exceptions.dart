@@ -45,3 +45,22 @@ class SqlCipherUnavailableException implements Exception {
       'pubspec.yaml (hooks: user_defines: sqlite3: source: sqlcipher — see '
       'the "Set up platforms" guide) or open without a key.';
 }
+
+/// Thrown by `Passnote.openDatabase` and `Passnote.reopenDatabase` when the
+/// device roster's local trust pins (the founder, the device keys and the
+/// revocations this device has validated) are stored but unreadable.
+///
+/// The pins are what stops a revoked device from rewriting membership
+/// history, so Passnote refuses to open rather than quietly start trusting
+/// whatever roster it is shown next. The key store entry is corrupt; to
+/// recover, call `Passnote.forget` for the database and pair this device
+/// again.
+class RosterPinsCorruptException implements Exception {
+  /// Creates the exception.
+  const RosterPinsCorruptException();
+
+  @override
+  String toString() =>
+      'RosterPinsCorruptException: the stored roster trust pins are '
+      'unreadable; forget the database and pair this device again.';
+}
