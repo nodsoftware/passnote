@@ -640,6 +640,17 @@ class DeviceRoster {
     ];
   }
 
+  /// The public identity of [deviceId] when it is a validated, non-revoked
+  /// roster member, else `null`. Sessions are only ever opened with devices
+  /// this returns a key for.
+  Future<DevicePublicKey?> memberKey(String deviceId) async {
+    final view = await _validate();
+    if (view.revoked.contains(deviceId)) return null;
+    final record = view.records[deviceId];
+    if (record == null) return null;
+    return DevicePublicKey.fromBytes(record.publicKey);
+  }
+
   /// `true` while no device has founded the group key yet (no validated wrap
   /// exists).
   Future<bool> get isUnfounded async {

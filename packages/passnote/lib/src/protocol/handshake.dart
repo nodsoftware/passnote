@@ -8,7 +8,13 @@ library;
 
 /// The wire versions this build can speak; [negotiate] picks the highest one
 /// both sides share.
-const List<int> supportedWireVersions = [1];
+///
+/// Version 2 (1.1.0) roots every session in a signed ephemeral X25519
+/// agreement and carries user data only inside sessions. Version 1 is not
+/// spoken any more: its sessions had no forward secrecy and let any holder of
+/// the passphrase key write user data, so a 1.0 peer is reported as
+/// `PeerIncompatible` rather than talked to insecurely.
+const List<int> supportedWireVersions = [2];
 
 /// The highest wire version present in both [local] and [remote], or `null`
 /// when the sets share none (the peers cannot talk).

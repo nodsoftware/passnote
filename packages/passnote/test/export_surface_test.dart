@@ -182,6 +182,7 @@ void main() {
     'RangeDigestBuilder',
     'RangeProbe',
     'RangeRequest',
+    'RatchetEphemeral',
     'RatchetSession',
     'ReconcilePlan',
     'Reconciler',

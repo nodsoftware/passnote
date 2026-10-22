@@ -6,6 +6,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:cryptography/cryptography.dart'
+    show KeyPairType, SimplePublicKey, X25519;
 import 'package:passnote/passnote.dart';
 import 'package:passnote/engine.dart' show RatchetSession, deriveRatchetRoot;
 import 'package:passnote_crypto/passnote_crypto.dart';
@@ -151,12 +153,24 @@ Future<void> main() async {
     },
   });
 
-  // 6. Ratchet: the root, its tag, and the first message keys per direction,
-  // captured through the cipher factory (the keys ARE the cipher inputs).
+  // 6. Ratchet: the ephemeral agreement, the root, and the first message keys
+  // per direction, captured through the cipher factory (the keys ARE the
+  // cipher inputs).
+  final x25519 = X25519();
+  final ephA = await x25519.newKeyPairFromSeed(bytesOf(32, 0x04));
+  final ephB = await x25519.newKeyPairFromSeed(bytesOf(32, 0x05));
+  final pubA = (await ephA.extractPublicKey()).bytes;
+  final pubB = (await ephB.extractPublicKey()).bytes;
+  final shared = await (await x25519.sharedSecretKey(
+    keyPair: ephA,
+    remotePublicKey: SimplePublicKey(pubB, type: KeyPairType.x25519),
+  ))
+      .extractBytes();
   final root = deriveRatchetRoot(
     groupKey: bytesOf(32, 0x01),
-    nonceA: bytesOf(16, 0x02),
-    nonceB: bytesOf(16, 0x03),
+    sharedSecret: shared,
+    ephemeralA: pubA,
+    ephemeralB: pubB,
     nodeA: 'node-a',
     nodeB: 'node-b',
   );
@@ -174,12 +188,17 @@ Future<void> main() async {
   }
   _write(out, 'ratchet.json', {
     'primitive':
-        'root = HKDF(groupKey, nonces, node ids); per-frame message keys from '
-            'an HMAC-SHA256 hash chain, one per seal, previous key wiped',
+        'shared = X25519(ephemeral A, ephemeral B); root = HKDF-SHA256(ikm = '
+            'groupKey || shared, info = "passnote-ratchet-root-v2" || sorted '
+            'node ids || sorted ephemeral public keys); per-frame message keys '
+            'from an HMAC-SHA256 hash chain, one per seal, previous key wiped',
     'case': {
       'group_key': hex(bytesOf(32, 0x01)),
-      'nonce_a': hex(bytesOf(16, 0x02)),
-      'nonce_b': hex(bytesOf(16, 0x03)),
+      'ephemeral_seed_a': hex(bytesOf(32, 0x04)),
+      'ephemeral_seed_b': hex(bytesOf(32, 0x05)),
+      'ephemeral_pub_a': hex(pubA),
+      'ephemeral_pub_b': hex(pubB),
+      'shared_secret': hex(shared),
       'node_a': 'node-a',
       'node_b': 'node-b',
       'root': hex(root),

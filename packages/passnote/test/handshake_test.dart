@@ -187,8 +187,10 @@ void main() {
       expect(negotiate([], []), isNull);
     });
 
-    test('this build advertises the binary protocol', () {
-      expect(supportedWireVersions, [1]);
+    test('this build advertises the signed-session protocol only', () {
+      // Version 1 had no forward secrecy and accepted user data under the
+      // passphrase key; 1.1.0 deliberately stops speaking it.
+      expect(supportedWireVersions, [2]);
     });
   });
 
@@ -260,7 +262,7 @@ void main() {
     await colA.put({'id': 'x', 'v': 'unreachable'});
     final event =
         await incompatibleOnA.future.timeout(const Duration(seconds: 5));
-    expect(event.localVersions, [1]);
+    expect(event.localVersions, [2]);
     expect(event.remoteVersions, [3]);
 
     // Nothing syncs in either direction, and nothing crashes or loops.
