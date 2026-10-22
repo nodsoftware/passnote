@@ -34,7 +34,13 @@ void main() {
     return ws;
   }
 
-  Future<void> settle() => pumpEventQueue(times: 40);
+  // Real sockets need real time: a fixed number of event-loop turns is not
+  // enough when the suite's files run in parallel on a loaded machine.
+  Future<void> settle() async {
+    await pumpEventQueue(times: 40);
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    await pumpEventQueue(times: 40);
+  }
 
   test('start survives a platform without multicast and binds its server',
       () async {
@@ -105,6 +111,62 @@ void main() {
     expect(await first.any((d) => d is List<int>), isTrue);
   });
 
+  group('inbound limits', () {
+    Future<LanTransport> serve({
+      int maxInboundConnections = 64,
+      Duration helloTimeout = const Duration(seconds: 10),
+      int maxFrameBytes = 4 << 20,
+    }) async {
+      final server = LanTransport(
+        discoveryInterval: const Duration(hours: 1),
+        maxInboundConnections: maxInboundConnections,
+        helloTimeout: helloTimeout,
+        maxFrameBytes: maxFrameBytes,
+      );
+      await server.start(self: 'limited-node', appId: 'srvlimits');
+      addTearDown(server.stop);
+      return server;
+    }
+
+    test('a socket that never names itself is evicted', () async {
+      final server =
+          await serve(helloTimeout: const Duration(milliseconds: 200));
+      final silent = await WebSocket.connect('ws://127.0.0.1:${server.port}');
+      await _closed(silent);
+    });
+
+    test('an oversize message closes its socket', () async {
+      final server = await serve(maxFrameBytes: 64);
+      final flooder = await WebSocket.connect('ws://127.0.0.1:${server.port}');
+      final closed = _closed(flooder);
+      flooder.add('flooder');
+      flooder.add(List<int>.filled(128, 7));
+      await closed;
+      expect(flooder.closeCode, WebSocketStatus.messageTooBig);
+    });
+
+    test('an absurd node id is refused', () async {
+      final server = await serve();
+      final ws = await WebSocket.connect('ws://127.0.0.1:${server.port}');
+      final closed = _closed(ws);
+      ws.add('x' * 1000);
+      await closed;
+      expect(ws.closeCode, WebSocketStatus.policyViolation);
+    });
+
+    test('connections beyond the cap are refused', () async {
+      final server = await serve(maxInboundConnections: 1);
+      final first = await WebSocket.connect('ws://127.0.0.1:${server.port}');
+      addTearDown(first.close);
+      first.listen((_) {});
+      first.add('first');
+      await expectLater(
+        WebSocket.connect('ws://127.0.0.1:${server.port}'),
+        throwsA(isA<WebSocketException>()),
+      );
+    });
+  });
+
   test('a disconnect emits PeerLost and send becomes a no-op', () async {
     final ws = await connectAs('client-node');
     await settle();
@@ -172,4 +234,12 @@ void main() {
             'however many advertise and browse attempts fail');
     expect(unavailable.single.reason, contains('multicast'));
   });
+}
+
+/// Completes when the server closes [ws] (listens to it to drive the close
+/// handshake).
+Future<void> _closed(WebSocket ws) {
+  final done = Completer<void>();
+  ws.listen((_) {}, onDone: done.complete, onError: (Object _) {});
+  return done.future.timeout(const Duration(seconds: 5));
 }
