@@ -107,6 +107,17 @@ void main() {
     expect(hex(await recipient.unwrap(wrapped)), c['wrapped_key']);
   });
 
+  test('a 1.0 key wrap still opens', () async {
+    // Frozen: the pre-1.1.0 derivation, bound to the recipient key only.
+    final c = load('key_wrap_v1.json')['case'] as Map<String, dynamic>;
+    final recipient = await DeviceIdentity.fromRecoveryPhrase(
+      c['recipient_phrase'] as String,
+      salt: c['recipient_salt'] as String,
+    );
+    final wrapped = WrappedKey.fromBytes(unhex(c['wrapped'] as String));
+    expect(hex(await recipient.unwrap(wrapped)), c['wrapped_key']);
+  });
+
   test('ratchet root and message-key chain', () async {
     final c = load('ratchet.json')['case'] as Map<String, dynamic>;
     final x25519 = X25519();

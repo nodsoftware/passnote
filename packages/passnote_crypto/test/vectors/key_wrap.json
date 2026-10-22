@@ -1,5 +1,5 @@
 {
-  "primitive": "X25519(ephemeral, recipient) -> HKDF-SHA256(info=\"passnote-key-wrap-v1\" || recipientPub) -> AES-256-GCM; encoding ephemeralPub(32) || nonce(12) || ct || tag(16)",
+  "primitive": "X25519(ephemeral, recipient) -> HKDF-SHA256(info=\"passnote-key-wrap-v2\" || ephemeralPub || recipientPub) -> AES-256-GCM; encoding ephemeralPub(32) || nonce(12) || ct || tag(16)",
   "case": {
     "recipient_phrase": "letter advice cage absurd amount doctor acoustic avoid letter advice cage absurd amount doctor acoustic avoid letter advice cage absurd amount doctor acoustic bless",
     "recipient_salt": "vectors:v1",
@@ -7,6 +7,6 @@
     "wrapped_key": "555c636a71787f868d949ba2a9b0b7bec5ccd3dae1e8eff6fd040b121920272e",
     "ephemeral_seed": "666d747b828990979ea5acb3bac1c8cfd6dde4ebf2f900070e151c232a31383f",
     "gcm_nonce": "777e858c939aa1a8afb6bdc4",
-    "wrapped": "e8d0ead4458a53ab36998d65da078da12a713bbcb70f6f2db475a113cb0b1733777e858c939aa1a8afb6bdc4d79963634bdcfb4c3fa799ff386f147905e21c9de6b6661b51298ae3f022f09f8ea0b76b1e4f3ce389f6540562499dc4"
+    "wrapped": "e8d0ead4458a53ab36998d65da078da12a713bbcb70f6f2db475a113cb0b1733777e858c939aa1a8afb6bdc4d46d8ee2a2f709ecdd79ee672cc1f47dfc607988ae098671223f84b4ef9f89fce84f64f18ea50b22341726470bd2d61d"
   }
 }
