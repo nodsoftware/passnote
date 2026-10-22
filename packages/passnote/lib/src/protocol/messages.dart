@@ -109,28 +109,42 @@ final class ReconcileMessage extends ProtocolMessage {
   final List<(String?, String?)> sendRanges;
 }
 
-/// Carries a random per-session nonce so both peers can derive the same
-/// forward-secret ratchet root. Sent on connect (and after a group-key
-/// rotation), always under the roster/control cipher — it bootstraps the
-/// ratchet, so it is never itself ratcheted.
+/// Carries the sender's per-connection ephemeral X25519 key, signed by its
+/// roster identity, so both peers can derive the same forward-secret ratchet
+/// root. Sent on connect (and after a group-key rotation), always under the
+/// roster/control cipher — it bootstraps the ratchet, so it is never itself
+/// ratcheted.
 final class RatchetHelloMessage extends ProtocolMessage {
   /// Creates the message.
   const RatchetHelloMessage({
     required this.node,
-    required this.nonce,
+    required this.to,
+    required this.deviceId,
+    required this.ephemeral,
     required this.keyTag,
+    required this.signature,
   });
 
   /// [NodeId] of the sending instance.
   final String node;
 
-  /// The sender's 16-byte session nonce.
-  final List<int> nonce;
+  /// The transport id this hello is meant for; any other receiver ignores it.
+  final String to;
 
-  /// The non-secret tag of the group-key generation the nonce belongs to
-  /// (`ratchetKeyTag`). The receiver ignores a nonce whose tag differs from
+  /// The sender's roster device id, whose signing key [signature] verifies
+  /// under.
+  final String deviceId;
+
+  /// The sender's 32-byte ephemeral X25519 public key.
+  final List<int> ephemeral;
+
+  /// The non-secret tag of the group-key generation the key belongs to
+  /// (`ratchetKeyTag`). The receiver ignores a hello whose tag differs from
   /// its own key's, so sessions only ever pair on the same key.
   final List<int> keyTag;
+
+  /// Ed25519 signature by [deviceId] over `ratchetHelloPayload`.
+  final List<int> signature;
 }
 
 /// Shapes decoded delta [records] into a [CrdtChangeset] ready for

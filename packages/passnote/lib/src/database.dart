@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'package:meta/meta.dart';
 
-import 'dart:math';
-
 import 'codec.dart';
 import 'collection.dart';
 import 'identity/device_roster.dart';
@@ -101,23 +99,32 @@ class Database {
   /// The reserved device roster, present iff [_identity] is set.
   DeviceRoster? _roster;
 
-  /// Cipher for user-collection frames on the wire: the group-key cipher once
-  /// this device is [DeviceState.ready], else `null`. Roster and control frames
-  /// always use [_cipher] (the passphrase / roster key), which every device in
-  /// the room holds.
-  Cipher? _dataCipher;
-
-  /// The group key [_dataCipher] was built from, to detect rotation.
+  /// The group key this device currently holds, or `null` until it is
+  /// [DeviceState.ready]. Sessions are rooted in it, and a change of it
+  /// (rotation) restarts every session.
   List<int>? _dataKey;
 
   /// Per-peer forward-secret transport sessions, keyed by [PeerId]. Present
-  /// only with an [Identity] and after the ratchet-nonce exchange. Frames to a
-  /// peer with a session are wrapped in an outer ratchet layer.
+  /// only with an [Identity] and after the signed ephemeral-key exchange with
+  /// a non-revoked roster member. With an [Identity], user data, collection
+  /// metadata and reconciliation travel only inside a session; outside one a
+  /// frame carries nothing but the handshake, ratchet hellos and the roster.
   final Map<PeerId, RatchetSession> _sessions = {};
-  final Map<PeerId, List<int>> _myNonce = {};
-  final Map<PeerId, List<int>> _peerNonce = {};
 
-  static final Random _nonceRng = Random.secure();
+  /// This side's ephemeral key for each peer, until its session is
+  /// established (the private half is destroyed then).
+  final Map<PeerId, Future<RatchetEphemeral>> _myEphemeral = {};
+
+  /// This side's signed hello for each peer, cached so a re-send is the same
+  /// hello rather than a new handshake.
+  final Map<PeerId, Future<RatchetHelloMessage>> _myHello = {};
+
+  /// Each peer's verified ephemeral public key.
+  final Map<PeerId, List<int>> _peerEphemeral = {};
+
+  /// The latest hello from a peer whose signer this device cannot vouch for
+  /// yet (its roster record has not arrived). Re-checked after roster sync.
+  final Map<PeerId, RatchetHelloMessage> _pendingHellos = {};
 
   /// The wire versions this node advertises in its handshake.
   final List<int> _wireVersions;
@@ -547,20 +554,18 @@ class Database {
     _room = newRoom;
   }
 
-  /// Rebuilds [_dataCipher] and re-keys every user-collection engine whenever
-  /// the resolved group key has changed, and re-runs the ratchet handshake so
-  /// sessions no longer derive from the old key. Safe to call repeatedly.
+  /// Re-keys every user-collection engine whenever the resolved group key has
+  /// changed, and re-runs the ratchet handshake so sessions no longer derive
+  /// from the old key. Safe to call repeatedly.
   Future<void> _applyGroupKey() async {
     final key = _roster?.groupKey;
     if (key == null) {
-      _dataCipher = null;
       _dataKey = null;
       _tearDownSessions();
       return;
     }
     if (_dataKey != null && _listEquals(_dataKey!, key)) return;
     _dataKey = List<int>.unmodifiable(key);
-    _dataCipher = _cipherFactory(key);
     for (final entry in _collections.entries) {
       if (entry.key == kDeviceCollection) continue;
       await (entry.value as Collection<dynamic>).rekeyEngine(key);
@@ -576,8 +581,20 @@ class Database {
       session.dispose();
     }
     _sessions.clear();
-    _myNonce.clear();
-    _peerNonce.clear();
+    for (final peer in _myEphemeral.keys.toList()) {
+      _forgetEphemeral(peer);
+    }
+    _peerEphemeral.clear();
+    _pendingHellos.clear();
+  }
+
+  /// Drops (and wipes) this side's ephemeral key and cached hello for [peer].
+  void _forgetEphemeral(PeerId peer) {
+    _myHello.remove(peer);
+    final ephemeral = _myEphemeral.remove(peer);
+    if (ephemeral != null) {
+      unawaited(ephemeral.then((e) => e.destroy()).catchError((Object _) {}));
+    }
   }
 
   static bool _listEquals(List<int> a, List<int> b) {
@@ -664,8 +681,9 @@ class Database {
   void onPeerLost(PeerId peer) {
     _peers.remove(peer);
     _sessions.remove(peer)?.dispose();
-    _myNonce.remove(peer);
-    _peerNonce.remove(peer);
+    _forgetEphemeral(peer);
+    _peerEphemeral.remove(peer);
+    _pendingHellos.remove(peer);
     // A reconnect renegotiates from scratch — the peer may have upgraded.
     _handshakeReceived.remove(peer);
     _negotiatedVersion.remove(peer);
@@ -673,13 +691,11 @@ class Database {
     _incompatiblePeers.remove(peer);
   }
 
-  /// Kicks off the ratchet handshake with [peer]: sends our nonce if no session
-  /// exists yet and this device holds the group key.
   /// Last time a ratchet re-bootstrap was asked of a peer, so a peer that
-  /// keeps sealing does not turn every dropped frame into a fresh nonce.
+  /// keeps sealing does not turn every dropped frame into a fresh hello.
   final Map<PeerId, DateTime> _lastRebootstrap = {};
 
-  /// Last time a repeated nonce from a peer was answered, bounding the volley
+  /// Last time a repeated hello from a peer was answered, bounding the volley
   /// two peers could otherwise keep up.
   final Map<PeerId, DateTime> _lastDuplicateAnswer = {};
 
@@ -694,18 +710,20 @@ class Database {
     final last = _lastRebootstrap[peer];
     if (last != null && now.difference(last) < _rebootstrapInterval) return;
     _lastRebootstrap[peer] = now;
-    // This side's nonce stays as it is. Minting a fresh one reads to the peer
-    // as "it redid its handshake", so the peer drops its session and mints
-    // one back, which reads the same way here: the two chase each other and
-    // establish a session per round forever. Re-sending the nonce already on
-    // record asks the peer for its own without disturbing what it holds.
-    unawaited(_sendRatchetNonce(peer).catchError((Object _) {}));
+    // This side's ephemeral key stays as it is. Minting a fresh one reads to
+    // the peer as "it redid its handshake", so the peer drops its session and
+    // mints one back, which reads the same way here: the two chase each other
+    // and establish a session per round forever. Re-sending the hello already
+    // on record asks the peer for its own without disturbing what it holds.
+    unawaited(_sendRatchetHello(peer).catchError((Object _) {}));
   }
 
+  /// Kicks off the ratchet handshake with [peer]: sends our hello if no
+  /// session exists yet and this device holds the group key.
   Future<void> _kickRatchet(PeerId peer) async {
     if (_sessions.containsKey(peer) || _dataKey == null) return;
-    await _sendRatchetNonce(peer);
-    _tryEstablishSession(peer);
+    await _sendRatchetHello(peer);
+    await _tryEstablishSession(peer);
   }
 
   /// Sends this side's connection handshake: the wire versions this build
@@ -724,50 +742,182 @@ class Database {
     );
   }
 
-  /// Sends this side's stable nonce for [peer], tagged with the current
-  /// group-key generation so the peer only pairs it against the same key.
-  Future<void> _sendRatchetNonce(PeerId peer) async {
+  /// Sends this side's signed hello for [peer]: its ephemeral key for this
+  /// connection, tagged with the current group-key generation so the peer
+  /// only pairs it against the same key. Re-sending sends the same hello.
+  Future<void> _sendRatchetHello(PeerId peer) async {
     final key = _dataKey;
-    if (key == null) return;
-    final nonce = _myNonce.putIfAbsent(
+    final identity = _identity;
+    if (key == null || identity == null) return;
+    final hello = await _myHello.putIfAbsent(
       peer,
-      () => List<int>.generate(16, (_) => _nonceRng.nextInt(256)),
+      () => _buildRatchetHello(peer, key, identity),
     );
-    await _sendPlain(
+    await _sendPlain(peer, hello);
+  }
+
+  Future<RatchetHelloMessage> _buildRatchetHello(
+    PeerId peer,
+    List<int> key,
+    Identity identity,
+  ) async {
+    final ephemeral = await _myEphemeral.putIfAbsent(
       peer,
-      RatchetHelloMessage(
-        node: _nodeId,
-        nonce: nonce,
-        keyTag: ratchetKeyTag(key),
-      ),
+      RatchetEphemeral.generate,
+    );
+    final keyTag = ratchetKeyTag(key);
+    final payload = ratchetHelloPayload(
+      fromNode: _nodeId,
+      toNode: peer,
+      deviceId: identity.deviceId,
+      keyTag: keyTag,
+      ephemeral: ephemeral.publicKey,
+    );
+    return RatchetHelloMessage(
+      node: _nodeId,
+      to: peer,
+      deviceId: identity.deviceId,
+      ephemeral: ephemeral.publicKey,
+      keyTag: keyTag,
+      signature: await identity.sign(payload),
     );
   }
 
-  void _tryEstablishSession(PeerId peer) {
+  /// Whether [hello] is signed by a non-revoked roster member, for this node,
+  /// by the transport peer it came from.
+  Future<bool> _verifyRatchetHello(
+    PeerId from,
+    RatchetHelloMessage hello,
+  ) async {
+    final identity = _identity;
+    final roster = _roster;
+    if (identity == null || roster == null) return false;
+    if (hello.node != from || hello.to != _nodeId) return false;
+    final signer = await roster.memberKey(hello.deviceId);
+    if (signer == null) return false;
+    return identity.verify(
+      ratchetHelloPayload(
+        fromNode: hello.node,
+        toNode: hello.to,
+        deviceId: hello.deviceId,
+        keyTag: hello.keyTag,
+        ephemeral: hello.ephemeral,
+      ),
+      signature: hello.signature,
+      signer: signer,
+    );
+  }
+
+  Future<void> _handleRatchetHello(
+    PeerId from,
+    RatchetHelloMessage hello,
+  ) async {
+    final key = _dataKey;
+    // Ignore until we hold the group key, and ignore a hello minted under a
+    // different key generation — a stale queued frame, or the other branch
+    // of two concurrent rotations that share an epoch number. A session
+    // established from it would have a mismatched root and silently drop
+    // every frame.
+    if (key == null || !_listEquals(hello.keyTag, ratchetKeyTag(key))) {
+      return;
+    }
+    if (!await _verifyRatchetHello(from, hello)) {
+      // Possibly a member whose roster record has not reached this device
+      // yet: keep the latest one and look again after roster sync. Nothing
+      // about the current session changes on an unverified hello.
+      if (hello.node == from && hello.to == _nodeId) {
+        _pendingHellos[from] = hello;
+      }
+      return;
+    }
+    _pendingHellos.remove(from);
+    if (_sessions.containsKey(from)) {
+      final known = _peerEphemeral[from];
+      if (known != null && _listEquals(known, hello.ephemeral)) {
+        // The hello this session was built from, sent again. The peer is
+        // asking because it never received ours — its copy arrived before
+        // it held the group key — and it stays deaf to everything sealed
+        // here until it gets one. Answer, at most once per interval so two
+        // peers cannot volley.
+        final last = _lastDuplicateAnswer[from];
+        if (last == null ||
+            DateTime.now().difference(last) >= _rebootstrapInterval) {
+          _lastDuplicateAnswer[from] = DateTime.now();
+          await _sendRatchetHello(from);
+        }
+        return;
+      }
+      // A fresh key from a peer we hold a session with: the peer redid its
+      // handshake (it adopted the key later than we did) and our session is
+      // one-sided. Drop it and pair anew, or every ratcheted frame between
+      // us is silently lost.
+      _sessions.remove(from)?.dispose();
+      _forgetEphemeral(from);
+    }
+    _peerEphemeral[from] = List<int>.unmodifiable(hello.ephemeral);
+    // This side's key is minted by [_sendRatchetHello], so send before
+    // trying: establishing first leaves no key of ours on record and no
+    // session, and nothing retries.
+    await _sendRatchetHello(from);
+    await _tryEstablishSession(from);
+  }
+
+  /// Re-checks hellos held back for want of a roster record, after roster
+  /// rows have arrived.
+  Future<void> _retryPendingHellos() async {
+    for (final entry in Map.of(_pendingHellos).entries) {
+      if (!identical(_pendingHellos[entry.key], entry.value)) continue;
+      await _handleRatchetHello(entry.key, entry.value);
+    }
+  }
+
+  Future<void> _tryEstablishSession(PeerId peer) async {
     if (_sessions.containsKey(peer)) return;
-    final mine = _myNonce[peer];
-    final theirs = _peerNonce[peer];
+    final pending = _myEphemeral[peer];
+    final theirs = _peerEphemeral[peer];
     final groupKey = _dataKey;
-    if (mine == null || theirs == null || groupKey == null) return;
+    if (pending == null || theirs == null || groupKey == null) return;
+    final mine = await pending;
+    final shared = await mine.agree(theirs);
+    if (shared == null) return;
+    // The exchange may have moved on while the agreement ran.
+    if (_sessions.containsKey(peer) ||
+        !identical(_myEphemeral[peer], pending) ||
+        !identical(_peerEphemeral[peer], theirs) ||
+        !identical(_dataKey, groupKey)) {
+      return;
+    }
     final root = deriveRatchetRoot(
       groupKey: groupKey,
-      nonceA: mine,
-      nonceB: theirs,
+      sharedSecret: shared,
+      ephemeralA: mine.publicKey,
+      ephemeralB: theirs,
       nodeA: _nodeId,
       nodeB: peer,
     );
+    shared.fillRange(0, shared.length, 0);
     _sessions[peer] = RatchetSession.establish(
       root: root,
       thisNodeIsLow: _nodeId.compareTo(peer) < 0,
       cipherFactory: _cipherFactory,
     );
+    root.fillRange(0, root.length, 0);
+    // The private half has done its job; once it is gone no key on this
+    // device can rebuild this session's root.
+    mine.destroy();
+    // User data waits for a session, so ask for it the moment there is one.
+    if (_negotiatedVersion.containsKey(peer)) await _sendHello(peer);
   }
 
   /// Called by [Passnote] for an inbound frame on this database's room.
   ///
-  /// Tries the roster/control cipher, then the data cipher; a frame that
-  /// decrypts with neither (a revoked device's traffic after rotation) is
-  /// dropped. Returns `true` if the frame was handled.
+  /// With an [Identity], a ratcheted frame opens under the peer's session
+  /// and counts as authenticated: the session was rooted in a hello signed
+  /// by a non-revoked roster member. A plain frame opens under the
+  /// roster/control cipher only, and is allowed to carry nothing but the
+  /// handshake, ratchet hellos and the roster (see [handlePlaintext]).
+  /// Without an [Identity] the passphrase key is the whole membership, so
+  /// what it opens is authenticated. Returns `true` if the frame was handled.
   @internal
   Future<bool> handleFrame(PeerId from, List<int> frame) async {
     // A closed database answers nothing: its engines are disposed, and a
@@ -787,7 +937,7 @@ class Database {
         final inner = await session?.open(payload);
         if (inner == null) {
           // No session at all means the peer seals under one this side never
-          // built: its nonce arrived before this device held the group key,
+          // built: its hello arrived before this device held the group key,
           // or under an older generation, and was dropped. The peer cannot
           // tell, and keeps sealing, so everything it sends is lost until the
           // exchange starts again. Ask for that.
@@ -798,85 +948,62 @@ class Database {
           if (session == null) _rebootstrapRatchet(from);
           return false;
         }
-        payload = inner;
+        await handlePlaintext(from, inner, authenticated: true);
+        return true;
       }
+      if (kind != _framePlain) return false;
     }
 
-    List<int>? plaintext;
-    for (final cipher in [_cipher, _dataCipher]) {
-      if (cipher == null) continue;
-      try {
-        plaintext = await cipher.decrypt(payload);
-        break;
-      } catch (_) {
-        // Try the next cipher.
-      }
+    final List<int> plaintext;
+    try {
+      plaintext = await _cipher.decrypt(payload);
+    } catch (_) {
+      // Wrong key or tampered: a frame from outside the room.
+      return false;
     }
-    if (plaintext == null) return false;
-    await handlePlaintext(from, plaintext);
+    await handlePlaintext(from, plaintext, authenticated: _identity == null);
     return true;
   }
 
   /// Dispatches an already-decrypted protocol message.
+  ///
+  /// [authenticated] is `false` for a frame that only proves knowledge of the
+  /// passphrase key — which every device that ever joined holds, revoked ones
+  /// included. Such a frame may carry the handshake, ratchet hellos, hello and
+  /// poke, and roster rows (which are vetted by signature); its user-collection
+  /// deltas, reconciliation and watermarks are ignored.
   @internal
-  Future<void> handlePlaintext(PeerId from, List<int> plaintext) async {
+  Future<void> handlePlaintext(
+    PeerId from,
+    List<int> plaintext, {
+    required bool authenticated,
+  }) async {
     final msg = decodeMessage(plaintext);
     if (msg == null) return;
     switch (msg) {
       case HelloMessage():
         await _handleHello(from);
       case StateMessage(:final cols):
-        await _handleState(from, cols);
+        await _handleState(from, authenticated ? cols : _rosterOnly(cols));
       case DeltaMessage(:final col, :final records):
+        if (!authenticated && col != kDeviceCollection) return;
         await _handleDelta(col, records);
       case PokeMessage():
         await _sendHello(from);
-      case RatchetHelloMessage(:final nonce, :final keyTag):
-        final key = _dataKey;
-        // Ignore until we hold the group key, and ignore a nonce minted under
-        // a different key generation — a stale queued frame, or the other
-        // branch of two concurrent rotations that share an epoch number. A
-        // session established from such a nonce would have a mismatched root
-        // and silently drop every frame.
-        if (key == null || !_listEquals(keyTag, ratchetKeyTag(key))) {
-          break;
-        }
-        if (_sessions.containsKey(from)) {
-          // Duplicate of the nonce we already paired with: ping-pong ends.
-          final known = _peerNonce[from];
-          if (known != null && _listEquals(known, nonce)) {
-            // The nonce this session was built from, sent again. The peer is
-            // asking because it never received ours — its copy arrived before
-            // it held the group key — and it stays deaf to everything sealed
-            // here until it gets one. Answer, at most once per interval so
-            // two peers cannot volley.
-            final last = _lastDuplicateAnswer[from];
-            if (last == null ||
-                DateTime.now().difference(last) >= _rebootstrapInterval) {
-              _lastDuplicateAnswer[from] = DateTime.now();
-              await _sendRatchetNonce(from);
-            }
-            break;
-          }
-          // A fresh nonce from a peer we hold a session with: the peer redid
-          // its handshake (it adopted the key later than we did) and our
-          // session is one-sided. Drop it and pair anew, or every ratcheted
-          // frame between us is silently lost.
-          _sessions.remove(from)?.dispose();
-          _myNonce.remove(from);
-        }
-        _peerNonce[from] = nonce;
-        // This side's nonce is minted by [_sendRatchetNonce], so send before
-        // trying: establishing first leaves both nonces on record and no
-        // session, and nothing retries.
-        await _sendRatchetNonce(from);
-        _tryEstablishSession(from);
+      case RatchetHelloMessage():
+        await _handleRatchetHello(from, msg);
       case HandshakeMessage(:final versions, :final capabilities):
         await _handleHandshake(from, versions, capabilities);
-      case ReconcileMessage():
+      case ReconcileMessage(:final col):
+        if (!authenticated && col != kDeviceCollection) return;
         await _handleReconcile(from, msg);
     }
   }
+
+  /// [cols] narrowed to the roster collection.
+  static Map<String, String> _rosterOnly(Map<String, String> cols) => {
+        if (cols[kDeviceCollection] case final hlc?) kDeviceCollection: hlc,
+      };
 
   /// Negotiates the wire version with [from] and, on success, starts the
   /// ratchet and the sync exchange. Replies once to the first handshake a
@@ -963,6 +1090,7 @@ class Database {
       if (changeset.values.every((records) => records.isEmpty)) return;
     }
     await col.mergeChangeset(changeset);
+    if (colName == kDeviceCollection) await _retryPendingHellos();
 
     // A roster delta may carry a key rotation — adopt it, re-key, and if two
     // revocations raced, re-rotate.
@@ -1127,39 +1255,39 @@ class Database {
   }
 
   Future<void> _sendEncryptedNow(PeerId peer, ProtocolMessage msg) async {
-    final cipher = _cipherForMessage(msg);
-    if (cipher == null) return; // user data, but no group key yet
-    final inner = await cipher.encrypt(encodeMessage(msg));
-
     if (_identity == null) {
+      final inner = await _cipher.encrypt(encodeMessage(msg));
       await _transport.send(peer, Frame(_room, inner));
       return;
     }
     final session = _sessions[peer];
-    final payload = session == null
-        ? [_framePlain, ...inner]
-        : [_frameRatcheted, ...await session.seal(inner)];
-    await _transport.send(peer, Frame(_room, payload));
+    if (session != null) {
+      final sealed = await session.seal(encodeMessage(msg));
+      await _transport.send(peer, Frame(_room, [_frameRatcheted, ...sealed]));
+      return;
+    }
+    final plain = _outsideSession(msg);
+    if (plain == null) return; // user data waits for a session
+    final inner = await _cipher.encrypt(encodeMessage(plain));
+    await _transport.send(peer, Frame(_room, [_framePlain, ...inner]));
   }
 
+  /// What of [msg] may travel outside a session, under the passphrase key
+  /// that revoked devices still hold: everything but user-collection deltas,
+  /// reconciliation and watermarks. `null` when nothing may.
+  static ProtocolMessage? _outsideSession(ProtocolMessage msg) => switch (msg) {
+        DeltaMessage(:final col) when col != kDeviceCollection => null,
+        ReconcileMessage(:final col) when col != kDeviceCollection => null,
+        StateMessage(:final cols) => StateMessage(cols: _rosterOnly(cols)),
+        _ => msg,
+      };
+
   /// Sends [msg] under the roster/control cipher only, never ratcheted — used
-  /// for the ratchet nonce exchange, which bootstraps the session.
+  /// for the handshake and the ratchet hello, which bootstraps the session.
   Future<void> _sendPlain(PeerId peer, ProtocolMessage msg) async {
     final inner = await _cipher.encrypt(encodeMessage(msg));
     final payload = _identity == null ? inner : <int>[_framePlain, ...inner];
     await _transport.send(peer, Frame(_room, payload));
-  }
-
-  /// With the group-key model active, user-collection deltas travel under the
-  /// group-key cipher so a revoked device cannot read them; control frames and
-  /// roster deltas use [_cipher], which every device in the room holds. Without
-  /// an [Identity], [_cipher] carries everything.
-  Cipher? _cipherForMessage(ProtocolMessage msg) {
-    if (_identity == null) return _cipher;
-    if (msg is DeltaMessage && msg.col != kDeviceCollection) {
-      return _dataCipher;
-    }
-    return _cipher;
   }
 
   /// Broadcasts [col]'s newly-changed records to all currently-connected peers.

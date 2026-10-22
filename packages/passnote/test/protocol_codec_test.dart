@@ -46,15 +46,21 @@ void main() {
       expect(rt(const PokeMessage()), isA<PokeMessage>());
     });
 
-    test('ratchet-hello with its nonce', () {
+    test('ratchet-hello with its signed ephemeral key', () {
       final m = rt(RatchetHelloMessage(
         node: 'n1',
-        nonce: List<int>.generate(16, (i) => i),
+        to: 'n2',
+        deviceId: 'DEVICE0123456789',
+        ephemeral: List<int>.generate(32, (i) => i),
         keyTag: List<int>.generate(8, (i) => 0xF0 + i),
+        signature: List<int>.generate(64, (i) => 0x80 + i),
       )) as RatchetHelloMessage;
       expect(m.node, 'n1');
-      expect(m.nonce, List<int>.generate(16, (i) => i));
+      expect(m.to, 'n2');
+      expect(m.deviceId, 'DEVICE0123456789');
+      expect(m.ephemeral, List<int>.generate(32, (i) => i));
       expect(m.keyTag, List<int>.generate(8, (i) => 0xF0 + i));
+      expect(m.signature, List<int>.generate(64, (i) => 0x80 + i));
     });
 
     test('handshake with versions, capabilities, and a device key', () {
@@ -176,6 +182,22 @@ void main() {
       expect(decodeMessage([frame[0], 99, ...frame.skip(2)]), isNull);
     });
 
+    test('on a version-1 frame other than the handshake', () {
+      // A 1.0 peer's sync frames must never be acted on.
+      final frame = encodeMessage(const PokeMessage());
+      expect(frame[1], 2);
+      expect(decodeMessage([frame[0], 1, ...frame.skip(2)]), isNull);
+    });
+
+    test('the handshake stays readable by version-1 peers', () {
+      // Its layout is unchanged; frame version 1 is what lets a 1.0 peer read
+      // this build's versions and report PeerIncompatible.
+      final frame =
+          encodeMessage(const HandshakeMessage(node: 'n', versions: [2]));
+      expect(frame[1], 1);
+      expect(decodeMessage([frame[0], 2, ...frame.skip(2)]), isNull);
+    });
+
     test('on trailing garbage after a valid frame', () {
       final frame = encodeMessage(const HelloMessage(node: 'n'));
       expect(decodeMessage([...frame, 0x00]), isNull);
@@ -188,8 +210,11 @@ void main() {
         encodeMessage(DeltaMessage(col: 'c', records: [_record(1)])),
         encodeMessage(RatchetHelloMessage(
           node: 'n',
-          nonce: List<int>.filled(16, 7),
+          to: 'm',
+          deviceId: 'd',
+          ephemeral: List<int>.filled(32, 7),
           keyTag: List<int>.filled(8, 3),
+          signature: List<int>.filled(64, 9),
         )),
         encodeMessage(const HandshakeMessage(
           node: 'n',
@@ -238,7 +263,7 @@ void main() {
     test('on a deep nesting bomb', () {
       // A frame claiming a 500-deep list must be rejected, not recursed into.
       final bomb = <int>[
-        0xC7, 1, 3, // magic, version, delta
+        0xC7, 2, 3, // magic, version, delta
         1, 'c'.codeUnitAt(0), // col 'c'
         1, // one record
         0, // flags

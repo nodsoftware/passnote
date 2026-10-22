@@ -365,6 +365,12 @@ class Passnote {
   // limiting. Cleaned up on peer disconnect.
   final Map<PeerId, List<int>> _inboundTimestamps = {};
 
+  // Per-peer tail of the inbound handling chain: a peer's frames are handled
+  // one at a time, in arrival order. A session is established asynchronously
+  // from a hello, and the sealed frame right behind that hello must not be
+  // tried before the session exists. Cleaned up on peer disconnect.
+  final Map<PeerId, Future<void>> _inboundChains = {};
+
   // ---------------------------------------------------------------------------
   // Public API
 
@@ -1019,6 +1025,7 @@ class Passnote {
     } else if (event is PeerLost) {
       _connectedPeers.remove(event.peer);
       _inboundTimestamps.remove(event.peer);
+      _inboundChains.remove(event.peer);
       for (final db in _databases.values) {
         db.onPeerLost(event.peer);
       }
@@ -1052,9 +1059,23 @@ class Passnote {
     return false;
   }
 
-  Future<void> _onInbound(InboundFrame inbound) async {
+  void _onInbound(InboundFrame inbound) {
     if (_isRateLimited(inbound.from)) return;
+    final peer = inbound.from;
+    final tail = _inboundChains[peer] ?? Future<void>.value();
+    // A failure is contained here: it must neither stop this peer's later
+    // frames nor surface as an unhandled async error.
+    final next =
+        tail.then((_) => _handleInbound(inbound)).catchError((Object _) {});
+    _inboundChains[peer] = next;
+    unawaited(
+      next.whenComplete(() {
+        if (identical(_inboundChains[peer], next)) _inboundChains.remove(peer);
+      }),
+    );
+  }
 
+  Future<void> _handleInbound(InboundFrame inbound) async {
     // A pairing exchange in progress has its own rendezvous room.
     final pairing = _pairing;
     if (pairing != null &&
@@ -1065,9 +1086,10 @@ class Passnote {
 
     for (final db in _databases.values) {
       if (db.room != inbound.frame.room) continue;
-      // The database tries its roster/control cipher and its data cipher; a
-      // frame that authenticates with neither (a revoked device after a key
-      // rotation) is dropped. This is remote-fed input: a throw from deeper
+      // The database opens the frame under the peer's session or its
+      // roster/control cipher; one that opens under neither is dropped, and
+      // a plain frame carries no user data. This is remote-fed input: a
+      // throw from deeper
       // handling must never become an unhandled async error (the transport's
       // onError does not catch throws from inside this async callback), but
       // it must not vanish either — a persistent failure is a signal.

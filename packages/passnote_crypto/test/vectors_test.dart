@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:cryptography/cryptography.dart'
+    show KeyPairType, SimpleKeyPair, SimplePublicKey, X25519;
 import 'package:passnote/passnote.dart';
 import 'package:passnote/engine.dart' show RatchetSession, deriveRatchetRoot;
 import 'package:passnote_crypto/passnote_crypto.dart';
@@ -107,10 +109,29 @@ void main() {
 
   test('ratchet root and message-key chain', () async {
     final c = load('ratchet.json')['case'] as Map<String, dynamic>;
+    final x25519 = X25519();
+    final ephA =
+        await x25519.newKeyPairFromSeed(unhex(c['ephemeral_seed_a'] as String));
+    final ephB =
+        await x25519.newKeyPairFromSeed(unhex(c['ephemeral_seed_b'] as String));
+    final pubA = (await ephA.extractPublicKey()).bytes;
+    final pubB = (await ephB.extractPublicKey()).bytes;
+    expect(hex(pubA), c['ephemeral_pub_a']);
+    expect(hex(pubB), c['ephemeral_pub_b']);
+    Future<List<int>> agree(SimpleKeyPair mine, List<int> theirs) async =>
+        (await x25519.sharedSecretKey(
+          keyPair: mine,
+          remotePublicKey: SimplePublicKey(theirs, type: KeyPairType.x25519),
+        ))
+            .extractBytes();
+    final shared = await agree(ephA, pubB);
+    expect(hex(shared), c['shared_secret']);
+    expect(hex(await agree(ephB, pubA)), c['shared_secret']);
     final root = deriveRatchetRoot(
       groupKey: unhex(c['group_key'] as String),
-      nonceA: unhex(c['nonce_a'] as String),
-      nonceB: unhex(c['nonce_b'] as String),
+      sharedSecret: shared,
+      ephemeralA: pubA,
+      ephemeralB: pubB,
       nodeA: c['node_a'] as String,
       nodeB: c['node_b'] as String,
     );
