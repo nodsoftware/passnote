@@ -391,7 +391,12 @@ class Database {
   }
 
   /// The [KeyStore] entry holding the device roster's local trust pins.
-  String get _rosterPinsKey => '$_entryKey/roster-pins';
+  String get _rosterPinsKey => rosterPinsKeyFor(_entryKey);
+
+  /// The [KeyStore] entry holding the roster trust pins of the database whose
+  /// key lives under [entryKey].
+  @internal
+  static String rosterPinsKeyFor(String entryKey) => '$entryKey/roster-pins';
 
   /// Permanently removes tombstoned records older than [horizon] from every
   /// open collection. Returns the total number of records reclaimed across all
