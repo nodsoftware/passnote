@@ -41,11 +41,21 @@ class WebSocketTransport implements Transport {
   /// [listenPort] (native only; `0` = an ephemeral port, `null` = no listener)
   /// additionally accepts inbound connections — the side a browser peer dials.
   /// [reconnectBaseDelay] and [reconnectMaxDelay] bound the redial backoff.
+  ///
+  /// [maxInboundConnections], [helloTimeout] and [maxFrameBytes] bound what an
+  /// inbound connection may cost: a connection beyond the cap is closed, one
+  /// that has not introduced itself within [helloTimeout] is evicted, and one
+  /// that sends a message larger than [maxFrameBytes] is closed. Hygiene
+  /// against floods, not authentication: peers are authenticated by
+  /// Passnote's signed session handshake, not by the transport.
   WebSocketTransport({
     this.connectTo = const [],
     this.listenPort,
     Duration reconnectBaseDelay = const Duration(seconds: 2),
     Duration reconnectMaxDelay = const Duration(seconds: 60),
+    this.maxInboundConnections = 64,
+    this.helloTimeout = const Duration(seconds: 10),
+    this.maxFrameBytes = 4 << 20,
   })  : _reconnectBaseDelay = reconnectBaseDelay,
         _reconnectMaxDelay = reconnectMaxDelay {
     if (listenPort != null && !backend.canServe) {
@@ -61,6 +71,21 @@ class WebSocketTransport implements Transport {
 
   /// The port to accept inbound connections on (native only).
   final int? listenPort;
+
+  /// Most inbound connections open at once.
+  final int maxInboundConnections;
+
+  /// How long an inbound connection may stay open without its `hello`.
+  final Duration helloTimeout;
+
+  /// Largest message accepted on any connection, in bytes.
+  final int maxFrameBytes;
+
+  /// Longest node id accepted from a peer.
+  static const int _maxNodeIdLength = 128;
+
+  /// Inbound connections currently open.
+  int _openInbound = 0;
 
   final Duration _reconnectBaseDelay;
   final Duration _reconnectMaxDelay;
@@ -99,7 +124,7 @@ class WebSocketTransport implements Transport {
 
     final port = listenPort;
     if (port != null) {
-      _server = await backend.serveWs(port, _adopt);
+      _server = await backend.serveWs(port, _accept);
     }
     for (final uri in connectTo) {
       unawaited(_dial(uri));
@@ -158,53 +183,98 @@ class WebSocketTransport implements Transport {
   // ---------------------------------------------------------------------------
   // Connection handling (both dialed and accepted)
 
-  void _adopt(WsConnection connection, {Uri? redialUri}) {
+  /// An inbound connection: capped, and evicted if it never says hello.
+  void _accept(WsConnection connection) {
+    if (_openInbound >= maxInboundConnections) {
+      unawaited(connection.close());
+      return;
+    }
+    _openInbound++;
+    Timer(helloTimeout, () {
+      final peers = _peersOf[connection];
+      if (peers != null && peers.isEmpty) unawaited(connection.close());
+    });
+    _adopt(connection, inbound: true);
+  }
+
+  void _adopt(
+    WsConnection connection, {
+    Uri? redialUri,
+    bool inbound = false,
+  }) {
     _peersOf[connection] = {};
     connection.sendText('hello $_self');
 
     connection.messages.listen(
       (message) {
         if (message is String) {
-          _control(connection, message);
+          if (message.length > maxFrameBytes) {
+            unawaited(connection.close());
+            return;
+          }
+          _control(connection, message, inbound: inbound);
         } else if (message is List<int>) {
-          _routedFrame(message);
+          if (message.length > maxFrameBytes) {
+            unawaited(connection.close());
+            return;
+          }
+          _routedFrame(connection, message);
         }
       },
-      onDone: () => _dropConnection(connection, redialUri),
-      onError: (Object _) => _dropConnection(connection, redialUri),
+      onDone: () => _dropConnection(connection, redialUri, inbound: inbound),
+      onError: (Object _) =>
+          _dropConnection(connection, redialUri, inbound: inbound),
     );
   }
 
-  void _control(WsConnection connection, String line) {
+  /// A control line. An inbound connection is a peer that dialed this one:
+  /// it may introduce itself, once, and nothing else. Only a connection this
+  /// side dialed (another peer's listener, or a relay) may announce the
+  /// further peers it carries.
+  void _control(WsConnection connection, String line, {required bool inbound}) {
     final space = line.indexOf(' ');
     if (space < 0) return;
     final verb = line.substring(0, space);
     final node = line.substring(space + 1);
-    if (node.isEmpty || node == _self) return;
+    if (node.isEmpty || node == _self || node.length > _maxNodeIdLength) {
+      return;
+    }
+    final peers = _peersOf[connection];
+    if (peers == null) return;
     switch (verb) {
       case 'hello' || 'join':
+        if (inbound && (verb != 'hello' || peers.isNotEmpty)) return;
         if (_routes.containsKey(node)) return; // First route wins.
         _routes[node] = connection;
-        _peersOf[connection]?.add(node);
+        peers.add(node);
         _events.add(PeerConnected(node));
       case 'left':
-        if (_peersOf[connection]?.remove(node) ?? false) {
+        if (inbound) return;
+        if (peers.remove(node)) {
           _routes.remove(node);
           _events.add(PeerLost(node));
         }
     }
   }
 
-  void _routedFrame(List<int> bytes) {
+  /// A frame envelope from [connection]. Its sender must be a peer that
+  /// connection carries: a client cannot speak in another peer's name.
+  void _routedFrame(WsConnection connection, List<int> bytes) {
     final envelope = _decodeEnvelope(bytes);
     if (envelope == null) return;
     final (from, to, frame) = envelope;
     // Not ours (a relay mis-route, or a peer racing a topology change).
     if (to != _self) return;
+    if (!identical(_routes[from], connection)) return;
     if (!_inbound.isClosed) _inbound.add(InboundFrame(from, frame));
   }
 
-  void _dropConnection(WsConnection connection, Uri? redialUri) {
+  void _dropConnection(
+    WsConnection connection,
+    Uri? redialUri, {
+    required bool inbound,
+  }) {
+    if (inbound && _peersOf.containsKey(connection)) _openInbound--;
     final peers = _peersOf.remove(connection) ?? const {};
     for (final peer in peers) {
       _routes.remove(peer);

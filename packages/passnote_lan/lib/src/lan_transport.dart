@@ -24,13 +24,39 @@ class LanTransport implements Transport {
   /// [discoveryInterval] controls how often the network is re-browsed for new
   /// peers. [reconnectBaseDelay] and [reconnectMaxDelay] bound the exponential
   /// backoff used when re-dialing a dropped peer.
+  ///
+  /// [maxInboundConnections], [helloTimeout] and [maxFrameBytes] bound what an
+  /// inbound connection from the network may cost: a connection beyond the
+  /// cap is closed, one that has not named itself within [helloTimeout] is
+  /// evicted, and one that sends a message larger than [maxFrameBytes] is
+  /// closed. Hygiene against floods, not authentication: a node id is only a
+  /// claim, and peers are authenticated by Passnote's signed session
+  /// handshake.
   LanTransport({
     Duration discoveryInterval = const Duration(seconds: 5),
     Duration reconnectBaseDelay = const Duration(seconds: 2),
     Duration reconnectMaxDelay = const Duration(seconds: 60),
+    this.maxInboundConnections = 64,
+    this.helloTimeout = const Duration(seconds: 10),
+    this.maxFrameBytes = 4 << 20,
   })  : _discoveryInterval = discoveryInterval,
         _reconnectBaseDelay = reconnectBaseDelay,
         _reconnectMaxDelay = reconnectMaxDelay;
+
+  /// Most inbound connections open at once.
+  final int maxInboundConnections;
+
+  /// How long an inbound connection may stay open without naming itself.
+  final Duration helloTimeout;
+
+  /// Largest message accepted on a connection, in bytes.
+  final int maxFrameBytes;
+
+  /// Longest node id accepted from a peer.
+  static const int _maxNodeIdLength = 128;
+
+  /// Inbound connections currently open.
+  int _openInbound = 0;
 
   final Duration _discoveryInterval;
   final Duration _reconnectBaseDelay;
@@ -207,7 +233,13 @@ class LanTransport implements Transport {
         await request.response.close();
         return;
       }
+      if (_openInbound >= maxInboundConnections) {
+        request.response.statusCode = HttpStatus.serviceUnavailable;
+        await request.response.close();
+        return;
+      }
       final socket = await WebSocketTransformer.upgrade(request);
+      _openInbound++;
       _registerSocket(socket, dialedPeer: null);
     } catch (_) {
       // The requester is gone or sent garbage; there is nobody to answer.
@@ -375,13 +407,41 @@ class LanTransport implements Transport {
 
     PeerId? peer = dialedPeer;
     if (peer != null) _bindPeer(peer, socket);
+    final inbound = dialedPeer == null;
+    final helloTimer = inbound
+        ? Timer(helloTimeout, () {
+            if (peer == null) unawaited(socket.close());
+          })
+        : null;
+
+    var released = false;
+    void release() {
+      helloTimer?.cancel();
+      if (inbound && !released) {
+        released = true;
+        _openInbound--;
+      }
+      _unbindPeer(peer, socket);
+    }
 
     socket.listen(
       (data) {
+        if ((data is String && data.length > maxFrameBytes) ||
+            (data is List<int> && data.length > maxFrameBytes)) {
+          unawaited(socket.close(WebSocketStatus.messageTooBig));
+          return;
+        }
         if (peer == null) {
           // First text message is the handshake carrying the peer's node id.
           if (data is String) {
+            if (data.isEmpty ||
+                data.length > _maxNodeIdLength ||
+                data == _self) {
+              unawaited(socket.close(WebSocketStatus.policyViolation));
+              return;
+            }
             peer = data;
+            helloTimer?.cancel();
             _bindPeer(peer!, socket);
           }
           return;
@@ -393,8 +453,8 @@ class LanTransport implements Transport {
           }
         }
       },
-      onDone: () => _unbindPeer(peer, socket),
-      onError: (_) => _unbindPeer(peer, socket),
+      onDone: release,
+      onError: (_) => release(),
       cancelOnError: true,
     );
   }
