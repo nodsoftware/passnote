@@ -771,7 +771,10 @@ class Passnote {
     }
     return coordinator.arm(
       rosterKey: rosterKey,
-      onAdmit: (joiner) => db.admitDevice(joiner, label: joinerLabel),
+      onAdmit: (joiner) async {
+        await db.admitDevice(joiner, label: joinerLabel);
+        return db.exportRosterPins();
+      },
     );
   }
 
@@ -819,11 +822,21 @@ class Passnote {
 
     final entryKey = '${_config.appId}/$localId';
     await _keyStore.setKey(entryKey, bundle.rosterKey);
+    // The sponsor's trust state, adopted before the first sync: the roster
+    // this device then receives is judged against the founder and members
+    // the sponsor vouched for, not against whichever roster arrives first.
+    await _keyStore.setKey(
+      Database.rosterPinsKeyFor(entryKey),
+      bundle.rosterPins,
+    );
+    // Never auto-found here: the group exists; founding a fresh key on a
+    // briefly-alone install would fork it.
     final db = await _finishOpen(
       localId,
       entryKey,
       bundle.rosterKey,
       _cipherFactory(bundle.rosterKey),
+      allowAutoFound: false,
     );
 
     for (var i = 0; i < 100 && db.deviceState != DeviceState.ready; i++) {
@@ -956,7 +969,6 @@ class Passnote {
     return _pairing ??= PairingCoordinator(
       appId: _config.appId,
       pake: pake,
-      deriveKey: _deriveKey,
       cipherFactory: _cipherFactory,
       roomTag: _roomTag,
       send: _transport.send,

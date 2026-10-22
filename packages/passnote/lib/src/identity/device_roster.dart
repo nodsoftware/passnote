@@ -647,11 +647,21 @@ class DeviceRoster {
   Future<void> _persistPins() async {
     final save = _savePins;
     if (save == null) return;
-    await save(utf8.encode(jsonEncode({
-      'founder': _founderId,
-      'known': {for (final e in _known.entries) e.key: _b64(e.value)},
-      'revoked': _revoked.toList()..sort(),
-    })));
+    await save(_encodePins());
+  }
+
+  List<int> _encodePins() => utf8.encode(jsonEncode({
+        'founder': _founderId,
+        'known': {for (final e in _known.entries) e.key: _b64(e.value)},
+        'revoked': _revoked.toList()..sort(),
+      }));
+
+  /// The trust pins, validated against the current roster first, in the
+  /// encoding [DeviceRoster.new] restores. A sponsor hands them to the device
+  /// it admits so that device starts from the sponsor's trust state.
+  Future<List<int>> exportPins() async {
+    await _validate();
+    return _encodePins();
   }
 
   /// Restores persisted pins. Throws [RosterPinsCorruptException] when they
