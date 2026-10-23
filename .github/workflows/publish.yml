@@ -16,10 +16,17 @@ jobs:
   publish:
     if: github.repository == 'nodsoftware/passnote'
     runs-on: ubuntu-latest
+    # Without credentials `pub publish` waits for an interactive login that
+    # never comes; the 1.0.0 run sat on that until the 6-hour job limit.
+    timeout-minutes: 30
     permissions:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+      # Exchanges the job's OIDC token for pub.dev credentials. flutter-action
+      # does not, and `flutter pub publish` reads the same pub config, so this
+      # must come first.
+      - uses: dart-lang/setup-dart@v1
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: 3.44.1
