@@ -125,6 +125,16 @@ class Database {
   /// Each peer's verified ephemeral public key.
   final Map<PeerId, List<int>> _peerEphemeral = {};
 
+  /// Ephemeral keys each peer has used for sessions that have since ended.
+  /// A peer mints a fresh key for every handshake and never returns to one,
+  /// so a verified hello carrying a retired key is a recording replayed by
+  /// someone else, and is ignored rather than allowed to tear down the live
+  /// session. Kept across disconnects (a replay is most likely while the
+  /// real peer is away), and bounded per peer and in peers.
+  final Map<PeerId, List<List<int>>> _retiredPeerEphemerals = {};
+  static const int _maxRetiredPerPeer = 32;
+  static const int _maxRetiredPeers = 256;
+
   /// The latest hello from a peer whose signer this device cannot vouch for
   /// yet (its roster record has not arrived). Re-checked after roster sync.
   final Map<PeerId, RatchetHelloMessage> _pendingHellos = {};
@@ -601,9 +611,30 @@ class Database {
     for (final peer in _myEphemeral.keys.toList()) {
       _forgetEphemeral(peer);
     }
-    _peerEphemeral.clear();
+    for (final peer in _peerEphemeral.keys.toList()) {
+      _retirePeerEphemeral(peer);
+    }
     _pendingHellos.clear();
   }
+
+  /// Moves [peer]'s current ephemeral key, if any, to its retired keys.
+  void _retirePeerEphemeral(PeerId peer) {
+    final key = _peerEphemeral.remove(peer);
+    if (key == null) return;
+    final retired = _retiredPeerEphemerals.remove(peer) ?? [];
+    retired.add(key);
+    if (retired.length > _maxRetiredPerPeer) retired.removeAt(0);
+    // Re-inserted last, so the map's first key is the peer least recently
+    // retired from, which is the one dropped at the cap.
+    _retiredPeerEphemerals[peer] = retired;
+    if (_retiredPeerEphemerals.length > _maxRetiredPeers) {
+      _retiredPeerEphemerals.remove(_retiredPeerEphemerals.keys.first);
+    }
+  }
+
+  bool _isRetired(PeerId peer, List<int> ephemeral) =>
+      _retiredPeerEphemerals[peer]?.any((k) => _listEquals(k, ephemeral)) ??
+      false;
 
   /// Drops (and wipes) this side's ephemeral key and cached hello for [peer].
   void _forgetEphemeral(PeerId peer) {
@@ -704,8 +735,9 @@ class Database {
     _peers.remove(peer);
     _sessions.remove(peer)?.dispose();
     _forgetEphemeral(peer);
-    _peerEphemeral.remove(peer);
+    _retirePeerEphemeral(peer);
     _pendingHellos.remove(peer);
+    _lastSkewReport.remove(peer);
     // A reconnect renegotiates from scratch — the peer may have upgraded.
     _handshakeReceived.remove(peer);
     _negotiatedVersion.remove(peer);
@@ -853,6 +885,8 @@ class Database {
       return;
     }
     _pendingHellos.remove(from);
+    // A key this peer already used for an ended session: a replay.
+    if (_isRetired(from, hello.ephemeral)) return;
     if (_sessions.containsKey(from)) {
       final known = _peerEphemeral[from];
       if (known != null && _listEquals(known, hello.ephemeral)) {
@@ -875,6 +909,7 @@ class Database {
       // us is silently lost.
       _sessions.remove(from)?.dispose();
       _forgetEphemeral(from);
+      _retirePeerEphemeral(from);
     }
     _peerEphemeral[from] = List<int>.unmodifiable(hello.ephemeral);
     // This side's key is minted by [_sendRatchetHello], so send before
@@ -1009,7 +1044,7 @@ class Database {
         await _handleState(from, authenticated ? cols : _rosterOnly(cols));
       case DeltaMessage(:final col, :final records):
         if (!authenticated && col != kDeviceCollection) return;
-        await _handleDelta(col, records);
+        await _handleDelta(from, col, records);
       case PokeMessage():
         await _sendHello(from);
       case RatchetHelloMessage():
@@ -1098,13 +1133,48 @@ class Database {
   }
 
   Future<void> _handleDelta(
+    PeerId from,
     String colName,
     List<Map<String, dynamic>> rawRecords,
   ) async {
     final col = _collections[colName] as Collection<dynamic>?;
     if (col == null) return;
-    var changeset =
+    final (changeset, ahead) =
         _refuseFutureRecords(parseDeltaChangeset(colName, rawRecords));
+    await _mergeDelta(col, colName, changeset);
+    if (ahead != null) _reportClockSkew(from, ahead);
+  }
+
+  /// Last time a refusal of future-dated records from each peer was
+  /// reported, so a peer whose clock is off reports once a minute, not once
+  /// per frame.
+  final Map<PeerId, DateTime> _lastSkewReport = {};
+
+  /// Surfaces refused future-dated records as a handling failure, which
+  /// [Passnote] reports as a `FrameHandlingFailed` event. Either clock may be
+  /// the wrong one: a device whose own clock lags refuses every peer's
+  /// current records, and without this nothing would say why sync stopped.
+  void _reportClockSkew(PeerId from, Duration ahead) {
+    final now = DateTime.now();
+    final last = _lastSkewReport[from];
+    if (last != null && now.difference(last) < const Duration(minutes: 1)) {
+      return;
+    }
+    _lastSkewReport[from] = now;
+    throw StateError(
+      'Refused records stamped ${ahead.inSeconds} s ahead of this device\'s '
+      'clock (limit ${_maxClockDrift.inSeconds} s). Either this device\'s '
+      'clock or the peer\'s is wrong; sync with this peer resumes once they '
+      'agree.',
+    );
+  }
+
+  Future<void> _mergeDelta(
+    Collection<dynamic> col,
+    String colName,
+    CrdtChangeset accepted,
+  ) async {
+    var changeset = accepted;
     if (changeset.values.every((records) => records.isEmpty)) return;
     // Roster rows are vetted before they touch storage: any holder of the
     // roster key (including a revoked device) can send frames, but only rows
@@ -1131,19 +1201,26 @@ class Database {
   }
 
   /// [changeset] without the documents that carry a record stamped more than
-  /// [_maxClockDrift] ahead of this device's clock. Such a record would win
-  /// last-write-wins against every later edit; refusing the whole document
-  /// keeps its records together, and anti-entropy offers it again later.
-  CrdtChangeset _refuseFutureRecords(CrdtChangeset changeset) {
-    final limit = DateTime.now().toUtc().add(_maxClockDrift);
-    return {
+  /// [_maxClockDrift] ahead of this device's clock, and how far ahead the
+  /// furthest refused record was (`null` when none was). Such a record would
+  /// win last-write-wins against every later edit; refusing the whole
+  /// document keeps its records together, and anti-entropy offers it again
+  /// later.
+  (CrdtChangeset, Duration?) _refuseFutureRecords(CrdtChangeset changeset) {
+    final now = DateTime.now().toUtc();
+    final limit = now.add(_maxClockDrift);
+    Duration? ahead;
+    final accepted = {
       for (final entry in changeset.entries)
         entry.key: () {
-          final tooNew = <String>{
-            for (final record in entry.value)
-              if ((record['hlc'] as Hlc).dateTime.isAfter(limit))
-                _documentOf(record['key'] as String),
-          };
+          final tooNew = <String>{};
+          for (final record in entry.value) {
+            final at = (record['hlc'] as Hlc).dateTime;
+            if (!at.isAfter(limit)) continue;
+            tooNew.add(_documentOf(record['key'] as String));
+            final by = at.difference(now);
+            if (ahead == null || by > ahead!) ahead = by;
+          }
           if (tooNew.isEmpty) return entry.value;
           return [
             for (final record in entry.value)
@@ -1152,6 +1229,7 @@ class Database {
           ];
         }(),
     };
+    return (accepted, ahead);
   }
 
   /// The document id a record key belongs to (the key up to the unit
