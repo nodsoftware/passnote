@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.1
+
+- No changes of its own; released with the 1.1.1 security patch of
+  `passnote`, which it now requires. See the repository `CHANGELOG.md`.
+
 ## 1.1.0
 
 - No changes of its own; released with the 1.1.0 security release of the
