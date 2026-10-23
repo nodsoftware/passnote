@@ -57,6 +57,35 @@ void main() {
         reason: 'stored values must not appear in plaintext on disk');
   });
 
+  test('rekey rewrites an existing snapshot under the new key at once',
+      () async {
+    // A passphrase is rotated because the old one may have leaked: the
+    // recovery snapshot must not stay readable under it until the next tick.
+    final path = freshPath();
+    final table = await SqliteCrdtTable.open(path, encryptionKey: key);
+    await table.put('items', 'k', 'before-rotation');
+    table.snapshotNow();
+    await table.rekey(wrongKey);
+    await table.close();
+
+    Future<bool> snapshotOpensWith(List<int> k) async {
+      final copy = '${tmp.path}/probe_${counter++}.sqlite';
+      File('$path.snapshot').copySync(copy);
+      try {
+        final probe = await SqliteCrdtTable.open(copy, encryptionKey: k);
+        final ok = await probe.value('items', 'k') == 'before-rotation';
+        await probe.close();
+        return ok;
+      } on WrongPassphraseException {
+        return false;
+      }
+    }
+
+    expect(await snapshotOpensWith(key), isFalse,
+        reason: 'the snapshot still opens under the old key');
+    expect(await snapshotOpensWith(wrongKey), isTrue);
+  });
+
   test('a wrong key throws WrongPassphraseException and quarantines nothing',
       () async {
     final path = freshPath();
