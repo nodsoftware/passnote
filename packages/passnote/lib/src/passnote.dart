@@ -383,6 +383,24 @@ class Passnote {
   // tried before the session exists. Cleaned up on peer disconnect.
   final Map<PeerId, Future<void>> _inboundChains = {};
 
+  // Bytes each peer has queued on its chain and not yet handled, and their
+  // total. The rate limit caps how many frames a peer may send per second,
+  // not how long they take to handle, so a peer sending large frames faster
+  // than they decrypt would otherwise queue memory without limit, whether or
+  // not it holds a key.
+  final Map<PeerId, int> _inboundPendingBytes = {};
+  int _inboundPendingTotal = 0;
+
+  /// The most bytes one peer may have waiting to be handled. Far above a
+  /// large first sync's backlog; a frame beyond it is dropped like a
+  /// rate-limited one, and anti-entropy re-sends what mattered. A peer with
+  /// nothing pending may always queue one frame.
+  static const int _maxPendingInboundBytesPerPeer = 32 << 20;
+
+  /// The most bytes all peers together may have waiting, so that many
+  /// connections cannot multiply the per-peer bound.
+  static const int _maxPendingInboundBytes = 128 << 20;
+
   // ---------------------------------------------------------------------------
   // Public API
 
@@ -1061,6 +1079,7 @@ class Passnote {
       _connectedPeers.remove(event.peer);
       _inboundTimestamps.remove(event.peer);
       _inboundChains.remove(event.peer);
+      _inboundPendingTotal -= _inboundPendingBytes.remove(event.peer) ?? 0;
       for (final db in _databases.values) {
         db.onPeerLost(event.peer);
       }
@@ -1097,6 +1116,15 @@ class Passnote {
   void _onInbound(InboundFrame inbound) {
     if (_isRateLimited(inbound.from)) return;
     final peer = inbound.from;
+    final size = inbound.frame.bytes.length;
+    final pending = _inboundPendingBytes[peer] ?? 0;
+    if (pending > 0 &&
+        (pending + size > _maxPendingInboundBytesPerPeer ||
+            _inboundPendingTotal + size > _maxPendingInboundBytes)) {
+      return;
+    }
+    _inboundPendingBytes[peer] = pending + size;
+    _inboundPendingTotal += size;
     final tail = _inboundChains[peer] ?? Future<void>.value();
     // A failure is contained here: it must neither stop this peer's later
     // frames nor surface as an unhandled async error.
@@ -1105,6 +1133,17 @@ class Passnote {
     _inboundChains[peer] = next;
     unawaited(
       next.whenComplete(() {
+        // The peer may have disconnected (and its count been dropped) since.
+        final held = _inboundPendingBytes[peer];
+        if (held != null) {
+          final left = held - size;
+          _inboundPendingTotal -= size;
+          if (left > 0) {
+            _inboundPendingBytes[peer] = left;
+          } else {
+            _inboundPendingBytes.remove(peer);
+          }
+        }
         if (identical(_inboundChains[peer], next)) _inboundChains.remove(peer);
       }),
     );
