@@ -245,7 +245,11 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
 
   /// Re-encrypts the database under [newKey] with SQLCipher's `PRAGMA rekey`.
   /// All data is preserved. Subsequent opens and recovery snapshots use
-  /// [newKey].
+  /// [newKey], and an existing recovery snapshot is rewritten under it at
+  /// once: a passphrase is usually rotated because the old one leaked, so a
+  /// copy under the old key must not wait for the next snapshot tick.
+  /// Quarantined `<file>.corrupt-*` copies keep the key they had; delete them
+  /// once inspected.
   ///
   /// Fails closed like [init]: throws [SqlCipherUnavailableException] when the
   /// linked library is not a SQLCipher build (the rekey would be silently
@@ -260,6 +264,7 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
     }
     final hex = newKey.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
     db.execute('PRAGMA rekey = "x\'$hex\'"');
+    if (backend.databaseFileExists('$_path.snapshot')) snapshotNow();
   }
 
   /// Closes the database and every watch stream. Safe to call more than once.

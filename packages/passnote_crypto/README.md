@@ -31,7 +31,7 @@ provides the key-derivation and mnemonic helpers installed by
 
 ```yaml
 dependencies:
-  passnote_crypto: ^1.1.0
+  passnote_crypto: ^1.1.1
 ```
 
 ## Usage

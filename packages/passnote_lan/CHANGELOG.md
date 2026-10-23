@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.1
+
+- No changes of its own; released with the 1.1.1 security patch of
+  `passnote`, which it now requires. See the repository `CHANGELOG.md`.
+
 ## 1.1.0
 
 - `WebSocketTransport` accepts a frame only from a peer its own connection

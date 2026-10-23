@@ -103,6 +103,10 @@ void main() {
     );
     addTearDown(passnote.close);
 
+    final failures = <FrameHandlingFailed>[];
+    passnote.events.listen((e) {
+      if (e is FrameHandlingFailed) failures.add(e);
+    });
     final db = await passnote.openDatabase('d', passphrase: 'p');
     final notes = db.collection<Map<String, dynamic>>('notes', _noteCodec);
     await notes.ready;
@@ -125,5 +129,14 @@ void main() {
         reason: 'ordinary clock skew must still sync');
     expect(await notes.get('future'), isNull,
         reason: 'a far-future record would win last-write-wins forever');
+    expect(failures, hasLength(1),
+        reason: 'a refusal must be visible: a device whose own clock lags '
+            'refuses every peer and would otherwise just stop syncing');
+    expect('${failures.single.error}', contains('ahead of this device'));
+
+    // Reported once a minute per peer, not once per frame.
+    transport.deliver('peer', Frame(db.room, frame));
+    await pumpEventQueue(times: 40);
+    expect(failures, hasLength(1));
   });
 }

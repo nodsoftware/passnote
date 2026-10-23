@@ -13,11 +13,11 @@ encryption:
 
 ```yaml
 dependencies:
-  passnote_flutter: ^1.1.0
+  passnote_flutter: ^1.1.1
 
 dev_dependencies:
   build_runner: ^2.15.0
-  passnote_generator: ^1.1.0
+  passnote_generator: ^1.1.1
 
 hooks:
   user_defines:
