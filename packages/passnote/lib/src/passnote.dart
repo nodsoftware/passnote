@@ -243,6 +243,13 @@ final class PeerDiscoveryRestored extends PassnoteEvent {
 /// Sync is self-healing (anti-entropy re-delivers anything that mattered), so
 /// a single occurrence is harmless — but a steady stream of these on one
 /// database points at a bug or a malformed peer and is worth logging.
+///
+/// A peer whose records are stamped too far ahead of this device's clock
+/// (`PassnoteConfig.maxClockDrift`) reports here too, at most once a minute,
+/// with a [StateError] that says so: either clock may be the wrong one.
+///
+/// Log the [error]'s type rather than its message: an exception raised while
+/// merging can quote the data it was merging.
 final class FrameHandlingFailed extends PassnoteEvent {
   /// Creates the event.
   const FrameHandlingFailed({

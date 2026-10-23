@@ -19,7 +19,7 @@ passnote.events.listen((event) => debugPrint('passnote: $event'));
 | `PeerIncompatible` | The peer speaks no common wire version. One of the two apps needs an update; nothing syncs until then. |
 | `PeerDiscoveryUnavailable` | The OS refused the multicast sockets discovery needs (a missing permission or entitlement). Show the user [platform-setup](set-up-platforms.md) guidance; without this event, a blocked platform looks like an empty network. |
 | `StoreRecovered` | A local store failed its integrity check and was rebuilt from a snapshot or from peers. The corrupt file is kept beside it. |
-| `FrameHandlingFailed` | An inbound frame was dropped because handling it threw. One is harmless (anti-entropy re-delivers); a steady stream from one peer is worth reporting. |
+| `FrameHandlingFailed` | An inbound frame was dropped because handling it threw. One is harmless (anti-entropy re-delivers); a steady stream from one peer is worth reporting. A `StateError` about records stamped ahead of this device's clock means the two clocks disagree (see below). Log the error's type, not its message, which can quote record data. |
 
 ## No `PeerAppeared` at all
 
@@ -29,6 +29,11 @@ The devices do not find each other. In rough order of likelihood:
    always silent. Every item in
    [Set up platforms](set-up-platforms.md) matters; on iOS in
    particular, an app without the multicast entitlement discovers nothing.
+   On macOS 15 and later, a denied Local Network permission can surface as
+   "no route to host" on the multicast socket, which Passnote cannot tell
+   apart from a network without that address family, so it may not raise
+   `PeerDiscoveryUnavailable`. Check System Settings, Privacy & Security,
+   Local Network.
 2. **The network blocks device-to-device traffic.** Guest Wi-Fi client
    isolation, corporate VLANs, and some mesh routers drop multicast. Put
    both devices on a phone hotspot to test: if they find each other there,
@@ -72,19 +77,24 @@ discovery, not sync).
   Wait on `watch().firstWhere(...)` with a timeout, or call
   `passnote.forceSync()` to exchange with every connected peer immediately.
 - **A very fast writer.** Inbound frames are rate-limited per peer
-  (`maxInboundFramesPerSecond`, default 100). Dropped frames are not lost
-  data: the periodic anti-entropy exchange (default every 3 minutes) heals
-  the gap. If a test needs a burst to land now, raise the limit on the
-  builder.
+  (`maxInboundFramesPerSecond`, default 100), and each peer may have at most
+  32 MiB waiting to be handled. Dropped frames are not lost data: the
+  periodic anti-entropy exchange (default every 3 minutes) heals the gap. If
+  a test needs a burst to land now, raise the limit on the builder.
+- **A clock is wrong.** A record stamped more than `maxClockDrift` (default
+  10 minutes) ahead of the receiving device's clock is refused until that
+  clock catches up, and reported as `FrameHandlingFailed`. A device whose own
+  clock runs behind refuses everything its peers write. Fix the device's date
+  and time; nothing is lost in the meantime.
 
 ## Exceptions worth handling
 
 | Exception | When | What to do |
 | --- | --- | --- |
-| `WrongPassphraseException` | `openDatabase` with a passphrase that does not decrypt the stored data. The data on disk is untouched and no key is stored. | Ask the user to re-enter it; the right passphrase then opens normally. |
+| `WrongPassphraseException` | `openDatabase` with a passphrase that does not decrypt the stored data. The data on disk is untouched and no key is stored. | Ask the user to re-enter it; the right passphrase then opens normally. The passphrase is used exactly as given, so the same words with an extra space, different capitals or a differently encoded accent are a different passphrase; normalise what the user types (see [security](../security.md#recommendations)). |
 | `SqlCipherUnavailableException` | An encryption key was supplied but the linked SQLite is not a SQLCipher build; storing plaintext is refused. | Fix the build wiring: select the SQLCipher source of `package:sqlite3` in the app's root pubspec (see [platform setup](set-up-platforms.md)). |
 | `WeakPassphraseException` | A non-mnemonic passphrase under a `strict` policy. | Generate one with `generatePassphrase()`, or relax the policy deliberately. |
-| `PairingRejected` | The code was wrong, or the sponsor declined. Three failures end the attempt. | Start a fresh code; each guess costs a visible failure. |
+| `PairingRejected` | The code was wrong, or the sponsor declined. A device gets three tries at a code and the code is withdrawn after twenty in all. | Start a fresh code; each guess costs a visible failure. |
 | `PairingTimeout` | The two devices never met during the pairing window. | Check discovery first (above), then retry. |
 | `CipherAuthError` | A frame or stored record failed authentication. Dropped, never partially applied. | Nothing; if persistent across restarts, the passphrase or key material is wrong. |
 

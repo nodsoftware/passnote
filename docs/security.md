@@ -138,8 +138,13 @@ Each of these is a deliberate scope decision, stated with its reason.
   and a co-resident attacker is already inside the device boundary.
 - **Rate limiting is hygiene, not a boundary.** A noisy peer's excess frames
   are dropped (`maxInboundFramesPerSecond`, default 100/s) so it cannot starve
-  the event loop. Authorisation comes from keys, not from rate limits, and a
+  the event loop, and the frames a peer may have waiting to be handled are
+  bounded (32 MiB per peer, 128 MiB in total) so it cannot exhaust memory,
+  key or no key. Authorisation comes from keys, not from rate limits, and a
   keyed peer is inside the trust boundary by definition.
+- **Snapshots follow the key.** Rotating a key rewrites the recovery
+  snapshot under the new key straight away. A store quarantined as corrupt
+  keeps the key it had; delete it once inspected.
 
 ## Cryptographic details
 
@@ -163,6 +168,12 @@ Every primitive is pinned by published known-answer
 ## Recommendations
 
 - Use the generated 24-word passphrase unless you have a strong reason not to.
+- Normalise a passphrase the user types before passing it in: Passnote
+  derives the key from the exact string, so trim it, collapse runs of
+  whitespace to one space, and for a mnemonic lower-case it and apply Unicode
+  NFKD. Do the same on every device, from the first; changing it later
+  changes the key. The generated words joined with single spaces need
+  nothing.
 - Choose a stable, app-specific `salt` (like `"myapp:v1"`) and never reuse it
   across unrelated apps.
 - Show pairing codes and recovery phrases to the user once; never store them.

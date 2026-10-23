@@ -4,6 +4,28 @@ All five packages release together with matching versions. Per-package detail
 lives in each package's own `CHANGELOG.md`; this file is the cross-package
 summary.
 
+## 1.1.1
+
+A security patch from a second review of 1.1.0; upgrading is recommended.
+Wire- and API-compatible with 1.1.0: devices on 1.1.0 and 1.1.1 sync with
+each other.
+
+- **Inbound memory is bounded.** A peer sending large frames faster than they
+  could be handled, with or without a key, could grow its handling queue
+  until the device ran out of memory. Frames waiting to be handled are now
+  capped at 32 MiB per peer and 128 MiB in total.
+- **Snapshots follow a rekey.** After a passphrase rotation the recovery
+  snapshot stayed under the old key until the next snapshot tick; it is now
+  rewritten under the new key at once.
+- **Clock problems are visible.** Records refused for being stamped too far
+  in the future are reported as `FrameHandlingFailed`, so a device whose own
+  clock lags no longer just stops syncing.
+- **Replayed handshakes are ignored.** A recorded ratchet hello replayed under
+  a member's transport id could reset that member's session; one carrying an
+  ephemeral key that already served an ended session is now ignored.
+- Documentation: passphrase normalisation, macOS Local Network permission,
+  logging `FrameHandlingFailed` safely.
+
 ## 1.1.0
 
 A security release. It fixes the findings of an internal security review of

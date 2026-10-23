@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.1
+
+- Frames waiting to be handled are bounded to 32 MiB per peer and 128 MiB in
+  total; beyond that they are dropped like rate-limited frames.
+- `SqliteCrdtTable.rekey` rewrites an existing recovery snapshot under the new
+  key immediately.
+- Records refused by `maxClockDrift` are reported as `FrameHandlingFailed` (a
+  `StateError`), at most once a minute per peer.
+- A verified ratchet hello carrying an ephemeral key that already served an
+  ended session with that peer is ignored instead of resetting the session.
+
 ## 1.1.0
 
 Security release; see the repository `CHANGELOG.md` for the summary and the
