@@ -153,9 +153,12 @@ class WebSocketRelay {
             socket.close(WebSocketStatus.messageTooBig, 'frame too large');
             return;
           }
-          final to = _envelopeTo(data);
-          if (to == null) return;
-          _clients[to]?.add(data);
+          final route = _envelopeRoute(data);
+          if (route == null) return;
+          // A client sends in its own name only: an envelope claiming another
+          // sender would let it speak for a node it is not.
+          if (route.from != node) return;
+          _clients[route.to]?.add(data);
         },
         onDone: () {
           helloTimer.cancel();
@@ -205,14 +208,17 @@ class WebSocketRelay {
     }
   }
 
-  /// Reads the `to` node id out of a `WebSocketTransport` envelope
-  /// (`[2B fromLen][from][2B toLen][to][frame]`) without touching the frame.
-  static String? _envelopeTo(List<int> bytes) {
+  /// Reads the `from` and `to` node ids out of a `WebSocketTransport`
+  /// envelope (`[2B fromLen][from][2B toLen][to][frame]`) without touching
+  /// the frame.
+  static ({String from, String to})? _envelopeRoute(List<int> bytes) {
     try {
       final fromLength = (bytes[0] << 8) | bytes[1];
+      final from = utf8.decode(bytes.sublist(2, 2 + fromLength));
       final toStart = 2 + fromLength + 2;
       final toLength = (bytes[toStart - 2] << 8) | bytes[toStart - 1];
-      return utf8.decode(bytes.sublist(toStart, toStart + toLength));
+      final to = utf8.decode(bytes.sublist(toStart, toStart + toLength));
+      return (from: from, to: to);
     } catch (_) {
       return null; // Malformed: drop.
     }

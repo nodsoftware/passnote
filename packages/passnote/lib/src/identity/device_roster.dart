@@ -5,6 +5,7 @@ import 'package:crdt/crdt.dart' show CrdtChangeset;
 
 import '../codec.dart';
 import '../collection.dart';
+import '../exceptions.dart';
 import '../ports/identity.dart';
 
 /// The reserved collection that holds a database's device roster and the group
@@ -169,9 +170,10 @@ final class WrappedGroupKey extends DeviceRosterEntry {
 /// A record that the group key was rotated to [keyEpoch], excluding
 /// [revokedDeviceId] (empty for the initial founding at epoch 0).
 ///
-/// One per epoch; concurrent rotations to the same epoch converge to a single
-/// record by last-write-wins, and [DeviceRoster.reconcile] re-rotates if that
-/// leaves a revoked device holding a usable wrap.
+/// One per epoch and rotating device, so two rotations to the same epoch made
+/// concurrently on two devices both survive and every device judges both;
+/// [DeviceRoster.reconcile] re-rotates if a revoked device is left holding a
+/// usable wrap.
 final class KeyRotation extends DeviceRosterEntry {
   /// Creates a rotation row, signed by [byDeviceId].
   const KeyRotation({
@@ -201,7 +203,7 @@ final class KeyRotation extends DeviceRosterEntry {
   final List<int> signature;
 
   @override
-  String get documentId => 'rotation:$keyEpoch';
+  String get documentId => 'rotation:$keyEpoch:$byDeviceId';
 }
 
 /// Codec for the reserved [kDeviceCollection]. Rows are discriminated by a
@@ -298,12 +300,18 @@ class _RosterView {
 ///   its identity is pinned on first sight and never re-learned.
 /// - A [DeviceRecord] counts only when signed by an already-known,
 ///   non-revoked device (the founder is the root; admission at pairing and
-///   recovery creates the edges). A known device's public key is pinned; a
+///   recovery creates the edges), and only when its device id is the
+///   fingerprint of its public key. A known device's public key is pinned; a
 ///   record that changes it is ignored.
 /// - A [KeyRotation] counts only when signed by a known, non-revoked device.
+///   Rotations are judged in epoch order, and the trust graph is recomputed
+///   after each revocation, so nothing a revoked device signed vouches for
+///   anyone any more: it cannot rotate, admit, or re-admit itself under a
+///   fresh id — even though it still holds the roster key — and a device it
+///   introduced keeps its standing only once a non-revoked member has
+///   re-signed it (the revoking device does so as part of [revoke]).
 ///   Revocation is monotone: once a device id is seen revoked it stays
-///   revoked, so a revoked device cannot rotate, admit, or re-admit itself
-///   under a fresh id — even though it still holds the roster key.
+///   revoked.
 /// - A [WrappedGroupKey] is unwrapped only when signed by a known,
 ///   non-revoked device, so a key injected by an outsider or a revoked member
 ///   is never adopted.
@@ -479,6 +487,18 @@ class DeviceRoster {
   // ---------------------------------------------------------------------------
   // Validation
 
+  /// Whether [record]'s device id is the fingerprint of its public key, so an
+  /// id cannot be claimed for a key it does not belong to.
+  bool _idMatchesKey(DeviceRecord record) {
+    try {
+      return _identity
+              .fingerprintOf(DevicePublicKey.fromBytes(record.publicKey)) ==
+          record.deviceId;
+    } on ArgumentError {
+      return false;
+    }
+  }
+
   /// Validates the roster against the pinned trust state and returns only the
   /// rows that count. Grows the pins (monotone) and persists them when they
   /// changed.
@@ -486,7 +506,10 @@ class DeviceRoster {
     final rows = await _collection.all();
     final records = rows.whereType<DeviceRecord>().toList();
     final rotations = rows.whereType<KeyRotation>().toList()
-      ..sort((a, b) => a.keyEpoch.compareTo(b.keyEpoch));
+      ..sort((a, b) {
+        final byEpoch = a.keyEpoch.compareTo(b.keyEpoch);
+        return byEpoch != 0 ? byEpoch : a.byDeviceId.compareTo(b.byDeviceId);
+      });
     final wraps = rows.whereType<WrappedGroupKey>().toList();
 
     final pinSnapshot = _pinFingerprint();
@@ -498,7 +521,10 @@ class DeviceRoster {
     if (_founderId == null) {
       KeyRotation? rot0;
       for (final r in rotations) {
-        if (r.keyEpoch == 0 && r.revokedDeviceId.isEmpty) rot0 = r;
+        if (r.keyEpoch == 0 && r.revokedDeviceId.isEmpty) {
+          rot0 = r;
+          break;
+        }
       }
       if (rot0 != null) {
         DeviceRecord? founderRecord;
@@ -508,6 +534,7 @@ class DeviceRoster {
           }
         }
         if (founderRecord != null &&
+            _idMatchesKey(founderRecord) &&
             await _verifyRow(founderRecord, founderRecord.publicKey) &&
             await _verifyRow(rot0, founderRecord.publicKey)) {
           _founderId = founderRecord.deviceId;
@@ -516,9 +543,38 @@ class DeviceRoster {
       }
     }
 
-    // Fixed point: rotations by known non-revoked signers extend the revoked
-    // set; records signed by known non-revoked signers extend the known set.
-    // Both sets only grow, so this terminates.
+    // The devices this one already validated are the base of trust; every
+    // other device is known only through a chain of records signed by known,
+    // non-revoked devices. Recomputed after each revocation.
+    final base = Map.of(_known);
+    Future<Map<String, List<int>>> chainFromBase() async {
+      final known = Map.of(base);
+      var grew = true;
+      while (grew) {
+        grew = false;
+        for (final rec in records) {
+          if (known.containsKey(rec.deviceId)) continue;
+          // A device may not introduce itself; only the pinned founder is
+          // self-signed (validated above).
+          if (rec.signedBy == rec.deviceId) continue;
+          final signerKey = known[rec.signedBy];
+          if (signerKey == null || _revoked.contains(rec.signedBy)) continue;
+          if (!_idMatchesKey(rec)) continue;
+          if (await _verifyRow(rec, signerKey)) {
+            known[rec.deviceId] = List<int>.unmodifiable(rec.publicKey);
+            grew = true;
+          }
+        }
+      }
+      return known;
+    }
+
+    var known = await chainFromBase();
+
+    // Revocations, judged in epoch order. Each one takes effect before the
+    // next is judged, and the chain is recomputed straight away, so a device
+    // introduced by a now-revoked one cannot use its standing to sign a later
+    // revocation. Both sets only move one way, so this terminates.
     var changed = true;
     while (changed) {
       changed = false;
@@ -526,51 +582,51 @@ class DeviceRoster {
       for (final rot in rotations) {
         if (rot.revokedDeviceId.isEmpty) continue;
         if (_revoked.contains(rot.revokedDeviceId)) continue;
-        final signerKey = _known[rot.byDeviceId];
+        final signerKey = known[rot.byDeviceId];
         if (signerKey == null || _revoked.contains(rot.byDeviceId)) continue;
         if (await _verifyRow(rot, signerKey)) {
           _revoked.add(rot.revokedDeviceId);
+          known = await chainFromBase();
           changed = true;
         }
       }
 
       for (final rec in records) {
-        final signerKey = _known[rec.signedBy];
+        if (!rec.revoked || _revoked.contains(rec.deviceId)) continue;
+        final knownKey = known[rec.deviceId];
+        if (knownKey == null || !_sameKey(knownKey, rec.publicKey)) continue;
+        final signerKey = known[rec.signedBy];
         if (signerKey == null || _revoked.contains(rec.signedBy)) continue;
-        final knownKey = _known[rec.deviceId];
-        if (knownKey != null) {
-          // Key continuity: a known device never changes its public key.
-          if (!_sameKey(knownKey, rec.publicKey)) continue;
-          if (rec.revoked &&
-              !_revoked.contains(rec.deviceId) &&
-              await _verifyRow(rec, signerKey)) {
-            _revoked.add(rec.deviceId);
-            changed = true;
-          }
-          continue;
-        }
-        // A device may not introduce itself; only the pinned founder is
-        // self-signed (validated above).
-        if (rec.signedBy == rec.deviceId) continue;
         if (await _verifyRow(rec, signerKey)) {
-          _known[rec.deviceId] = List<int>.unmodifiable(rec.publicKey);
+          _revoked.add(rec.deviceId);
+          known = await chainFromBase();
           changed = true;
         }
       }
     }
+    _known.addAll(known);
 
-    // Assemble the validated view.
+    // Assemble the validated view. A record counts when its signer is a known,
+    // non-revoked device — or when its signer has since been revoked but this
+    // device had already validated the record's device before (a membership
+    // that predates the revocation is not undone by it).
     final validRecords = <String, DeviceRecord>{};
     for (final rec in records) {
-      final knownKey = _known[rec.deviceId];
+      final knownKey = known[rec.deviceId];
       if (knownKey == null || !_sameKey(knownKey, rec.publicKey)) continue;
-      final signerKey = _known[rec.signedBy];
+      if (!_idMatchesKey(rec)) continue;
+      final signerKey = known[rec.signedBy];
       if (signerKey == null) continue;
+      if (_revoked.contains(rec.signedBy) &&
+          rec.signedBy != rec.deviceId &&
+          !base.containsKey(rec.deviceId)) {
+        continue;
+      }
       if (await _verifyRow(rec, signerKey)) validRecords[rec.deviceId] = rec;
     }
     final validWraps = <WrappedGroupKey>[];
     for (final wrap in wraps) {
-      final signerKey = _known[wrap.signedBy];
+      final signerKey = known[wrap.signedBy];
       if (signerKey == null || _revoked.contains(wrap.signedBy)) continue;
       if (await _verifyRow(wrap, signerKey)) validWraps.add(wrap);
     }
@@ -591,23 +647,40 @@ class DeviceRoster {
   Future<void> _persistPins() async {
     final save = _savePins;
     if (save == null) return;
-    await save(utf8.encode(jsonEncode({
-      'founder': _founderId,
-      'known': {for (final e in _known.entries) e.key: _b64(e.value)},
-      'revoked': _revoked.toList()..sort(),
-    })));
+    await save(_encodePins());
   }
 
+  List<int> _encodePins() => utf8.encode(jsonEncode({
+        'founder': _founderId,
+        'known': {for (final e in _known.entries) e.key: _b64(e.value)},
+        'revoked': _revoked.toList()..sort(),
+      }));
+
+  /// The trust pins, validated against the current roster first, in the
+  /// encoding [DeviceRoster.new] restores. A sponsor hands them to the device
+  /// it admits so that device starts from the sponsor's trust state.
+  Future<List<int>> exportPins() async {
+    await _validate();
+    return _encodePins();
+  }
+
+  /// Restores persisted pins. Throws [RosterPinsCorruptException] when they
+  /// cannot be read: falling back to trust-on-first-use would let whoever
+  /// syncs next rewrite this device's view of the membership.
   void _loadPins(List<int> bytes) {
     try {
       final map = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
-      _founderId = map['founder'] as String?;
-      for (final e in (map['known'] as Map<String, dynamic>).entries) {
-        _known[e.key] = base64.decode(e.value as String);
-      }
-      _revoked.addAll((map['revoked'] as List).cast<String>());
+      final founder = map['founder'] as String?;
+      final known = {
+        for (final e in (map['known'] as Map<String, dynamic>).entries)
+          e.key: base64.decode(e.value as String),
+      };
+      final revoked = (map['revoked'] as List).cast<String>().toSet();
+      _founderId = founder;
+      _known.addAll(known);
+      _revoked.addAll(revoked);
     } catch (_) {
-      // Unreadable pins degrade to trust-on-first-use, never to a crash.
+      throw const RosterPinsCorruptException();
     }
   }
 
@@ -638,6 +711,17 @@ class DeviceRoster {
           isThisDevice: d.deviceId == myId,
         ),
     ];
+  }
+
+  /// The public identity of [deviceId] when it is a validated, non-revoked
+  /// roster member, else `null`. Sessions are only ever opened with devices
+  /// this returns a key for.
+  Future<DevicePublicKey?> memberKey(String deviceId) async {
+    final view = await _validate();
+    if (view.revoked.contains(deviceId)) return null;
+    final record = view.records[deviceId];
+    if (record == null) return null;
+    return DevicePublicKey.fromBytes(record.publicKey);
   }
 
   /// `true` while no device has founded the group key yet (no validated wrap
@@ -701,6 +785,7 @@ class DeviceRoster {
           for (final (docId, row) in retries) {
             final signerKey = known[row.signedBy];
             if (signerKey == null || _revoked.contains(row.signedBy)) continue;
+            if (row is DeviceRecord && !_idMatchesKey(row)) continue;
             if (!await _verifyRow(row, signerKey)) continue;
             admitted.add(byDoc[docId]!);
             if (row is DeviceRecord && !known.containsKey(row.deviceId)) {
@@ -735,6 +820,7 @@ class DeviceRoster {
           continue;
         }
         if (_revoked.contains(row.signedBy)) continue;
+        if (row is DeviceRecord && !_idMatchesKey(row)) continue;
         if (!await _verifyRow(row, signerKey)) continue;
         admitted.add(group.value);
         if (row is DeviceRecord && !known.containsKey(row.deviceId)) {
@@ -971,6 +1057,15 @@ class DeviceRoster {
         await _collection.put(
           await _signRecord(record.copyWith(revoked: true)),
         );
+      }
+      // Whatever the revoked device signed stops vouching for anyone. Re-sign
+      // the records it last wrote for devices still in good standing, so
+      // their membership rests on this device instead.
+      for (final other in view.records.values) {
+        if (other.signedBy != newlyRevoked) continue;
+        if (other.deviceId == newlyRevoked) continue;
+        if (view.revoked.contains(other.deviceId)) continue;
+        await _collection.put(await _signRecord(other));
       }
     }
 

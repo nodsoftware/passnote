@@ -1,6 +1,6 @@
 /// Binary wire codec for [ProtocolMessage]s.
 ///
-/// Every frame is `magic (0xC7) ‖ version (0x01) ‖ type ‖ body`, with all
+/// Every frame is `magic (0xC7) ‖ version (0x02) ‖ type ‖ body`, with all
 /// variable-length fields length-prefixed by a varint — no delimiters to
 /// escape and no application-level chunking. Record values are arbitrary
 /// JSON-shaped data, encoded with a compact tagged encoding ([_writeValue]).
@@ -26,7 +26,13 @@ import 'messages.dart';
 const int _magic = 0xC7;
 
 /// Wire protocol version carried in every frame.
-const int wireVersion = 1;
+const int wireVersion = 2;
+
+/// The frame version a [HandshakeMessage] is always written with. Its layout
+/// has not changed since version 1, and keeping it readable by version-1 peers
+/// is what lets them see this build's versions and report `PeerIncompatible`
+/// instead of silently never syncing.
+const int _handshakeFrameVersion = 1;
 
 // Message type tags.
 const int _tagHello = 1;
@@ -55,7 +61,7 @@ const int _maxValueDepth = 64;
 List<int> encodeMessage(ProtocolMessage msg) {
   final w = _Writer()
     ..byte(_magic)
-    ..byte(wireVersion);
+    ..byte(msg is HandshakeMessage ? _handshakeFrameVersion : wireVersion);
   switch (msg) {
     case HelloMessage(:final node):
       w
@@ -80,12 +86,22 @@ List<int> encodeMessage(ProtocolMessage msg) {
       }
     case PokeMessage():
       w.byte(_tagPoke);
-    case RatchetHelloMessage(:final node, :final nonce, :final keyTag):
+    case RatchetHelloMessage(
+        :final node,
+        :final to,
+        :final deviceId,
+        :final ephemeral,
+        :final keyTag,
+        :final signature
+      ):
       w
         ..byte(_tagRatchetHello)
         ..string(node)
-        ..bytes(nonce)
-        ..bytes(keyTag);
+        ..string(to)
+        ..string(deviceId)
+        ..bytes(ephemeral)
+        ..bytes(keyTag)
+        ..bytes(signature);
     case HandshakeMessage(
         :final node,
         :final versions,
@@ -153,8 +169,13 @@ String? _readBound(_Reader r) => r.byte() == 0 ? null : r.string();
 ProtocolMessage? decodeMessage(List<int> bytes) {
   try {
     final r = _Reader(bytes);
-    if (r.byte() != _magic || r.byte() != wireVersion) return null;
-    final ProtocolMessage? message = switch (r.byte()) {
+    if (r.byte() != _magic) return null;
+    final version = r.byte();
+    final tag = r.byte();
+    final expected =
+        tag == _tagHandshake ? _handshakeFrameVersion : wireVersion;
+    if (version != expected) return null;
+    final ProtocolMessage? message = switch (tag) {
       _tagHello => HelloMessage(node: r.string()),
       _tagState => StateMessage(cols: {
           for (var i = r.varint(); i > 0; i--) r.string(): r.string(),
@@ -168,8 +189,11 @@ ProtocolMessage? decodeMessage(List<int> bytes) {
       _tagPoke => const PokeMessage(),
       _tagRatchetHello => RatchetHelloMessage(
           node: r.string(),
-          nonce: r.bytesField(),
+          to: r.string(),
+          deviceId: r.string(),
+          ephemeral: r.bytesField(),
           keyTag: r.bytesField(),
+          signature: r.bytesField(),
         ),
       _tagHandshake => HandshakeMessage(
           node: r.string(),

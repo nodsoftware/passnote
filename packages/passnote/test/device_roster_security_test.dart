@@ -398,4 +398,138 @@ void main() {
       expect(vetted[internal.kDeviceCollection], hasLength(2));
     });
   });
+
+  group('validation order and identity binding', () {
+    test(
+        'a fresh device judges a revocation before the revoked device\'s '
+        'later introductions', () async {
+      // The revoker is not the founder, so a naive pass meets the revoked
+      // device's forged introduction before it has learned who the revoker
+      // is. Revocation must win regardless of the order rows come back in.
+      final store = internal.Collection.create<DeviceRosterEntry>(
+        internal.kDeviceCollection,
+        internal.deviceRosterCodec,
+      );
+      final founder = _SigningIdentity(11);
+      final revoker = _SigningIdentity(12);
+      final revoked = _SigningIdentity(13);
+      final puppet = _SigningIdentity(14);
+      final fresh = _SigningIdentity(15);
+      final rosterFounder = internal.DeviceRoster(store, founder);
+      await rosterFounder.found(label: 'founder');
+      await rosterFounder.admit(await revoker.publicKey, label: 'revoker');
+      await rosterFounder.admit(await revoked.publicKey, label: 'revoked');
+      final rosterRevoker = internal.DeviceRoster(store, revoker);
+      expect(await rosterRevoker.resolve(), DeviceState.ready);
+      await rosterRevoker.revoke(revoked.deviceId);
+
+      // After its revocation, the revoked device vouches for a puppet.
+      final forged = DeviceRecord(
+        deviceId: puppet.deviceId,
+        publicKey: (await puppet.publicKey).toBytes(),
+        label: 'puppet',
+        pairedAt: DateTime.now().toUtc(),
+        signedBy: revoked.deviceId,
+      );
+      await store.put(DeviceRecord(
+        deviceId: forged.deviceId,
+        publicKey: forged.publicKey,
+        label: forged.label,
+        pairedAt: forged.pairedAt,
+        signedBy: forged.signedBy,
+        signature: await revoked.sign(recordPayload(forged)),
+      ));
+
+      // A device seeing this roster for the first time, with no pins.
+      final rosterFresh = internal.DeviceRoster(store, fresh);
+      final ids = {for (final d in await rosterFresh.devices()) d.id};
+      expect(ids, isNot(contains(puppet.deviceId)));
+      expect(
+        (await rosterFresh.devices())
+            .firstWhere((d) => d.id == revoked.deviceId)
+            .revoked,
+        isTrue,
+      );
+    });
+
+    test(
+        'a device introduced by a since-revoked member keeps its standing, '
+        'because the revoker re-signs it', () async {
+      final store = internal.Collection.create<DeviceRosterEntry>(
+        internal.kDeviceCollection,
+        internal.deviceRosterCodec,
+      );
+      final founder = _SigningIdentity(21);
+      final sponsor = _SigningIdentity(22);
+      final introduced = _SigningIdentity(23);
+      final fresh = _SigningIdentity(24);
+      final rosterFounder = internal.DeviceRoster(store, founder);
+      await rosterFounder.found(label: 'founder');
+      await rosterFounder.admit(await sponsor.publicKey, label: 'sponsor');
+      final rosterSponsor = internal.DeviceRoster(store, sponsor);
+      expect(await rosterSponsor.resolve(), DeviceState.ready);
+      await rosterSponsor.admit(await introduced.publicKey, label: 'phone');
+      await rosterFounder.revoke(sponsor.deviceId);
+
+      final rosterFresh = internal.DeviceRoster(store, fresh);
+      final standing = {
+        for (final d in await rosterFresh.devices()) d.id: d.revoked,
+      };
+      expect(standing[introduced.deviceId], isFalse);
+      expect(standing[sponsor.deviceId], isTrue);
+      final rosterIntroduced = internal.DeviceRoster(store, introduced);
+      expect(await rosterIntroduced.resolve(), DeviceState.ready);
+    });
+
+    test('a record whose id is not its key\'s fingerprint is ignored',
+        () async {
+      // Signed by a real member, but claiming an id that belongs to no key:
+      // ids must not be choosable (they decide sort order and elections).
+      final claimed = DeviceRecord(
+        deviceId: 'AAAAAAAAAAAAAAAA',
+        publicKey: (await idE.publicKey).toBytes(),
+        label: 'mislabelled',
+        pairedAt: DateTime.now().toUtc(),
+        signedBy: idA.deviceId,
+      );
+      final row = DeviceRecord(
+        deviceId: claimed.deviceId,
+        publicKey: claimed.publicKey,
+        label: claimed.label,
+        pairedAt: claimed.pairedAt,
+        signedBy: claimed.signedBy,
+        signature: await idA.sign(recordPayload(claimed)),
+      );
+      await roster.put(row);
+      expect((await rosterA.devices()).map((d) => d.id),
+          isNot(contains('AAAAAAAAAAAAAAAA')));
+      final fresh = internal.DeviceRoster(roster, _SigningIdentity(31));
+      expect((await fresh.devices()).map((d) => d.id),
+          isNot(contains('AAAAAAAAAAAAAAAA')));
+    });
+
+    test('two rotations to the same epoch are both kept', () async {
+      // Two devices rotating concurrently used to collide on one row id, so
+      // only one of the two rotations survived anywhere.
+      final rosterC = internal.DeviceRoster(roster, idC);
+      expect(await rosterC.resolve(), DeviceState.ready);
+      await rosterA.admit(await idE.publicKey, label: 'E');
+      final epoch = rosterA.keyEpoch;
+      await rosterA.revoke(idE.deviceId);
+      await rosterC.revoke(idB.deviceId); // C still sits at the old epoch
+      final atNext = (await roster.all())
+          .whereType<KeyRotation>()
+          .where((r) => r.keyEpoch == epoch + 1)
+          .map((r) => r.byDeviceId)
+          .toSet();
+      expect(atNext, {idA.deviceId, idC.deviceId});
+    });
+
+    test('unreadable pins refuse to open instead of trusting anew', () {
+      expect(
+        () => internal.DeviceRoster(roster, idA, pinBytes: [1, 2, 3]),
+        throwsA(isA<RosterPinsCorruptException>()),
+      );
+    });
+  });
 }

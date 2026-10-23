@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.0
+
+- `WebSocketTransport` accepts a frame only from a peer its own connection
+  carries, and only a connection it dialed may announce further peers; an
+  inbound connection introduces itself once. The reference relay drops
+  envelopes whose sender is not the client's registered id.
+- `LanTransport` and `WebSocketTransport` listeners take
+  `maxInboundConnections` (64), `helloTimeout` (10 s) and `maxFrameBytes`
+  (4 MiB), and refuse node ids longer than 128 characters.
+- Requires `passnote` 1.1.0.
+
 ## 1.0.0
 
 First release.

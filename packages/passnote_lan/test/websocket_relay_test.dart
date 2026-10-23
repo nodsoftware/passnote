@@ -33,7 +33,13 @@ Future<WebSocket> join(int port, String node) async {
   return ws;
 }
 
-Future<void> settle() => pumpEventQueue(times: 40);
+// Real sockets need real time: a fixed number of event-loop turns is not
+// enough when the suite's files run in parallel on a loaded machine.
+Future<void> settle() async {
+  await pumpEventQueue(times: 40);
+  await Future<void>.delayed(const Duration(milliseconds: 100));
+  await pumpEventQueue(times: 40);
+}
 
 void main() {
   test('an id in use cannot be taken over; the holder keeps its traffic',
@@ -77,19 +83,50 @@ void main() {
     await flooder.done.timeout(const Duration(seconds: 5));
     expect(flooder.closeCode, WebSocketStatus.messageTooBig);
 
-    // Two well-behaved clients still exchange frames.
+    // Two well-behaved clients still exchange frames. Waited on, not pumped
+    // for: real sockets need real time, and a fixed number of event-loop
+    // turns was not always enough under a loaded test run.
     final a = await join(relay.port, 'a');
     final b = await join(relay.port, 'b');
     addTearDown(a.close);
     addTearDown(b.close);
-    final bInbox = <List<int>>[];
-    b.listen((d) {
-      if (d is List<int>) bInbox.add(d);
-    });
+    final bFrame =
+        b.firstWhere((d) => d is List<int>).timeout(const Duration(seconds: 5));
     await settle();
     a.add(envelope('a', 'b', [9]));
+    expect(await bFrame, envelope('a', 'b', [9]));
+  });
+
+  test('a client cannot send in another client\'s name', () async {
+    final relay = await WebSocketRelay.bind(port: 0);
+    addTearDown(relay.close);
+
+    final a = await join(relay.port, 'a');
+    final b = await join(relay.port, 'b');
+    final mallory = await join(relay.port, 'mallory');
+    addTearDown(a.close);
+    addTearDown(b.close);
+    addTearDown(mallory.close);
+    a.listen((_) {});
+    mallory.listen((_) {});
+    final bInbox = <List<int>>[];
+    final bGotOne = Completer<void>();
+    b.listen((d) {
+      if (d is List<int>) {
+        bInbox.add(d);
+        if (!bGotOne.isCompleted) bGotOne.complete();
+      }
+    });
     await settle();
-    expect(bInbox, hasLength(1));
+
+    // Claiming to be 'a' is dropped; the same frame in its own name is not.
+    mallory.add(envelope('a', 'b', [1]));
+    mallory.add(envelope('mallory', 'b', [2]));
+    await bGotOne.future.timeout(const Duration(seconds: 5));
+    await settle();
+    expect(bInbox, [
+      envelope('mallory', 'b', [2])
+    ]);
   });
 
   test('the client cap refuses connections beyond it', () async {

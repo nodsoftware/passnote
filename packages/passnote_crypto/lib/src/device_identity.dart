@@ -13,7 +13,9 @@ import 'key_derivation.dart';
 ///
 /// - [wrapFor] / [unwrap] seal a symmetric key with X25519 → HKDF-SHA256 →
 ///   AES-256-GCM, using a fresh ephemeral sender keypair per wrap so each wrap
-///   is independent.
+///   is independent. The wrap key is bound to both the ephemeral and the
+///   recipient public key (`passnote-key-wrap-v2`); wraps made by 1.0
+///   (`passnote-key-wrap-v1`, recipient key only) still open.
 /// - [sign] is Ed25519 over the raw message.
 /// - [deviceId] is `base32(SHA-256(publicKey))` truncated to 16 characters —
 ///   short enough for a pairing UI, wide enough not to collide.
@@ -176,63 +178,94 @@ class DeviceIdentity implements Identity {
     List<int> key, {
     List<int>? gcmNonce,
   }) async {
-    final shared = await _x25519.sharedSecretKey(
-      keyPair: ephemeral,
-      remotePublicKey:
-          SimplePublicKey(peer.keyExchange, type: KeyPairType.x25519),
+    final shared = await _agree(ephemeral, peer.keyExchange);
+    if (shared == null) {
+      throw ArgumentError.value(
+        peer,
+        'peer',
+        'key-exchange public key is of low order; a wrap to it protects '
+            'nothing',
+      );
+    }
+    final ephemeralPublicKey =
+        ((await ephemeral.extractPublicKey()) as SimplePublicKey).bytes;
+    final wrapKey = await _deriveWrapKey(
+      shared,
+      recipient: peer.keyExchange,
+      ephemeral: ephemeralPublicKey,
     );
-    final wrapKey = await _deriveWrapKey(shared, peer.keyExchange);
     final nonce = gcmNonce ?? _aesGcm.newNonce();
     final box = await _aesGcm.encrypt(key, secretKey: wrapKey, nonce: nonce);
     return WrappedKey(
-      ephemeralPublicKey:
-          ((await ephemeral.extractPublicKey()) as SimplePublicKey).bytes,
+      ephemeralPublicKey: ephemeralPublicKey,
       nonce: nonce,
       ciphertext: Uint8List.fromList([...box.cipherText, ...box.mac.bytes]),
     );
   }
 
+  /// The X25519 agreement of [keyPair] with [remote], or `null` when it is
+  /// all zeroes (a low-order point on the other side contributes nothing).
+  Future<SecretKey?> _agree(KeyPair keyPair, List<int> remote) async {
+    final shared = await _x25519.sharedSecretKey(
+      keyPair: keyPair,
+      remotePublicKey: SimplePublicKey(remote, type: KeyPairType.x25519),
+    );
+    final bytes = await shared.extractBytes();
+    return bytes.every((b) => b == 0) ? null : shared;
+  }
+
   @override
   Future<List<int>> unwrap(WrappedKey wrapped) async {
-    final shared = await _x25519.sharedSecretKey(
-      keyPair: _keyExchangeKeyPair,
-      remotePublicKey: SimplePublicKey(
-        wrapped.ephemeralPublicKey,
-        type: KeyPairType.x25519,
-      ),
-    );
-    final wrapKey = await _deriveWrapKey(shared, _publicKey.keyExchange);
     if (wrapped.ciphertext.length < 16) {
       throw ArgumentError('wrapped key ciphertext is too short');
     }
+    const notOurs = 'wrapped key was not sealed to this device, or is corrupt';
+    final shared =
+        await _agree(_keyExchangeKeyPair, wrapped.ephemeralPublicKey);
+    if (shared == null) throw StateError(notOurs);
     final split = wrapped.ciphertext.length - 16;
     final box = SecretBox(
       wrapped.ciphertext.sublist(0, split),
       nonce: wrapped.nonce,
       mac: Mac(wrapped.ciphertext.sublist(split)),
     );
-    try {
-      return await _aesGcm.decrypt(box, secretKey: wrapKey);
-    } on SecretBoxAuthenticationError {
-      throw StateError(
-        'wrapped key was not sealed to this device, or is corrupt',
+    // Current wraps first; then the 1.0 derivation, for wraps written before
+    // 1.1.0 that are still in the roster.
+    for (final legacy in [false, true]) {
+      final wrapKey = await _deriveWrapKey(
+        shared,
+        recipient: _publicKey.keyExchange,
+        ephemeral: legacy ? null : wrapped.ephemeralPublicKey,
       );
+      try {
+        return await _aesGcm.decrypt(box, secretKey: wrapKey);
+      } on SecretBoxAuthenticationError {
+        // Try the next derivation.
+      }
     }
+    throw StateError(notOurs);
   }
 
-  /// HKDF over the X25519 shared secret, bound to the recipient's key-exchange
-  /// public key so the wrap key is specific to (sender ephemeral, recipient).
+  /// HKDF over the X25519 shared secret, bound to the sender's [ephemeral]
+  /// and the [recipient] key-exchange public keys, so the wrap key belongs to
+  /// exactly this (ephemeral, recipient) pair. A `null` [ephemeral] is the
+  /// 1.0 derivation, bound to the recipient alone; it is only ever used to
+  /// open old wraps.
   Future<SecretKey> _deriveWrapKey(
-    SecretKey shared,
-    List<int> recipientKeyExchangePub,
-  ) =>
+    SecretKey shared, {
+    required List<int> recipient,
+    required List<int>? ephemeral,
+  }) =>
       _hkdf.deriveKey(
         secretKey: shared,
         nonce: const [], // no salt; the ECDH output is already high-entropy
-        info: [
-          ...utf8.encode('passnote-key-wrap-v1'),
-          ...recipientKeyExchangePub,
-        ],
+        info: ephemeral == null
+            ? [...utf8.encode('passnote-key-wrap-v1'), ...recipient]
+            : [
+                ...utf8.encode('passnote-key-wrap-v2'),
+                ...ephemeral,
+                ...recipient,
+              ],
       );
 
   List<int> _toBlob() => [

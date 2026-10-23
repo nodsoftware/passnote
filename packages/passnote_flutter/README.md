@@ -24,7 +24,7 @@ surfaces and adds the Flutter pieces.
 
 ```yaml
 dependencies:
-  passnote_flutter: ^1.0.0
+  passnote_flutter: ^1.1.0
 ```
 
 Then select the SQLCipher build of `package:sqlite3` in your app's **root**

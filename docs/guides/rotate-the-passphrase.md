@@ -1,7 +1,7 @@
 # Rotate the passphrase
 
-When the words have been seen by the wrong person — or written on a whiteboard
-in a photo — change them:
+When the words have been seen by the wrong person, or written on a whiteboard
+in a photo, change them:
 
 ```dart
 final words = passnote.generatePassphrase();       // show these, once
@@ -30,8 +30,8 @@ the passphrase, so:
 ## Every device has to be rotated
 
 The room tag moves with the passphrase, so a rotated device stops exchanging
-frames with peers that still hold the old one. They are not broken — they carry
-on among themselves — but they are no longer talking to the rotated device.
+frames with peers that still hold the old one. They are not broken (they carry
+on among themselves), but they are no longer talking to the rotated device.
 
 Two ways to bring them over, and the app should say which it means:
 
@@ -46,7 +46,7 @@ Until then, rotation is a per-device act and should be presented as one.
 
 ## Interrupted rotations
 
-A rotation that is killed halfway — the phone dies, the app is force-quit —
+A rotation that is killed halfway (the phone dies, the app is force-quit)
 finishes itself the next time the database is opened, with or without a
 passphrase:
 

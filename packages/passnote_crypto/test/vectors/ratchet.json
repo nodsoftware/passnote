@@ -1,17 +1,20 @@
 {
-  "primitive": "root = HKDF(groupKey, nonces, node ids); per-frame message keys from an HMAC-SHA256 hash chain, one per seal, previous key wiped",
+  "primitive": "shared = X25519(ephemeral A, ephemeral B); root = HKDF-SHA256(ikm = groupKey || shared, info = \"passnote-ratchet-root-v2\" || sorted node ids || sorted ephemeral public keys); per-frame message keys from an HMAC-SHA256 hash chain, one per seal, previous key wiped",
   "case": {
     "group_key": "01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3da",
-    "nonce_a": "020910171e252c333a41484f565d646b",
-    "nonce_b": "030a11181f262d343b424950575e656c",
+    "ephemeral_seed_a": "040b121920272e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dd",
+    "ephemeral_seed_b": "050c131a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7de",
+    "ephemeral_pub_a": "f74e5bb7515d565274967af75d88497dc6fc7fcd607da9dd91a617db86ad0110",
+    "ephemeral_pub_b": "0ff8125a05ca7357c68e0b3f7ee6d330ae57a9f398c359af9c4c74aa54184b77",
+    "shared_secret": "ba776258ed4fee730d7bc0b3a3c25cd5d8f019381f5ff13ca69ba50f0a1f6d1d",
     "node_a": "node-a",
     "node_b": "node-b",
-    "root": "ed08ad9255cb162dade254110461ee1526ed87b16ebcec9401a051c2573ba2a9",
+    "root": "ce5dbbabd86cede69d0e789ba1b0c061f788ce5db230925c6a05f99611bdd3da",
     "low_side_send_keys": [
-      "dd515d83ac7e4cd5366bc9616969488efc4fa79f9a6a139c269a5e85d33062e5",
-      "c823f22a51b579c6121df4aca88ef7c681c64026bec93d732171505f5a946547",
-      "e3f896331f7263b8c1d784e50c65cfdc0a544af90a2a74a9b5a470a972f61f8c",
-      "e7a8d50f3038f93b67a16b02de9e8452feeb50f4782bd40aa9fd07fe086b750d"
+      "3974d135b84ecc44abbd68604dd566aa34d3eea6cd66cdbb4244e2688a1320e4",
+      "6553bebcb454aad95196bc9d5bcd7325783d811377373f0cbb44ab92c92673d2",
+      "5b79b5c6c0e9b967ae5f41c21660cf247ef15daea12a11e42870d99c1b8418f0",
+      "fe0cc01dc30f1db4ae6794cad2530a20cc15d10690eec1f2cfcceebf35d8839b"
     ]
   }
 }

@@ -2,6 +2,8 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:passnote/passnote.dart';
 import 'package:passnote/engine.dart';
@@ -82,6 +84,76 @@ void main() {
       addTearDown(transport.stop);
       await transport.send('nobody', const Frame('room', [1]));
     });
+
+    test(
+        'an inbound connection speaks only in its own name and announces '
+        'nobody else', () async {
+      final server = WebSocketTransport(listenPort: 0);
+      await server.start(self: 'server-node', appId: 'ws');
+      addTearDown(server.stop);
+      final connected = <PeerId>[];
+      server.events.listen((e) {
+        if (e is PeerConnected) connected.add(e.peer);
+      });
+      final inbound = <InboundFrame>[];
+      server.inbound.listen(inbound.add);
+
+      final raw = await WebSocket.connect('ws://127.0.0.1:${server.boundPort}');
+      addTearDown(raw.close);
+      raw.listen((_) {});
+      raw.add('hello raw');
+      raw.add('join ghost'); // only a relay this side dialed may announce
+      raw.add('hello other'); // and a connection introduces itself once
+      await pumpEventQueue(times: 40);
+      raw.add(_envelope('ghost', 'server-node', const Frame('r', [1])));
+      raw.add(_envelope('raw', 'server-node', const Frame('r', [2])));
+      await server.inbound.first.timeout(const Duration(seconds: 5));
+      await pumpEventQueue(times: 40);
+
+      expect(connected, ['raw']);
+      expect(inbound.map((f) => '${f.from}:${f.frame.bytes}'), ['raw:[2]']);
+    });
+
+    test('an inbound connection that never says hello is evicted', () async {
+      final server = WebSocketTransport(
+        listenPort: 0,
+        helloTimeout: const Duration(milliseconds: 200),
+      );
+      await server.start(self: 'server-node', appId: 'ws');
+      addTearDown(server.stop);
+      final silent =
+          await WebSocket.connect('ws://127.0.0.1:${server.boundPort}');
+      await _closed(silent);
+    });
+
+    test('an oversize message closes its connection', () async {
+      final server = WebSocketTransport(listenPort: 0, maxFrameBytes: 64);
+      await server.start(self: 'server-node', appId: 'ws');
+      addTearDown(server.stop);
+      final flooder =
+          await WebSocket.connect('ws://127.0.0.1:${server.boundPort}');
+      final closed = _closed(flooder);
+      flooder.add('hello flooder');
+      flooder.add(List<int>.filled(128, 7));
+      await closed;
+    });
+
+    test('inbound connections beyond the cap are refused', () async {
+      final server = WebSocketTransport(
+        listenPort: 0,
+        maxInboundConnections: 1,
+      );
+      await server.start(self: 'server-node', appId: 'ws');
+      addTearDown(server.stop);
+      final first =
+          await WebSocket.connect('ws://127.0.0.1:${server.boundPort}');
+      addTearDown(first.close);
+      first.listen((_) {});
+      first.add('hello first');
+      final second =
+          await WebSocket.connect('ws://127.0.0.1:${server.boundPort}');
+      await _closed(second);
+    });
   });
 
   group('relay', () {
@@ -155,4 +227,27 @@ void main() {
       expect((await colB.get('x'))?['v'], 'through the relay');
     });
   });
+}
+
+/// A `WebSocketTransport` envelope: `[2B fromLen][from][2B toLen][to][frame]`.
+List<int> _envelope(String from, String to, Frame frame) {
+  final fromBytes = utf8.encode(from);
+  final toBytes = utf8.encode(to);
+  return [
+    (fromBytes.length >> 8) & 0xff,
+    fromBytes.length & 0xff,
+    ...fromBytes,
+    (toBytes.length >> 8) & 0xff,
+    toBytes.length & 0xff,
+    ...toBytes,
+    ...FrameCodec.encode(frame),
+  ];
+}
+
+/// Completes when the server closes [ws] (listens to it to drive the close
+/// handshake).
+Future<void> _closed(WebSocket ws) {
+  final done = Completer<void>();
+  ws.listen((_) {}, onDone: done.complete, onError: (Object _) {});
+  return done.future.timeout(const Duration(seconds: 5));
 }

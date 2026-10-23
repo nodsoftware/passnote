@@ -87,6 +87,7 @@ class PassnoteConfig {
     this.recoveryEnabled = false,
     this.antiEntropyInterval = const Duration(minutes: 3),
     this.maxInFlightFrames = 16,
+    this.maxClockDrift = const Duration(minutes: 10),
   });
 
   /// Scopes mDNS discovery and storage namespacing for this app.
@@ -139,6 +140,17 @@ class PassnoteConfig {
   /// changeset to a slow peer pauses at this bound instead of buffering
   /// without limit. Defaults to 16.
   final int maxInFlightFrames;
+
+  /// How far ahead of this device's clock a received record's timestamp may
+  /// be.
+  ///
+  /// Merging is last-write-wins by hybrid logical clock, so a record stamped
+  /// far in the future would beat every later edit, permanently. A record
+  /// beyond this bound is refused, together with the rest of its document;
+  /// it is not lost, since anti-entropy offers it again and it is accepted
+  /// once this device's clock has caught up. Defaults to 10 minutes, which
+  /// absorbs ordinary clock skew between devices.
+  final Duration maxClockDrift;
 
   /// Whether this app offers a written recovery phrase
   /// ([Passnote.enableRecovery] / [Passnote.recoverFrom]).
@@ -364,6 +376,12 @@ class Passnote {
   // Per-peer sliding-window timestamps (ms since epoch) for inbound rate
   // limiting. Cleaned up on peer disconnect.
   final Map<PeerId, List<int>> _inboundTimestamps = {};
+
+  // Per-peer tail of the inbound handling chain: a peer's frames are handled
+  // one at a time, in arrival order. A session is established asynchronously
+  // from a hello, and the sealed frame right behind that hello must not be
+  // tried before the session exists. Cleaned up on peer disconnect.
+  final Map<PeerId, Future<void>> _inboundChains = {};
 
   // ---------------------------------------------------------------------------
   // Public API
@@ -602,11 +620,21 @@ class Passnote {
 
   /// Permanently forgets [localId]: removes it from the open set and deletes its
   /// encryption key from the [KeyStore].
+  ///
+  /// Works on a database that is not open too — including one that no longer
+  /// opens, such as after a [RosterPinsCorruptException] — by clearing its
+  /// key store entries directly.
   Future<void> forget(String localId) async {
     _databaseKeys.remove(localId);
     final db = _databases.remove(localId);
-    if (db == null) return;
-    await db.leave();
+    if (db != null) {
+      await db.leave();
+      return;
+    }
+    final entryKey = '${_config.appId}/$localId';
+    await _keyStore.clear(entryKey);
+    await _keyStore.clear(Database.rosterPinsKeyFor(entryKey));
+    await _keyStore.clear(_rotationEntryKey(localId));
   }
 
   /// Shared tail of [openDatabase] / [reopenDatabase]: builds the [Database],
@@ -635,6 +663,7 @@ class Passnote {
       wireCapabilities: _wireCapabilities,
       antiEntropyInterval: _config.antiEntropyInterval,
       maxInFlightFrames: _config.maxInFlightFrames,
+      maxClockDrift: _config.maxClockDrift,
       onIncompatiblePeer: (peer, local, remote) => _emit(PeerIncompatible(
         peer: peer,
         localVersions: local,
@@ -742,7 +771,10 @@ class Passnote {
     }
     return coordinator.arm(
       rosterKey: rosterKey,
-      onAdmit: (joiner) => db.admitDevice(joiner, label: joinerLabel),
+      onAdmit: (joiner) async {
+        await db.admitDevice(joiner, label: joinerLabel);
+        return db.exportRosterPins();
+      },
     );
   }
 
@@ -790,11 +822,21 @@ class Passnote {
 
     final entryKey = '${_config.appId}/$localId';
     await _keyStore.setKey(entryKey, bundle.rosterKey);
+    // The sponsor's trust state, adopted before the first sync: the roster
+    // this device then receives is judged against the founder and members
+    // the sponsor vouched for, not against whichever roster arrives first.
+    await _keyStore.setKey(
+      Database.rosterPinsKeyFor(entryKey),
+      bundle.rosterPins,
+    );
+    // Never auto-found here: the group exists; founding a fresh key on a
+    // briefly-alone install would fork it.
     final db = await _finishOpen(
       localId,
       entryKey,
       bundle.rosterKey,
       _cipherFactory(bundle.rosterKey),
+      allowAutoFound: false,
     );
 
     for (var i = 0; i < 100 && db.deviceState != DeviceState.ready; i++) {
@@ -927,7 +969,6 @@ class Passnote {
     return _pairing ??= PairingCoordinator(
       appId: _config.appId,
       pake: pake,
-      deriveKey: _deriveKey,
       cipherFactory: _cipherFactory,
       roomTag: _roomTag,
       send: _transport.send,
@@ -1019,6 +1060,7 @@ class Passnote {
     } else if (event is PeerLost) {
       _connectedPeers.remove(event.peer);
       _inboundTimestamps.remove(event.peer);
+      _inboundChains.remove(event.peer);
       for (final db in _databases.values) {
         db.onPeerLost(event.peer);
       }
@@ -1052,9 +1094,23 @@ class Passnote {
     return false;
   }
 
-  Future<void> _onInbound(InboundFrame inbound) async {
+  void _onInbound(InboundFrame inbound) {
     if (_isRateLimited(inbound.from)) return;
+    final peer = inbound.from;
+    final tail = _inboundChains[peer] ?? Future<void>.value();
+    // A failure is contained here: it must neither stop this peer's later
+    // frames nor surface as an unhandled async error.
+    final next =
+        tail.then((_) => _handleInbound(inbound)).catchError((Object _) {});
+    _inboundChains[peer] = next;
+    unawaited(
+      next.whenComplete(() {
+        if (identical(_inboundChains[peer], next)) _inboundChains.remove(peer);
+      }),
+    );
+  }
 
+  Future<void> _handleInbound(InboundFrame inbound) async {
     // A pairing exchange in progress has its own rendezvous room.
     final pairing = _pairing;
     if (pairing != null &&
@@ -1065,9 +1121,10 @@ class Passnote {
 
     for (final db in _databases.values) {
       if (db.room != inbound.frame.room) continue;
-      // The database tries its roster/control cipher and its data cipher; a
-      // frame that authenticates with neither (a revoked device after a key
-      // rotation) is dropped. This is remote-fed input: a throw from deeper
+      // The database opens the frame under the peer's session or its
+      // roster/control cipher; one that opens under neither is dropped, and
+      // a plain frame carries no user data. This is remote-fed input: a
+      // throw from deeper
       // handling must never become an unhandled async error (the transport's
       // onError does not catch throws from inside this async callback), but
       // it must not vanish either — a persistent failure is a signal.

@@ -32,7 +32,7 @@ export 'src/identity/device_roster.dart'
         WrappedGroupKey,
         kDeviceCollection;
 export 'src/identity/ratchet.dart'
-    show RatchetSession, deriveRatchetRoot, newRatchetNonce;
+    show RatchetEphemeral, RatchetSession, deriveRatchetRoot, newRatchetNonce;
 export 'src/ports/pake.dart';
 
 export 'src/crdt/crdt_type.dart';

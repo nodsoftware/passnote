@@ -134,6 +134,12 @@ jobs:
   # nothing contends for the port. Only this job sees that difference.
   mdns-macos:
     runs-on: macos-latest
+    # Not blocking for now: macOS 15's Local Network privacy blocks multicast
+    # for processes on GitHub-hosted runners, and the permission cannot be
+    # granted non-interactively, so discovery cannot pass here. The job still
+    # runs and reports; it becomes blocking again on a self-hosted Mac where
+    # the permission is granted once.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 

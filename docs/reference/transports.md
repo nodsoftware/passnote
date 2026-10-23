@@ -30,6 +30,27 @@ final transport = LanTransport();
 `LanTransport` lives in the native-only entry
 `package:passnote_lan/discovery.dart` because mDNS needs `dart:io`.
 
+## Identity and limits
+
+A node id on any transport is only a claim. Passnote does not rely on it: a
+session opens only after a hello signed by a non-revoked roster member, so a
+device that claims another's id cannot read or write its data. It can still
+disrupt: on the LAN the first connection to claim an id keeps it, and a
+neighbour who claims a peer's id first keeps that peer out until it leaves.
+
+Both listeners bound what an inbound connection may cost, as hygiene against
+floods rather than as authentication:
+
+| Parameter | Default | Effect |
+| --- | --- | --- |
+| `maxInboundConnections` | 64 | Further inbound connections are refused. |
+| `helloTimeout` | 10 s | A connection that has not named itself is closed. |
+| `maxFrameBytes` | 4 MiB | A connection that sends a larger message is closed. |
+
+`WebSocketTransport` also accepts a frame only from a peer its own connection
+carries, and only a connection it dialed (another listener, or a relay) may
+announce further peers.
+
 ## WebSocketTransport (explicit addresses, everywhere)
 
 For browsers, and for peers outside mDNS reach. It dials one or more
@@ -75,7 +96,9 @@ outage) and every envelope addressed to it goes to the squatter instead —
 still ciphertext, but the full metadata graph (who talks to that node, frame
 sizes, timing). Run the relay only on a network you control, or behind an
 authenticating proxy. Client count and frame size are capped
-(`maxClients`, `maxFrameBytes`) as hygiene, not as protection.
+(`maxClients`, `maxFrameBytes`) as hygiene, not as protection. A client can
+send only in its own name: the relay drops an envelope whose sender is not the
+id that client registered.
 
 ## Writing your own
 

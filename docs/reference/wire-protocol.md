@@ -1,26 +1,36 @@
 # Wire protocol
 
 What actually travels between two devices, from the outside in. Wire version:
-**1**.
+**2** (Passnote 1.1). Version 1 is no longer spoken: its sessions had no
+forward secrecy and accepted user data under the passphrase key, so a 1.0 peer
+is reported as `PeerIncompatible` rather than synced with.
 
 ## The layer stack
 
 ```text
 transport framing            (WebSocket messages / test bus)
 └─ kind byte                 0x00 plain · 0x01 ratcheted   (identity mode only)
-   └─ ratchet layer          one-use message key per frame (0x01 frames)
-      └─ AEAD ciphertext     XChaCha20-Poly1305 under the roster or group key
-         └─ binary message   the protocol frame below
+   ├─ 0x00: AEAD ciphertext  XChaCha20-Poly1305 under the roster key
+   └─ 0x01: ratchet layer    XChaCha20-Poly1305 under a one-use message key
+      └─ binary message      the protocol frame below
 ```
 
-Roster and control messages travel under the roster key; user-data deltas
-under the group key, and additionally inside the
-[ratchet](../concepts/glossary.md#ratchet) once a session exists. Anything
-that fails authentication at any layer is dropped silently.
+With device identities (the default), a plain frame proves only that its
+sender holds the roster key, which every device that ever joined keeps, so it
+may carry nothing but `handshake`, `ratchet-hello`, `hello`, `poke`, and the
+roster collection's `state`, `delta` and `reconcile`. Everything about user
+collections, including their names and watermarks, travels only in ratcheted
+frames, inside a [session](../concepts/glossary.md#ratchet) opened with a
+non-revoked roster member; the receiver ignores it in a plain frame. Without
+an identity, the passphrase key is the only membership and every message
+travels under it. Anything that fails authentication at any layer is dropped
+silently.
 
 ## Frame encoding
 
-Every decrypted frame is `magic (0xC7) ‖ version (0x01) ‖ type ‖ body`.
+Every decrypted frame is `magic (0xC7) ‖ version (0x02) ‖ type ‖ body`. The
+`handshake` alone keeps version byte `0x01`, its layout unchanged, so a 1.0
+peer can still read which versions this build speaks.
 Variable-length fields are varint-prefixed; varints use arithmetic, not
 shifts, so 64-bit values survive JavaScript. Record values use a compact
 tagged encoding (null, bool, int, double, string, list, map).
@@ -37,7 +47,7 @@ bytes, corruptions, truncations, and nesting bombs.
 | 2 | `state` | Per-collection [watermarks](../concepts/glossary.md#watermark). |
 | 3 | `delta` | Records for one collection (≤ 500 per frame, whole documents only). |
 | 4 | `poke` | "Send me a hello": the pull half of `forceSync`. |
-| 5 | `ratchet-hello` | Session nonce plus a tag of the key generation it belongs to. |
+| 5 | `ratchet-hello` | Sender and receiver node ids, the sender's device id, its ephemeral X25519 public key, a tag of the key generation, and an Ed25519 signature over all of them. |
 | 6 | `handshake` | Supported wire versions, capabilities, device public key. |
 | 7 | `reconcile` | Range fingerprints and record requests (see below). |
 
@@ -51,6 +61,31 @@ receive (at most two frames each). Sync starts on the highest common version;
 no overlap raises `PeerIncompatible` and ends the exchange. Capabilities are
 feature flags within a version; `recon1` (range reconciliation) is the only
 one today, and unknown names are ignored.
+
+## Session handshake
+
+Once the version is agreed, each side that holds the group key sends a
+`ratchet-hello`: a fresh ephemeral X25519 public key for this connection,
+signed with its device's Ed25519 roster key over
+`"passnote-ratchet-hello-v2" ‖ from ‖ to ‖ deviceId ‖ keyTag ‖ ephemeral`.
+The receiver accepts it only when it is addressed to itself, comes from the
+transport peer it names, matches its own key generation, and verifies under
+the key of a non-revoked roster member. A hello from a device whose roster
+record has not arrived yet is held and re-checked after the next roster sync.
+
+The session root is `HKDF-SHA256(groupKey ‖ X25519(ephemeral, peerEphemeral))`
+with info `"passnote-ratchet-root-v2"`, the sorted node ids and the sorted
+ephemeral keys; the low and high send chains derive from it. Each side wipes
+its ephemeral private key once the session exists. A peer that seals frames
+this side cannot open is asked to re-send its hello, rate-limited per peer.
+
+Inbound frames from one peer are handled one at a time, in arrival order.
+
+## Clock bound
+
+A `delta` record whose HLC is more than `maxClockDrift` (default 10 minutes)
+ahead of the receiver's clock is refused together with the rest of its
+document; anti-entropy offers it again later.
 
 ## Reconciliation exchange
 

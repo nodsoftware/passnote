@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:passnote/passnote.dart';
 import 'package:passnote/engine.dart';
 import 'package:test/test.dart';
@@ -95,12 +97,16 @@ Future<void> _settle() => pumpEventQueue(times: 80);
 
 Cipher _cipherFor(List<int> key) => _XorCipher(key);
 
+final _rng = Random.secure();
+List<int> _random(int n) => List<int>.generate(n, (_) => _rng.nextInt(256));
+
 void main() {
   group('RatchetSession (unit)', () {
     final root = deriveRatchetRoot(
       groupKey: List<int>.filled(32, 5),
-      nonceA: newRatchetNonce(),
-      nonceB: newRatchetNonce(),
+      sharedSecret: _random(32),
+      ephemeralA: _random(32),
+      ephemeralB: _random(32),
       nodeA: 'alice',
       nodeB: 'bob',
     );
@@ -137,22 +143,28 @@ void main() {
       expect(await b.open(frames[3]), [3]);
     });
 
-    test('a fresh handshake (new nonces) yields an incompatible chain',
-        () async {
-      final a = low();
-      final frame = await a.seal([9, 9, 9]);
+    test(
+      'a fresh handshake (new ephemeral keys) yields an incompatible chain',
+      () async {
+        final a = low();
+        final frame = await a.seal([9, 9, 9]);
 
-      final root2 = deriveRatchetRoot(
-        groupKey: List<int>.filled(32, 5),
-        nonceA: newRatchetNonce(),
-        nonceB: newRatchetNonce(),
-        nodeA: 'alice',
-        nodeB: 'bob',
-      );
-      final reconnected = RatchetSession.establish(
-          root: root2, thisNodeIsLow: false, cipherFactory: _cipherFor);
-      expect(await reconnected.open(frame), isNull);
-    });
+        final root2 = deriveRatchetRoot(
+          groupKey: List<int>.filled(32, 5),
+          sharedSecret: _random(32),
+          ephemeralA: _random(32),
+          ephemeralB: _random(32),
+          nodeA: 'alice',
+          nodeB: 'bob',
+        );
+        final reconnected = RatchetSession.establish(
+          root: root2,
+          thisNodeIsLow: false,
+          cipherFactory: _cipherFor,
+        );
+        expect(await reconnected.open(frame), isNull);
+      },
+    );
 
     test('a slightly reordered frame still opens', () async {
       final a = low();
@@ -163,6 +175,66 @@ void main() {
       expect(await b.open(f0), [0]);
       expect(await b.open(f2), [2]); // f1 skipped, key stashed
       expect(await b.open(f1), [1]);
+    });
+  });
+
+  group('session root (forward secrecy)', () {
+    test('is symmetric in the two sides', () {
+      final shared = _random(32);
+      final (e1, e2) = (_random(32), _random(32));
+      final ab = deriveRatchetRoot(
+        groupKey: List<int>.filled(32, 1),
+        sharedSecret: shared,
+        ephemeralA: e1,
+        ephemeralB: e2,
+        nodeA: 'a',
+        nodeB: 'b',
+      );
+      final ba = deriveRatchetRoot(
+        groupKey: List<int>.filled(32, 1),
+        sharedSecret: shared,
+        ephemeralA: e2,
+        ephemeralB: e1,
+        nodeA: 'b',
+        nodeB: 'a',
+      );
+      expect(ab, ba);
+    });
+
+    test('cannot be rebuilt from the group key and the public handshake', () {
+      // Everything a recorder sees plus everything a stolen device holds
+      // (group key, ephemeral public keys, node ids) still leaves the
+      // agreement out; without it the root differs.
+      final (e1, e2) = (_random(32), _random(32));
+      List<int> rootWith(List<int> shared) => deriveRatchetRoot(
+            groupKey: List<int>.filled(32, 1),
+            sharedSecret: shared,
+            ephemeralA: e1,
+            ephemeralB: e2,
+            nodeA: 'a',
+            nodeB: 'b',
+          );
+      expect(rootWith(_random(32)), isNot(rootWith(_random(32))));
+    });
+
+    test('ephemeral keys agree, and a low-order peer key is refused', () async {
+      final a = await RatchetEphemeral.generate();
+      final b = await RatchetEphemeral.generate();
+      final ab = await a.agree(b.publicKey);
+      final ba = await b.agree(a.publicKey);
+      expect(ab, isNotNull);
+      expect(ab, ba);
+      // The all-zero point (and any other small-order point) yields an
+      // all-zero agreement, which would contribute nothing.
+      expect(await a.agree(List<int>.filled(32, 0)), isNull);
+      expect(await a.agree(List<int>.filled(31, 9)), isNull);
+    });
+
+    test('a destroyed ephemeral key agrees to nothing', () async {
+      final a = await RatchetEphemeral.generate();
+      final b = await RatchetEphemeral.generate();
+      a.destroy();
+      expect(await a.agree(b.publicKey), isNull);
     });
   });
 

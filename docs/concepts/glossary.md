@@ -66,15 +66,20 @@ round trips.
 
 ## Ratchet
 
-A chain of single-use message keys derived per connection. Every frame is
-encrypted with a fresh key and the previous one is destroyed, so a key
-captured later cannot decrypt earlier traffic (forward secrecy).
+A chain of single-use message keys derived per connection. Its root comes from
+an X25519 exchange of ephemeral keys that each device signs with its roster
+identity and wipes once the session exists, mixed with the group key. Every
+frame is encrypted with a fresh key and the previous one is destroyed, so
+neither a key captured later nor a stolen device can decrypt earlier traffic
+(forward secrecy).
 
 ## Room tag
 
 The short public identifier devices use to find each other for one database.
 It is a one-way hash derived from key material: it reveals nothing about the
-key or the data, and knowing it grants no access.
+key or the data, and knowing it grants no access. It is stable for as long as
+the passphrase is, so an observer can recognise the same group across
+networks and sessions.
 
 ## Roster
 
