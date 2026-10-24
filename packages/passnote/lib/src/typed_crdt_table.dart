@@ -5,6 +5,7 @@ import 'crdt/lww_register.dart';
 import 'crdt/or_set.dart';
 import 'crdt/pn_counter.dart';
 import 'id.dart';
+import 'ports/atomic_crdt_table.dart';
 import 'ports/crdt_table.dart';
 import 'ports/query.dart';
 
@@ -43,7 +44,7 @@ import 'ports/query.dart';
 ///
 /// [Collection] wraps its engine in this decorator automatically; it is public
 /// on the advanced library for engine authors and tests.
-final class TypedCrdtTable implements CrdtTable {
+final class TypedCrdtTable implements CrdtTable, AtomicCrdtTable {
   /// Wraps [inner]. Wrapping an already wrapped table is redundant but
   /// harmless — every layer applies the same translation to already canonical
   /// states.
@@ -250,6 +251,16 @@ final class TypedCrdtTable implements CrdtTable {
 
   @override
   Stream<void> watch(String table) => _inner.watch(table);
+
+  /// The inner table's [AtomicCrdtTable.atomically] when it has one; the
+  /// writes in turn otherwise.
+  @override
+  Future<void> atomically(Future<void> Function() writes) {
+    final inner = _inner;
+    return inner is AtomicCrdtTable
+        ? (inner as AtomicCrdtTable).atomically(writes)
+        : writes();
+  }
 
   @override
   Future<void> close() => _inner.close();
