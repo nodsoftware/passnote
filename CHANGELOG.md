@@ -4,6 +4,38 @@ All five packages release together with matching versions. Per-package detail
 lives in each package's own `CHANGELOG.md`; this file is the cross-package
 summary.
 
+## 1.1.2
+
+A bug-fix patch for defects found while porting Passnote to Rust; upgrading
+is recommended. Wire- and API-compatible with 1.1.0 and 1.1.1: devices on any
+1.1 release sync with each other.
+
+- **The local clock survives a reopen.** A SQLite store reopened after
+  merging a peer's records stamped local writes with the peer's node id, and
+  refused every local write while a stored record was more than a minute
+  ahead. The clock now resumes from the newest record not ahead of the
+  device's own time, under its own node id.
+- **A record at the HLC counter limit no longer blocks writes.** After
+  adopting a record whose counter is 0xFFFF, the next local write moves to
+  the next microsecond with counter 0 instead of failing, on both engines.
+- **Stores a key rotation did not reach open again.** A collection that was
+  not open during a revocation or passphrase rotation refused the new key for
+  good. It now opens under its earlier key and is re-keyed on the spot.
+- **No half-written documents.** Reads could see a document part-way through
+  a put, and a crash part-way through left it half-written on disk. Reads now
+  wait for the write in progress, and a put is one SQLite transaction.
+- **An unknown roster row no longer breaks the roster.** One row of a kind
+  this version does not know made every roster read throw.
+- **Text outside the Basic Multilingual Plane.** Document ids with emoji lost
+  their fields on disk, and the in-memory engine ordered such text unlike
+  SQLite; both now work by code point.
+- **Mnemonics use every byte value.** Generated recovery phrases never
+  encoded the byte 0xFF.
+- **A restarted peer is renegotiated with** even when the transport never
+  reported it lost: each instance advertises an `inst:` handshake token.
+- Malformed HLCs on the wire are refused when the frame is decoded instead of
+  failing later.
+
 ## 1.1.1
 
 A security patch from a second review of 1.1.0; upgrading is recommended.

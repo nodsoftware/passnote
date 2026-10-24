@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.1.2
+
+- `SqliteCrdtTable` resumes its clock after a reopen from the newest record
+  that is at most one minute ahead of the wall clock, under its own node id
+  (it took the peer's node id and could refuse every local write).
+- A local write after adopting a record at HLC counter 0xFFFF moves to the
+  next microsecond with counter 0, on `SqliteCrdtTable` and `MapCrdtTable`
+  alike, instead of throwing.
+- `MapCrdtTable` merges a record more than a minute ahead like the SQLite
+  engine does, without moving its clock past it.
+- A collection whose store refuses the current key is opened under an earlier
+  group or passphrase key and re-keyed, so a store that was closed during a
+  rotation opens again. Up to 8 earlier passphrase keys are kept in the key
+  store and cleared by `leave` and `forget`.
+- `get`, `all`, `where` and query pages wait for a put in progress on the same
+  collection, and a put or increment on `SqliteCrdtTable` runs in one
+  transaction (`SqliteCrdtTable.atomically`).
+- Roster rows that do not decode are dropped on receipt before a founder is
+  pinned and skipped when reading the roster.
+- `SqliteCrdtTable` matches field-key prefixes by code point, and the scan
+  query path orders text by code point as SQLite does.
+- The handshake carries an `inst:<16 hex>` capability; a new token from a peer
+  resets the state held for it, as a lost connection does.
+- Record HLCs, watermarks and reconcile bounds must be well-formed HLC strings
+  (UTC `Z` time, 1 to 4 hex counter digits) or the frame is refused.
+
 ## 1.1.1
 
 - Frames waiting to be handled are bounded to 32 MiB per peer and 128 MiB in

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.2
+
+- `generateMnemonic` draws its entropy uniformly from `Random.secure`; bip39's
+  default generator never produced the byte 0xFF.
+
 ## 1.1.1
 
 - No changes of its own; released with the 1.1.1 security patch of
