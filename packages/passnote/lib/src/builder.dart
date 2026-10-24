@@ -93,6 +93,9 @@ final class PassnoteBuilder {
   final String _salt;
 
   FutureOr<CrdtTable> Function(String collection)? _engineOverride;
+  FutureOr<CrdtTable> Function(
+      String databaseId, String collection, List<int> key)? _storage;
+  Duration? _antiEntropyInterval;
   KeyStore? _keyStore;
   Transport? _transport;
   Cipher Function(List<int> key)? _cipher;
@@ -114,13 +117,39 @@ final class PassnoteBuilder {
   static void installDefaults(PassnoteDefaults defaults) =>
       _defaults = defaults;
 
-  /// Overrides the storage engine. Default: a SQLite-backed disk engine.
-  /// Pass `MapCrdtTable.new` for an in-memory, non-persistent engine.
+  /// Overrides the storage engine with one built per collection from the
+  /// collection name alone. Default: a SQLite-backed disk engine.
+  ///
+  /// The factory is not told which database the collection belongs to, so two
+  /// databases with a collection of the same name share whatever it returns,
+  /// nor the key to encrypt it with. Use [storage], which is.
+  @Deprecated('Use storage(), which also passes the database id and the '
+      'key to encrypt the store with. Removed in 2.0.')
   PassnoteBuilder engine(
     FutureOr<CrdtTable> Function(String collection) factory,
   ) {
-    _once('engine', _engineOverride != null);
+    _once('engine', _engineOverride != null || _storage != null);
     _engineOverride = factory;
+    return this;
+  }
+
+  /// Overrides the storage engine. Default: a SQLite-backed disk engine.
+  ///
+  /// [factory] builds the store for one collection of one database, and is
+  /// handed the local database id, the collection name, and the 32-byte key
+  /// the store is to be encrypted with at rest. Keep one store per
+  /// `(databaseId, collection)` pair. For an in-memory, non-persistent engine:
+  ///
+  /// ```dart
+  /// .storage((_, collection, __) => MapCrdtTable(collection))
+  /// ```
+  PassnoteBuilder storage(
+    FutureOr<CrdtTable> Function(
+            String databaseId, String collection, List<int> key)
+        factory,
+  ) {
+    _once('storage', _engineOverride != null || _storage != null);
+    _storage = factory;
     return this;
   }
 
@@ -210,6 +239,19 @@ final class PassnoteBuilder {
     return this;
   }
 
+  /// Overrides how often each database runs an anti-entropy round with every
+  /// connected peer, healing frames that were dropped. Default: 3 minutes.
+  /// [Duration.zero] turns the timer off; sync then relies on pushes, the
+  /// round each connection runs when it opens, and `Database.reconcileNow`.
+  PassnoteBuilder antiEntropyInterval(Duration interval) {
+    _once('antiEntropyInterval', _antiEntropyInterval != null);
+    if (interval.isNegative) {
+      throw ArgumentError.value(interval, 'interval', 'must not be negative');
+    }
+    _antiEntropyInterval = interval;
+    return this;
+  }
+
   /// Overrides the per-peer inbound frame rate limit. Default: 100 per second.
   PassnoteBuilder maxInboundFramesPerSecond(int limit) {
     _once('maxInboundFramesPerSecond', _maxInboundFramesPerSecond != null);
@@ -239,9 +281,10 @@ final class PassnoteBuilder {
 
     final override = _engineOverride;
     return passnoteLowLevel(
-      engine: override != null
-          ? (_, collection, __) => override(collection)
-          : defaults.engine,
+      engine: _storage ??
+          (override != null
+              ? (_, collection, __) => override(collection)
+              : defaults.engine),
       config: PassnoteConfig(
         appId: _appId,
         salt: _salt,
@@ -251,6 +294,7 @@ final class PassnoteBuilder {
         ),
         compactionHorizon: _compactionHorizon ?? const Duration(days: 30),
         maxInboundFramesPerSecond: _maxInboundFramesPerSecond ?? 100,
+        antiEntropyInterval: _antiEntropyInterval ?? const Duration(minutes: 3),
         recoveryEnabled: _recoveryEnabled,
       ),
       keyStore: keyStore,

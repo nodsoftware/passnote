@@ -20,3 +20,28 @@ Hlc incrementClock(Hlc clock, {DateTime? wallTime}) {
     );
   }
 }
+
+/// [text] parsed as an HLC, refusing what `Hlc.parse` would accept but
+/// misread: a date without a time zone (read in the receiver's local zone, so
+/// two devices would see different instants) and a counter above 0xFFFF (the
+/// `Hlc` constructor checks that only in debug builds, and a clock that
+/// adopts one can no longer advance).
+Hlc parseStrictHlc(String text) {
+  final counterDash = text.indexOf('-', text.lastIndexOf(':'));
+  final nodeIdDash = counterDash < 0 ? -1 : text.indexOf('-', counterDash + 1);
+  if (counterDash < 0 || nodeIdDash < 0) {
+    throw const FormatException('malformed HLC');
+  }
+  if (!text.substring(0, counterDash).endsWith('Z')) {
+    throw const FormatException('HLC without a time zone');
+  }
+  final counterText = text.substring(counterDash + 1, nodeIdDash);
+  final counter = int.tryParse(counterText, radix: 16);
+  if (counterText.isEmpty ||
+      counterText.length > 4 ||
+      counter == null ||
+      counter < 0) {
+    throw const FormatException('HLC counter out of range');
+  }
+  return Hlc.parse(text);
+}

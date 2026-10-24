@@ -112,6 +112,17 @@ overwriting a sum from one device's view would silently discard the others'
 contributions. A set field is edited by putting the desired list; the engine
 turns the difference into adds and removes.
 
+### Records outside sync
+
+`getChangeset()` returns a collection's records (key, value, tombstone flag,
+HLC, CRDT type) in the form sync ships them, and `adoptRecords(records)`
+merges such records back in, for an export from another device or another
+Passnote implementation, or a backup. Adopted records merge by HLC exactly as
+a peer's delta does: re-adopting what is already held changes nothing, an
+older record loses to a newer one, and a record stamped beyond
+`maxClockDrift` is left out with the rest of its document. What is adopted is
+then offered to connected peers.
+
 ## Edge cases and guarantees
 
 - **Deletion is atomic per document.** Existence lives in one record (the

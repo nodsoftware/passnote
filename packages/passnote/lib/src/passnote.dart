@@ -1057,6 +1057,14 @@ class Passnote {
     }
   }
 
+  /// Runs one anti-entropy round on every open database with all connected
+  /// peers now; see [Database.reconcileNow].
+  Future<void> reconcileNow() async {
+    for (final db in _databases.values) {
+      await db.reconcileNow();
+    }
+  }
+
   /// Closes all open databases (keeping their keys) and stops the transport.
   ///
   /// Use [forget] to additionally delete a database's key from the [KeyStore].

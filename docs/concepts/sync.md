@@ -71,6 +71,12 @@ Identical devices exchange only fingerprints, a few hundred bytes.
 With a peer that lacks the capability, the exchange falls back to the plain
 hello/state/delta round.
 
+The same round also runs once per peer as soon as a connection can carry user
+data, so a record a device missed while it was away arrives on reconnect even
+when it is older than both watermarks. `Database.reconcileNow()` (or
+`Passnote.reconcileNow()` for every database) runs one at any time, for
+instance after restoring a store from a backup.
+
 ### Offline and reconnect
 
 Every device holds a full copy, so reads and writes never wait for the

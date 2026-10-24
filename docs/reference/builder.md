@@ -50,7 +50,7 @@ dependency explicitly with `passnoteLowLevel` (see [Ports](ports.md)).
 
 | Method | Default | Purpose |
 | --- | --- | --- |
-| `.engine(factory)` | SQLite files (SQLCipher at rest) | Storage per collection. `MapCrdtTable.new` selects in-memory, unpersisted. |
+| `.storage(factory)` | SQLite files (SQLCipher at rest) | Storage per collection, built from `(databaseId, collection, key)`. `(_, c, __) => MapCrdtTable(c)` selects in-memory, unpersisted. Replaces the deprecated `.engine(factory)`, which was handed the collection name only. |
 | `.transport(factory)` | `LanTransport` (mDNS, native only) | How peers are found and frames move. `WebSocketTransport` for web or explicit addresses; see [Transports](transports.md). |
 | `.keyStore(factory)` | OS keychain | Where derived keys and the device identity persist. |
 | `.cipher(factory)` | XChaCha20-Poly1305 | The authenticated cipher, built per key. |
@@ -60,6 +60,7 @@ dependency explicitly with `passnoteLowLevel` (see [Ports](ports.md)).
 | `.passphrase(words:, strictness:)` | 24 words, `warn` | Generated passphrase length; whether non-mnemonic passphrases are rejected. |
 | `.compactionHorizon(duration)` | 30 days | How old a tombstone must be before `compact` removes it. |
 | `.maxInboundFramesPerSecond(n)` | 100 | Per-peer inbound rate limit. |
+| `.antiEntropyInterval(duration)` | 3 minutes | How often each database runs an anti-entropy round with every peer; `Duration.zero` turns the timer off. |
 
 ## PassnoteConfig
 
@@ -90,5 +91,6 @@ dependency explicitly with `passnoteLowLevel` (see [Ports](ports.md)).
 | `devices(id)` / `renameDevice` / `revokeDevice` | Roster management. |
 | `enableRecovery(id)` / `recoverFrom(id, phrase, passphrase:)` | The opt-in recovery phrase. |
 | `forceSync()` | Full exchange with every connected peer, now. |
+| `reconcileNow()` | One anti-entropy round on every database with every connected peer, now. |
 | `events` | `PeerAppeared`, `PeerDisappeared`, `PeerIncompatible`, `StoreRecovered`. |
 | `close()` | Close every database and stop the transport. |

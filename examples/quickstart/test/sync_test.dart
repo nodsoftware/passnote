@@ -26,7 +26,7 @@ class MemoryKeyStore implements KeyStore {
 
 Future<Passnote> testNode(InMemoryBus bus) =>
     passnoteBuilder(appId: 'shopping', salt: 'shopping:v1')
-        .engine(MapCrdtTable.new)
+        .storage((_, collection, __) => MapCrdtTable(collection))
         .keyStore(MemoryKeyStore.new)
         .transport(() => InMemoryTransport(bus))
         .open();

@@ -5,6 +5,7 @@ import 'package:crdt/crdt.dart';
 import 'package:meta/meta.dart';
 
 import 'codec.dart';
+import 'crdt/clock.dart';
 import 'crdt/crdt_type.dart';
 import 'map_crdt_table.dart';
 import 'merge_strategies.dart';
@@ -49,12 +50,14 @@ class Collection<T> {
     List<String> indexedFields = const [],
     void Function()? onLocalChange,
     void Function(String documentId)? onRemoteConflict,
+    Future<int> Function(CrdtChangeset records)? onAdopt,
   })  : _merge = merge,
         // A synchronous placeholder so [length] / [maxHlc] are safe before the
         // real engine is built in [_ready]. Reads against it just return empty.
         _engine = TypedCrdtTable(MapCrdtTable(_name)),
         _onLocalChange = onLocalChange,
         _onRemoteConflict = onRemoteConflict,
+        _onAdopt = onAdopt,
         _queryIndexPaths = List.unmodifiable(indexedFields) {
     if (indexedFields.isNotEmpty && merge is ObjectMergeStrategy) {
       throw ArgumentError(
@@ -90,6 +93,7 @@ class Collection<T> {
   TypedCrdtTable _engine;
   final void Function()? _onLocalChange;
   final void Function(String documentId)? _onRemoteConflict;
+  final Future<int> Function(CrdtChangeset records)? _onAdopt;
 
   /// Field paths declared for engine-side query indexes at creation time.
   final List<String> _queryIndexPaths;
@@ -690,6 +694,52 @@ class Collection<T> {
     return result;
   }
 
+  /// Merges [records] in the format [getChangeset] produces, as if a peer had
+  /// sent them, and offers them to connected peers. Returns how many records
+  /// were merged.
+  ///
+  /// For records that reach this device outside sync: an export from
+  /// another device or another Passnote implementation, or a backup. They
+  /// merge by HLC like any delta, so adopting records already held, or older
+  /// than what is held, changes nothing. Records stamped further ahead than
+  /// [PassnoteConfig.maxClockDrift] are left out with the rest of their
+  /// document, as they are from a peer.
+  ///
+  /// Throws [ArgumentError] when [records] holds another collection's table,
+  /// or a record without a string `key`, a boolean `is_deleted`, or an `hlc`
+  /// that is an [Hlc] or parses as one.
+  Future<int> adoptRecords(CrdtChangeset records) async {
+    await _ready;
+    final checked = <Map<String, Object?>>[];
+    for (final MapEntry(key: table, value: rows) in records.entries) {
+      if (table != _name) {
+        throw ArgumentError.value(
+            table, 'records', 'holds a table other than "$_name"');
+      }
+      for (final row in rows) {
+        final hlc = row['hlc'];
+        final Hlc parsed;
+        try {
+          parsed = parseStrictHlc(hlc is Hlc ? hlc.toString() : hlc as String);
+        } catch (_) {
+          throw ArgumentError.value(row, 'records', 'has no valid hlc');
+        }
+        if (row['key'] is! String || row['is_deleted'] is! bool) {
+          throw ArgumentError.value(
+              row, 'records', 'needs a string key and a bool is_deleted');
+        }
+        checked.add({...row, 'hlc': parsed});
+      }
+    }
+    if (checked.isEmpty) return 0;
+    final changeset = {_name: checked};
+    final adopt = _onAdopt;
+    if (adopt != null) return adopt(changeset);
+    await mergeChangeset(changeset);
+    _onLocalChange?.call();
+    return checked.length;
+  }
+
   /// Summarises this collection's records in the half-open HLC range
   /// `(fromHlc, toHlc]` for range reconciliation. Reads through the write
   /// chain, so a digest never spans a half-written document.
@@ -817,6 +867,7 @@ class Collection<T> {
     List<String> indexedFields = const [],
     void Function()? onLocalChange,
     void Function(String documentId)? onRemoteConflict,
+    Future<int> Function(CrdtChangeset records)? onAdopt,
   }) =>
       Collection._(
         name,
@@ -826,5 +877,6 @@ class Collection<T> {
         indexedFields: indexedFields,
         onLocalChange: onLocalChange,
         onRemoteConflict: onRemoteConflict,
+        onAdopt: onAdopt,
       );
 }

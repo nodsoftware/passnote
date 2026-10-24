@@ -11,8 +11,8 @@ import 'query/scan_query.dart';
 ///
 /// Keeps the whole dataset in RAM and is **not persisted**. It is meant for
 /// tests and small, ephemeral collections. Select it explicitly with
-/// `Passnote.builder(...).engine(MapCrdtTable.new)`; the default engine is
-/// disk-backed (`SqliteCrdtTable`).
+/// `Passnote.builder(...).storage((_, c, __) => MapCrdtTable(c))`; the
+/// default engine is disk-backed (`SqliteCrdtTable`).
 class MapCrdtTable implements CrdtTable {
   /// Creates an empty in-memory table named [table].
   MapCrdtTable(String table) : _crdt = _ClockedMapCrdt([table]);

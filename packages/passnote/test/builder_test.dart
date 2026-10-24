@@ -207,4 +207,46 @@ void main() {
     expect(engineBuilds, 2, reason: 'the default engine factory was used');
     expect((await notes.get('n1'))?['text'], 'hi');
   });
+
+  test('.storage(...) is handed the database id, collection and key',
+      () async {
+    final seen = <(String, String, int)>[];
+    final passnote = await Passnote.builder(appId: 'a', salt: 'a:v1')
+        .storage((databaseId, collection, key) {
+      seen.add((databaseId, collection, key.length));
+      return MapCrdtTable(collection);
+    }).open();
+    addTearDown(passnote.close);
+    final codec = JsonCodec<Map<String, dynamic>>(
+      toMap: (m) => m,
+      fromMap: (m) => m,
+      idOf: (m) => m['id'] as String,
+    );
+    final home = await passnote.openDatabase('home', passphrase: 'x');
+    final work = await passnote.openDatabase('work', passphrase: 'y');
+    await home.collection('notes', codec).put({'id': 'n', 'text': 'home'});
+    await work.collection('notes', codec).put({'id': 'n', 'text': 'work'});
+
+    expect(seen, containsAll([('home', 'notes', 32), ('work', 'notes', 32)]));
+    expect((await home.collection('notes', codec).get('n'))?['text'], 'home');
+  });
+
+  test('.storage and the deprecated .engine are one slot', () {
+    final builder = Passnote.builder(appId: 'a', salt: 'a:v1')
+        .storage((_, collection, __) => MapCrdtTable(collection));
+    expect(
+      // ignore: deprecated_member_use_from_same_package
+      () => builder.engine(MapCrdtTable.new),
+      throwsStateError,
+    );
+  });
+
+  test('.antiEntropyInterval refuses a negative interval and a second call',
+      () {
+    final builder = Passnote.builder(appId: 'a', salt: 'a:v1');
+    expect(() => builder.antiEntropyInterval(const Duration(seconds: -1)),
+        throwsArgumentError);
+    builder.antiEntropyInterval(Duration.zero);
+    expect(() => builder.antiEntropyInterval(Duration.zero), throwsStateError);
+  });
 }

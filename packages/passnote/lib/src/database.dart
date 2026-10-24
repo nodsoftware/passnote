@@ -332,6 +332,7 @@ class Database {
       indexedFields: indexedFields,
       onLocalChange: () => _broadcastCollection(col),
       onRemoteConflict: onRemoteConflict,
+      onAdopt: (records) => _adoptRecords(col, name, records),
     );
     _collections[name] = col;
     // A collection whose engine will not open (this device is not paired yet)
@@ -562,6 +563,16 @@ class Database {
       await _sendPoke(peer);
     }
   }
+
+  /// Runs one anti-entropy round with every connected peer now, without
+  /// waiting for [PassnoteConfig.antiEntropyInterval]: range reconciliation
+  /// with peers that support it (finds any difference, even one older than
+  /// both sides' watermarks), else the hello/state exchange.
+  ///
+  /// Sync also runs one round per peer as soon as the connection can carry
+  /// user data; call this after something the protocol cannot see, such as
+  /// restoring a store from a backup.
+  Future<void> reconcileNow() => _antiEntropyExchange();
 
   // ---------------------------------------------------------------------------
   // Device roster (only when an Identity is configured)
@@ -868,6 +879,7 @@ class Database {
     _negotiatedVersion.remove(peer);
     _peerCapabilities.remove(peer);
     _incompatiblePeers.remove(peer);
+    _reconcileAfterState.remove(peer);
   }
 
   /// Last time a ratchet re-bootstrap was asked of a peer, so a peer that
@@ -1088,8 +1100,26 @@ class Database {
     // device can rebuild this session's root.
     mine.destroy();
     // User data waits for a session, so ask for it the moment there is one.
-    if (_negotiatedVersion.containsKey(peer)) await _sendHello(peer);
+    if (_negotiatedVersion.containsKey(peer)) await _syncOnConnect(peer);
   }
+
+  /// The first exchange once [peer] can receive user data: a hello, whose
+  /// state reply has this side send everything newer than the peer's
+  /// watermarks, and then, when the peer speaks `recon1`, a reconciliation
+  /// round that also finds differences older than both watermarks (a record
+  /// a peer missed while offline and that nobody wrote over since).
+  Future<void> _syncOnConnect(PeerId peer) async {
+    if (_peerCapabilities[peer]?.contains(reconCapability) ?? false) {
+      _reconcileAfterState.add(peer);
+    }
+    await _sendHello(peer);
+  }
+
+  /// Peers to probe once their state reply has been answered. Probing right
+  /// away would ship again, leaf by leaf, everything the deltas are already
+  /// carrying; queued behind them, the probe arrives once the peer holds
+  /// them, and finds only what the watermarks cannot see.
+  final Set<PeerId> _reconcileAfterState = {};
 
   /// Called by [Passnote] for an inbound frame on this database's room.
   ///
@@ -1220,7 +1250,14 @@ class Database {
     // Only a device that holds the current group key can derive a ratchet root;
     // a not-yet-paired device syncs the roster in the clear first.
     if (_identity != null && _dataKey != null) await _kickRatchet(from);
-    await _sendHello(from);
+    // Without an identity there are no sessions: the connection is ready
+    // now. With one, user data waits for the session, which runs the full
+    // exchange when it is established; until then the hello syncs the roster.
+    if (_identity == null) {
+      await _syncOnConnect(from);
+    } else {
+      await _sendHello(from);
+    }
   }
 
   /// Resets what this side holds for [from] when its handshake carries an
@@ -1265,6 +1302,9 @@ class Database {
     PeerId from,
     Map<String, String> peerCols,
   ) async {
+    final probeAfter = _reconcileAfterState.remove(from)
+        ? _collectionsToProbe(peerCols)
+        : const <String>{};
     for (final entry in peerCols.entries) {
       final colName = entry.key;
       final peerHlc = entry.value;
@@ -1281,6 +1321,39 @@ class Database {
             tableEntry.value.map((r) => Map<String, dynamic>.from(r)).toList();
         await _sendDeltas(from, colName, records);
       }
+    }
+    if (probeAfter.isNotEmpty) {
+      await _startReconcile(from, collections: probeAfter);
+    }
+  }
+
+  /// The collections to probe a peer for once its state reply is answered:
+  /// those where the peer's watermark is not ahead of this side's.
+  ///
+  /// Where the peer is ahead, it is about to stream to this side in answer
+  /// to this side's state, and a probe now would fingerprint a store still
+  /// filling up and ship again what the stream carries. The peer probes that
+  /// collection instead, queued behind its own deltas, and still finds
+  /// everything: whatever this side holds that it lacks is older than its
+  /// watermark, which is exactly what a probe is for.
+  Set<String> _collectionsToProbe(Map<String, String> peerCols) {
+    final out = <String>{};
+    for (final entry in _collections.entries) {
+      final col = entry.value as Collection<dynamic>;
+      final theirs = _watermark(peerCols[col.name] ?? '');
+      final mine = _watermark(col.maxHlc);
+      final theyAreAhead = theirs != null && (mine == null || theirs > mine);
+      if (!theyAreAhead) out.add(col.name);
+    }
+    return out;
+  }
+
+  static Hlc? _watermark(String text) {
+    if (text.isEmpty) return null;
+    try {
+      return Hlc.parse(text);
+    } catch (_) {
+      return null;
     }
   }
 
@@ -1352,6 +1425,20 @@ class Database {
     }
   }
 
+  /// Merges records an app adopts through [Collection.adoptRecords] with the
+  /// checks a peer's delta gets (the clock bound, roster vetting), then offers
+  /// them to every connected peer. Returns how many records were merged.
+  Future<int> _adoptRecords(
+    Collection<dynamic> col,
+    String colName,
+    CrdtChangeset records,
+  ) async {
+    final (accepted, _) = _refuseFutureRecords(records);
+    await _mergeDelta(col, colName, accepted);
+    _broadcastCollection(col);
+    return accepted[colName]?.length ?? 0;
+  }
+
   /// [changeset] without the documents that carry a record stamped more than
   /// [_maxClockDrift] ahead of this device's clock, and how far ahead the
   /// furthest refused record was (`null` when none was). Such a record would
@@ -1418,9 +1505,10 @@ class Database {
 
   /// Opens a reconciliation round with [peer]: one whole-range probe per
   /// collection.
-  Future<void> _startReconcile(PeerId peer) async {
+  Future<void> _startReconcile(PeerId peer, {Set<String>? collections}) async {
     for (final entry in _collections.entries.toList()) {
       final col = entry.value as Collection<dynamic>;
+      if (collections != null && !collections.contains(col.name)) continue;
       final probe = await _reconcilerFor(col).initialProbe();
       if (probe == null) continue;
       await _sendEncrypted(
