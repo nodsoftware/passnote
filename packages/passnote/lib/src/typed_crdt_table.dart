@@ -60,8 +60,12 @@ final class TypedCrdtTable implements CrdtTable {
   @override
   bool get isPersistent => _inner.isPersistent;
 
+  /// Initialises the inner table once; later calls return the same future.
+  /// A table may be initialised early to probe its key (see
+  /// `Database`), and the collection that adopts it initialises it again.
   @override
-  Future<void> init() => _inner.init();
+  Future<void> init() => _init ??= _inner.init();
+  Future<void>? _init;
 
   @override
   Future<int> compact(String table, {required Duration horizon}) =>
