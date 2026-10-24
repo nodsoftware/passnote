@@ -1,6 +1,5 @@
 // The engines' local clock: what it resumes from after a reopen, and how it
-// advances after adopting a peer's record. Each case is a defect found by the
-// Rust port of Passnote (F-1, F-2, F-7, F-11).
+// advances after adopting a peer's record.
 @TestOn('vm')
 library;
 
@@ -29,7 +28,7 @@ void main() {
   String path() => '${tmp.path}/t.sqlite';
 
   group('SqliteCrdtTable after a reopen', () {
-    test('stamps local writes with its own node id (F-1)', () async {
+    test('stamps local writes with its own node id', () async {
       var table = await SqliteCrdtTable.open(path(), encryptionKey: _key);
       final own = table.nodeId;
       await table.merge({
@@ -45,7 +44,7 @@ void main() {
           reason: 'a local write carried the peer\'s node id');
     });
 
-    test('keeps writing while a stored record is minutes ahead (F-2)',
+    test('keeps writing while a stored record is minutes ahead',
         () async {
       var table = await SqliteCrdtTable.open(path(), encryptionKey: _key);
       await table.merge({
@@ -61,7 +60,7 @@ void main() {
     });
   });
 
-  group('a received record at the counter limit (F-7)', () {
+  group('a received record at the counter limit', () {
     Future<void> writesKeepWorking(CrdtTable table) async {
       await table.init();
       await table.merge({
@@ -90,7 +89,7 @@ void main() {
     });
   });
 
-  test('the in-memory engine merges a record minutes ahead, like disk (F-11)',
+  test('the in-memory engine merges a record minutes ahead, like disk',
       () async {
     final table = MapCrdtTable('items');
     await table.merge({

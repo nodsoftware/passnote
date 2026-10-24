@@ -1,8 +1,7 @@
 // Text outside the Basic Multilingual Plane (emoji, many CJK extensions) is
 // one code point but two UTF-16 code units. The SQLite engine matched key
-// prefixes by UTF-16 length (F-4), and the in-memory engine ordered text by
-// UTF-16 code unit where SQLite orders by code point (F-10). Both found by
-// the Rust port.
+// prefixes by UTF-16 length, and the in-memory engine ordered text by UTF-16
+// code unit where SQLite orders by code point.
 @TestOn('vm')
 library;
 
@@ -12,7 +11,7 @@ import 'package:test/test.dart';
 const _sep = '\x1F';
 
 void main() {
-  group('a document id outside the BMP (F-4)', () {
+  group('a document id outside the BMP', () {
     test('finds its fields on disk', () async {
       final table = SqliteCrdtTable(':memory:', encryptionKey: const []);
       addTearDown(table.close);
@@ -26,7 +25,7 @@ void main() {
     });
   });
 
-  test('both engines order text by code point (F-10)', () async {
+  test('both engines order text by code point', () async {
     // U+FF5E sorts below U+1F600 by code point, above it by UTF-16 unit.
     const ids = ['\u{1F600}', '\u{FF5E}', 'a'];
     Future<List<String>> order(CrdtTable table) async {

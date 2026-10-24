@@ -1,8 +1,7 @@
 // A key rotation re-keys the stores that are open. A store on disk that was
 // not open at the time (an app that opens collections lazily) is left under
-// the earlier key, and used to refuse the current key for good (F-3, found by
-// the Rust port). It must open, and be brought up to date, the next time it
-// is used.
+// the earlier key, and used to refuse the current key for good. It must
+// open, and be brought up to date, the next time it is used.
 @TestOn('vm')
 library;
 

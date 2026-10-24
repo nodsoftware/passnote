@@ -1,7 +1,7 @@
 // A peer that restarts can come back under the same transport id without
 // the transport ever reporting it lost. This side then kept the old
 // instance's negotiation and session state, answered nothing, and never
-// renegotiated (F-15, found by the Rust port). Each instance now advertises
+// renegotiated. Each instance now advertises
 // a fresh token in its handshake; a token not seen before from a peer resets
 // what is held for it, and a replayed older one changes nothing.
 // ignore_for_file: implementation_imports

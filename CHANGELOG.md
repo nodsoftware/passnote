@@ -6,8 +6,8 @@ summary.
 
 ## 1.1.2
 
-A bug-fix patch for defects found while porting Passnote to Rust; upgrading
-is recommended. Wire- and API-compatible with 1.1.0 and 1.1.1: devices on any
+A bug-fix patch for clock, storage, roster and text-handling defects;
+upgrading is recommended. Wire- and API-compatible with 1.1.0 and 1.1.1: devices on any
 1.1 release sync with each other.
 
 - **The local clock survives a reopen.** A SQLite store reopened after
