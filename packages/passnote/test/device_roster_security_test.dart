@@ -535,7 +535,7 @@ void main() {
     });
   });
 
-  group('rows this version cannot decode (F-12)', () {
+  group('rows this version cannot decode', () {
     Map<String, List<Map<String, Object?>>> futureRow() {
       final hlc = Hlc.now('peer-node');
       return {

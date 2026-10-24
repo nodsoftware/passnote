@@ -1226,7 +1226,7 @@ class Database {
   /// Resets what this side holds for [from] when its handshake carries an
   /// instance token not seen from it before: the peer restarted, and its
   /// session, negotiated version and pending hellos belong to the old
-  /// instance (F-15). A peer that advertises no token is left as it is.
+  /// instance. A peer that advertises no token is left as it is.
   void _noteInstance(PeerId from, List<String> capabilities) {
     String? token;
     for (final c in capabilities) {

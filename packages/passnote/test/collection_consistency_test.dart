@@ -1,6 +1,6 @@
 // A put writes a document as several records. A read must never see some of
-// them and not the others (F-14), and a failure part-way through must not
-// leave the document half-written on disk (F-13). Both found by the Rust port.
+// them and not the others, and a failure part-way through must not leave the
+// document half-written on disk.
 @TestOn('vm')
 library;
 
@@ -21,7 +21,7 @@ Map<String, dynamic> _note(String v) =>
     {'id': 'n', 'title': v, 'body': v, 'tags': v};
 
 void main() {
-  test('a read during a put sees the document before or after it (F-14)',
+  test('a read during a put sees the document before or after it',
       () async {
     final notes = internal.Collection.create<Map<String, dynamic>>(
       'notes',
@@ -58,7 +58,7 @@ void main() {
     }
   });
 
-  group('SqliteCrdtTable.atomically (F-13)', () {
+  group('SqliteCrdtTable.atomically', () {
     late Directory tmp;
     setUp(() => tmp = Directory.systemTemp.createTempSync('passnote_atomic'));
     tearDown(() => tmp.deleteSync(recursive: true));
