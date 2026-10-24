@@ -59,8 +59,16 @@ string form.
 Both sides send a `handshake` on connect and reply once to the first one they
 receive (at most two frames each). Sync starts on the highest common version;
 no overlap raises `PeerIncompatible` and ends the exchange. Capabilities are
-feature flags within a version; `recon1` (range reconciliation) is the only
-one today, and unknown names are ignored.
+feature flags within a version, and unknown names are ignored:
+
+- `recon1`: range reconciliation (below).
+- `inst:<16 hex>`: a random token minted per open database instance. A
+  handshake carrying a token not seen before from that transport peer means
+  the peer restarted, possibly without the transport reporting it lost: the
+  receiver drops everything it held for the peer (session, negotiated
+  version, pending hellos, as on a lost connection) and negotiates afresh. A
+  token already seen (a redelivery or a replay) changes nothing; the last 8
+  per peer are remembered. A peer that sends no token is not reset.
 
 ## Session handshake
 

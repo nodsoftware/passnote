@@ -362,7 +362,7 @@ final class SqliteCrdtTable
             'SELECT key, value FROM crdt_records '
             'WHERE collection = ? AND is_deleted = 0 '
             'AND substr(key, 1, ?) = ?',
-            [table, prefix.length, prefix],
+            [table, prefix.runes.length, prefix],
           );
     return {
       for (final r in rows)
@@ -419,7 +419,7 @@ final class SqliteCrdtTable
         : _open.select(
             'SELECT key FROM crdt_records '
             'WHERE collection = ? AND is_deleted = 0 AND substr(key, 1, ?) = ?',
-            [table, prefix.length, prefix],
+            [table, prefix.runes.length, prefix],
           );
     return {for (final r in rows) r['key'] as String};
   }
