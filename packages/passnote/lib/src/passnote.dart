@@ -88,10 +88,24 @@ class PassnoteConfig {
     this.antiEntropyInterval = const Duration(minutes: 3),
     this.maxInFlightFrames = 16,
     this.maxClockDrift = const Duration(minutes: 10),
+    this.legacyPassphraseKeys = false,
   });
 
   /// Scopes mDNS discovery and storage namespacing for this app.
   final String appId;
+
+  /// Whether a passphrase with characters outside ASCII derives its key the
+  /// way Passnote 1.0 and 1.1 did, for a device joining a group whose
+  /// passphrase was set before 1.2.
+  ///
+  /// Before 1.2 such a passphrase derived a key that matched no other BIP39
+  /// implementation (see the 1.2.0 changelog). Data a device already holds
+  /// opens under either key regardless, and recovery tries both; this only
+  /// decides the key a device starts with when it has nothing to open yet,
+  /// and the key a passphrase rotation moves to. An ASCII passphrase, which
+  /// includes every generated one, derives the same key either way. Defaults
+  /// to `false`.
+  final bool legacyPassphraseKeys;
 
   /// App-wide key-derivation salt (fed to Argon2id by the default deriver).
   /// The same passphrase with different salts produces different keys — use a
@@ -317,6 +331,7 @@ class Passnote {
     required Transport transport,
     required NodeId nodeId,
     required Future<List<int>> Function(String, String) deriveKey,
+    Future<List<int>> Function(String, String)? legacyDeriveKey,
     required String Function(List<int>) roomTag,
     required Cipher Function(List<int>) cipherFactory,
     required List<String> Function(int words) mnemonicGenerator,
@@ -340,6 +355,7 @@ class Passnote {
         _transport = transport,
         _nodeId = nodeId,
         _deriveKey = deriveKey,
+        _legacyDeriveKey = legacyDeriveKey,
         _roomTag = roomTag,
         _cipherFactory = cipherFactory,
         _mnemonicGenerator = mnemonicGenerator,
@@ -350,6 +366,7 @@ class Passnote {
   final Transport _transport;
   final NodeId _nodeId;
   final Future<List<int>> Function(String, String) _deriveKey;
+  final Future<List<int>> Function(String, String)? _legacyDeriveKey;
   final String Function(List<int>) _roomTag;
   final Cipher Function(List<int>) _cipherFactory;
   final List<String> Function(int words) _mnemonicGenerator;
@@ -438,16 +455,53 @@ class Passnote {
     }
 
     final entryKey = '${_config.appId}/$localId';
-    final key = await _deriveKey(passphrase, _config.salt);
-    final cipher = _cipherFactory(key);
-
-    final db = await _finishOpen(localId, entryKey, key, cipher);
-    // Only a key that opened the database is worth keeping: storing it before
-    // the open would make every later [reopenDatabase] repeat a wrong
-    // passphrase.
-    await _keyStore.setKey(entryKey, key);
-    return db;
+    final keys = await _passphraseKeys(passphrase);
+    for (var i = 0;; i++) {
+      final key = keys[i];
+      final Database db;
+      try {
+        db = await _finishOpen(localId, entryKey, key, _cipherFactory(key));
+      } on WrongPassphraseException {
+        if (i == keys.length - 1) rethrow;
+        continue; // Data made under the passphrase's other key.
+      }
+      // Only a key that opened the database is worth keeping: storing it
+      // before the open would make every later [reopenDatabase] repeat a
+      // wrong passphrase.
+      await _keyStore.setKey(entryKey, key);
+      return db;
+    }
   }
+
+  /// The keys [passphrase] can stand for, the one to start new data with
+  /// first.
+  ///
+  /// One key, except for a passphrase with characters outside ASCII when a
+  /// [_legacyDeriveKey] is installed: Passnote 1.0 and 1.1 derived a
+  /// different key from it, and data and groups made then must still
+  /// open. [PassnoteConfig.legacyPassphraseKeys] puts the legacy key first.
+  Future<List<List<int>>> _passphraseKeys(String passphrase) async {
+    final current = await _deriveKey(passphrase, _config.salt);
+    final legacy = _legacyDeriveKey;
+    if (legacy == null || _isAscii(passphrase)) return [current];
+    final old = await legacy(passphrase, _config.salt);
+    if (_sameKey(old, current)) return [current];
+    return _config.legacyPassphraseKeys ? [old, current] : [current, old];
+  }
+
+  /// The key new data under [passphrase] starts with: the first of
+  /// [_passphraseKeys], without deriving the other.
+  Future<List<int>> _newPassphraseKey(String passphrase) {
+    final legacy = _legacyDeriveKey;
+    if (_config.legacyPassphraseKeys &&
+        legacy != null &&
+        !_isAscii(passphrase)) {
+      return legacy(passphrase, _config.salt);
+    }
+    return _deriveKey(passphrase, _config.salt);
+  }
+
+  static bool _isAscii(String text) => text.codeUnits.every((c) => c < 0x80);
 
   /// Reopens a database previously opened with [openDatabase], reusing the key
   /// already held in the [KeyStore] — no passphrase required.
@@ -541,11 +595,14 @@ class Passnote {
 
     final entryKey = '${_config.appId}/$localId';
     final current = await _keyStore.getKey(entryKey);
-    final oldKey = await _deriveKey(oldPassphrase, _config.salt);
-    if (current == null || !_sameKey(current, oldKey)) {
-      throw const WrongPassphraseException();
-    }
-    final newKey = await _deriveKey(newPassphrase, _config.salt);
+    // Either of the old passphrase's keys, whichever this database is under.
+    final oldKey = current == null
+        ? null
+        : (await _passphraseKeys(oldPassphrase))
+            .where((k) => _sameKey(current, k))
+            .firstOrNull;
+    if (oldKey == null) throw const WrongPassphraseException();
+    final newKey = await _newPassphraseKey(newPassphrase);
     if (_sameKey(newKey, oldKey)) return;
 
     // Stores this rotation does not reach (collections not open now) stay
@@ -952,31 +1009,45 @@ class Passnote {
     final recovery = await derive(phrase, _config.salt);
 
     final entryKey = '${_config.appId}/$localId';
-    final key = await _deriveKey(passphrase, _config.salt);
-    await _keyStore.setKey(entryKey, key);
-    // Never auto-found here: the group exists elsewhere; founding a fresh key
-    // on a briefly-alone install would fork it.
-    final db = await _finishOpen(
-      localId,
-      entryKey,
-      key,
-      _cipherFactory(key),
-      allowAutoFound: false,
-    );
-
-    var adopted = false;
-    for (var i = 0; i < 100 && !adopted; i++) {
-      await db.forceSync();
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-      adopted = await db.adoptRecovery(recovery, label: deviceLabel);
-    }
-    if (!adopted) {
-      throw StateError(
-        'Recovery timed out: no usable wrap for this phrase arrived. Is a '
-        'peer that holds the roster reachable?',
+    // The group may be under either of the passphrase's keys (see
+    // [_passphraseKeys]), and nothing on this device says which: try each.
+    final keys = await _passphraseKeys(passphrase);
+    for (var i = 0; i < keys.length; i++) {
+      final key = keys[i];
+      if (i > 0) {
+        // Stores the last attempt created are under its key; remembering it
+        // lets this attempt open and re-key them.
+        await Database.rememberPreviousPassphraseKeyIn(
+            _keyStore, entryKey, keys[i - 1]);
+      }
+      await _keyStore.setKey(entryKey, key);
+      // Never auto-found here: the group exists elsewhere; founding a fresh
+      // key on a briefly-alone install would fork it.
+      final db = await _finishOpen(
+        localId,
+        entryKey,
+        key,
+        _cipherFactory(key),
+        allowAutoFound: false,
       );
+
+      var adopted = false;
+      for (var tries = 0; tries < 100 && !adopted; tries++) {
+        await db.forceSync();
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        adopted = await db.adoptRecovery(recovery, label: deviceLabel);
+      }
+      if (adopted) return db;
+      if (i < keys.length - 1) {
+        _databases.remove(localId);
+        _databaseKeys.remove(localId);
+        await db.close();
+      }
     }
-    return db;
+    throw StateError(
+      'Recovery timed out: no usable wrap for this phrase arrived. Is a '
+      'peer that holds the roster reachable?',
+    );
   }
 
   Future<Identity> Function(String phrase, String salt) _requireRecovery() {
@@ -1237,6 +1308,7 @@ Future<Passnote> passnoteLowLevel({
   required KeyStore keyStore,
   required Transport transport,
   required Future<List<int>> Function(String passphrase, String salt) deriveKey,
+  Future<List<int>> Function(String passphrase, String salt)? legacyDeriveKey,
   required String Function(List<int> key) roomTag,
   required Cipher Function(List<int> key) cipher,
   required List<String> Function(int words) mnemonicGenerator,
@@ -1258,6 +1330,7 @@ Future<Passnote> passnoteLowLevel({
     transport: transport,
     nodeId: nodeId,
     deriveKey: deriveKey,
+    legacyDeriveKey: legacyDeriveKey,
     roomTag: roomTag,
     cipherFactory: cipher,
     mnemonicGenerator: mnemonicGenerator,

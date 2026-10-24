@@ -91,7 +91,7 @@ discovery, not sync).
 
 | Exception | When | What to do |
 | --- | --- | --- |
-| `WrongPassphraseException` | `openDatabase` with a passphrase that does not decrypt the stored data. The data on disk is untouched and no key is stored. | Ask the user to re-enter it; the right passphrase then opens normally. The passphrase is used exactly as given, so the same words with an extra space, different capitals or a differently encoded accent are a different passphrase; normalise what the user types (see [security](../security.md#recommendations)). |
+| `WrongPassphraseException` | `openDatabase` with a passphrase that does not decrypt the stored data. The data on disk is untouched and no key is stored. | Ask the user to re-enter it; the right passphrase then opens normally. The passphrase is used exactly as given, so the same words with an extra space, different capitals are a different passphrase (a differently encoded accent is not, since 1.2); normalise what the user types (see [security](../security.md#recommendations)). |
 | `SqlCipherUnavailableException` | An encryption key was supplied but the linked SQLite is not a SQLCipher build; storing plaintext is refused. | Fix the build wiring: select the SQLCipher source of `package:sqlite3` in the app's root pubspec (see [platform setup](set-up-platforms.md)). |
 | `WeakPassphraseException` | A non-mnemonic passphrase under a `strict` policy. | Generate one with `generatePassphrase()`, or relax the policy deliberately. |
 | `PairingRejected` | The code was wrong, or the sponsor declined. A device gets three tries at a code and the code is withdrawn after twenty in all. | Start a fresh code; each guess costs a visible failure. |

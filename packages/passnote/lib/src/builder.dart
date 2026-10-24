@@ -16,6 +16,7 @@ final class PassnoteDefaults {
     required this.transport,
     required this.cipher,
     required this.deriveKey,
+    this.legacyDeriveKey,
     required this.roomTag,
     required this.mnemonicGenerator,
     required this.validateMnemonic,
@@ -39,6 +40,12 @@ final class PassnoteDefaults {
 
   /// Derives a symmetric key from a passphrase and an app salt.
   final Future<List<int>> Function(String passphrase, String salt) deriveKey;
+
+  /// Derives the key Passnote 1.0 and 1.1 derived from a passphrase with
+  /// characters outside ASCII, so data and groups made then still open.
+  /// `null` when the host has no such earlier derivation.
+  final Future<List<int>> Function(String passphrase, String salt)?
+      legacyDeriveKey;
 
   /// Derives the public discovery room tag from a key.
   final String Function(List<int> key) roomTag;
@@ -301,6 +308,7 @@ final class PassnoteBuilder {
       transport: _transport ?? defaults.transport(),
       cipher: _cipher ?? defaults.cipher,
       deriveKey: defaults.deriveKey,
+      legacyDeriveKey: defaults.legacyDeriveKey,
       roomTag: defaults.roomTag,
       mnemonicGenerator: defaults.mnemonicGenerator,
       validateMnemonic: defaults.validateMnemonic,

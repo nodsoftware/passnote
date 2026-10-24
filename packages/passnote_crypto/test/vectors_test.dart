@@ -33,13 +33,35 @@ void main() {
         m['key'],
         reason: m['name'] as String,
       );
+      if (m['recovery_secret'] case final String secret) {
+        expect(
+          hex(await deriveRecoverySecret(
+              m['mnemonic'] as String, m['salt'] as String)),
+          secret,
+          reason: m['name'] as String,
+        );
+      }
       expect(
-        hex(await deriveRecoverySecret(
+        hex(await deriveKeyLegacy(
             m['mnemonic'] as String, m['salt'] as String)),
-        m['recovery_secret'],
-        reason: m['name'] as String,
+        m['legacy_key'] ?? m['key'],
+        reason: '${m['name']} (legacy)',
       );
     }
+  });
+
+  test('bip39Seed matches BIP39', () async {
+    for (final c in load('derive_key.json')['seeds'] as List) {
+      final m = c as Map<String, dynamic>;
+      expect(hex(await bip39Seed(m['phrase'] as String)), m['seed'],
+          reason: m['phrase'] as String);
+    }
+  });
+
+  test('the legacy derivation collides distinct characters', () async {
+    // U+0141 and U+0041 share their low byte.
+    expect(await deriveKeyLegacy('Ł', 's'), await deriveKeyLegacy('A', 's'));
+    expect(await deriveKey('Ł', 's'), isNot(await deriveKey('A', 's')));
   });
 
   test('roomTag', () {

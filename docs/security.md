@@ -175,12 +175,21 @@ Every primitive is pinned by published known-answer
 ## Recommendations
 
 - Use the generated 24-word passphrase unless you have a strong reason not to.
-- Normalise a passphrase the user types before passing it in: Passnote
-  derives the key from the exact string, so trim it, collapse runs of
-  whitespace to one space, and for a mnemonic lower-case it and apply Unicode
-  NFKD. Do the same on every device, from the first; changing it later
-  changes the key. The generated words joined with single spaces need
-  nothing.
+- Normalise a passphrase the user types before passing it in: trim it,
+  collapse runs of whitespace to one space, and lower-case a mnemonic. Do the
+  same on every device, from the first; changing it later changes the key.
+  Passnote applies Unicode NFKD itself (since 1.2, as BIP39 specifies), so a
+  differently encoded accent no longer matters. The generated words joined
+  with single spaces need nothing.
+- **Passphrases outside ASCII and 1.2.** Before 1.2 a passphrase with
+  characters outside ASCII derived a key from the low byte of each UTF-16
+  code unit, so some distinct passphrases shared a key (`Ł` read as `A`) and
+  no other BIP39 implementation agreed with it. 1.2 derives the BIP39 key.
+  Data already on a device opens under either, and stays under the key its
+  group uses. A device joining a group whose passphrase was set before 1.2
+  and has such characters sets `PassnoteConfig.legacyPassphraseKeys`, or the
+  group rotates to a new passphrase once every device runs 1.2. Generated
+  and other ASCII passphrases are unaffected.
 - Choose a stable, app-specific `salt` (like `"myapp:v1"`) and never reuse it
   across unrelated apps.
 - Show pairing codes and recovery phrases to the user once; never store them.

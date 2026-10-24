@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:bip39/bip39.dart' as bip39;
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:cryptography/cryptography.dart';
+import 'package:unorm_dart/unorm_dart.dart' as unorm;
 
 /// Argon2id parameters, at the OWASP 2023 recommended minimum for interactive
 /// use: 19 MiB of memory, 2 passes, 1 lane. Argon2id is memory-hard, so this
@@ -34,8 +35,41 @@ const int _roomTagLength = 16;
 /// (19 MiB / 2 passes / 1 lane, salted) → 256-bit key. The [salt] ensures the
 /// same passphrase produces a different key per app; it is hashed to a
 /// fixed-length Argon2 salt so any string is accepted.
-Future<List<int>> deriveKey(String passphrase, String salt) async {
-  final seed = bip39.mnemonicToSeed(passphrase);
+///
+/// The seed follows BIP39 exactly: PBKDF2-HMAC-SHA512 over the NFKD-normalised
+/// UTF-8 bytes of the passphrase. Before 1.2 a passphrase with characters
+/// outside ASCII derived differently (see [deriveKeyLegacy]); an ASCII
+/// passphrase, which includes every generated one, derives the same key.
+Future<List<int>> deriveKey(String passphrase, String salt) async =>
+    _argon2(await bip39Seed(passphrase), _argonSalt(salt));
+
+/// [deriveKey] as Passnote 1.0 and 1.1 computed it, for opening data and
+/// groups whose passphrase has characters outside ASCII.
+///
+/// The bip39 package fed PBKDF2 the low byte of each UTF-16 code unit of the
+/// unnormalised passphrase instead of its NFKD UTF-8 bytes, so distinct
+/// characters collided (`Ł`, U+0141, read as `A`) and the seed matched no
+/// other BIP39 implementation. Identical to [deriveKey] for ASCII.
+Future<List<int>> deriveKeyLegacy(String passphrase, String salt) async =>
+    _argon2(bip39.mnemonicToSeed(passphrase), _argonSalt(salt));
+
+/// The 64-byte BIP39 seed of [phrase] with an empty BIP39 passphrase:
+/// PBKDF2-HMAC-SHA512, 2048 iterations, salt `"mnemonic"`, over the UTF-8
+/// bytes of the NFKD-normalised phrase.
+Future<List<int>> bip39Seed(String phrase) async {
+  final pbkdf2 = Pbkdf2(
+    macAlgorithm: Hmac.sha512(),
+    iterations: 2048,
+    bits: 512,
+  );
+  final seed = await pbkdf2.deriveKey(
+    secretKey: SecretKey(utf8.encode(unorm.nfkd(phrase))),
+    nonce: utf8.encode('mnemonic'),
+  );
+  return seed.extractBytes();
+}
+
+Future<List<int>> _argon2(List<int> seed, List<int> salt) async {
   final argon2 = Argon2id(
     memory: _argon2Memory,
     iterations: _argon2Iterations,
@@ -44,7 +78,7 @@ Future<List<int>> deriveKey(String passphrase, String salt) async {
   );
   final derived = await argon2.deriveKey(
     secretKey: SecretKey(seed),
-    nonce: _argonSalt(salt),
+    nonce: salt,
   );
   return derived.extractBytes();
 }
@@ -56,25 +90,24 @@ Future<List<int>> deriveKey(String passphrase, String salt) async {
 /// domain-separated salt, so a phrase used (wrongly) as both passphrase and
 /// recovery phrase still yields unrelated keys. The [salt] is the app-wide
 /// salt: the same phrase recovers a different keypair per app.
-Future<List<int>> deriveRecoverySecret(String phrase, String salt) async {
-  final seed = bip39.mnemonicToSeed(phrase);
-  final argon2 = Argon2id(
-    memory: _argon2Memory,
-    iterations: _argon2Iterations,
-    parallelism: _argon2Parallelism,
-    hashLength: 32,
-  );
-  final derived = await argon2.deriveKey(
-    secretKey: SecretKey(seed),
-    nonce: _argonSalt('recovery-v1/$salt'),
-  );
-  return derived.extractBytes();
-}
+///
+/// A recovery phrase is a valid English BIP39 mnemonic, which is ASCII, so
+/// its derivation is the same as in 1.0 and 1.1.
+Future<List<int>> deriveRecoverySecret(String phrase, String salt) async =>
+    _argon2(await bip39Seed(phrase), _argonSalt('recovery-v1/$salt'));
 
 /// FIPS fallback: the pre-Argon2id pipeline, BIP39 seed → PBKDF2-HMAC-SHA256
 /// (600 000 iterations). Use only where an approved KDF list rules Argon2id out.
-Future<List<int>> deriveKeyPbkdf2(String passphrase, String salt) async {
-  final seed = bip39.mnemonicToSeed(passphrase);
+/// The seed is [bip39Seed]'s, as for [deriveKey].
+Future<List<int>> deriveKeyPbkdf2(String passphrase, String salt) async =>
+    _pbkdf2(await bip39Seed(passphrase), salt);
+
+/// [deriveKeyPbkdf2] as Passnote 1.0 and 1.1 computed it; see
+/// [deriveKeyLegacy].
+Future<List<int>> deriveKeyPbkdf2Legacy(String passphrase, String salt) async =>
+    _pbkdf2(bip39.mnemonicToSeed(passphrase), salt);
+
+Future<List<int>> _pbkdf2(List<int> seed, String salt) async {
   final pbkdf2 = Pbkdf2(
     macAlgorithm: Hmac.sha256(),
     iterations: _pbkdf2Iterations,

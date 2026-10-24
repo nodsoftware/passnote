@@ -53,6 +53,7 @@ void _ensureDefaults() {
       transport: LanTransport.new,
       cipher: XChaChaPoly1305Cipher.new,
       deriveKey: deriveKey,
+      legacyDeriveKey: deriveKeyLegacy,
       roomTag: roomTag,
       mnemonicGenerator: (words) => generateMnemonic(words: words),
       validateMnemonic: isValidMnemonic,

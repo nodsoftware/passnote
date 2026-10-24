@@ -8,7 +8,7 @@ independent implementation a concrete target.
 
 | File | Pins |
 | --- | --- |
-| `derive_key.json` | Passphrase and recovery-secret derivation: BIP39 seed, then Argon2id (19456 KiB, 2 passes, 1 lane), with the domain-separated salt hashing recorded in the file. |
+| `derive_key.json` | Passphrase and recovery-secret derivation: BIP39 seed (NFKD, UTF-8, PBKDF2-HMAC-SHA512), then Argon2id (19456 KiB, 2 passes, 1 lane), with the domain-separated salt hashing recorded in the file. Seeds on their own, including non-ASCII and fullwidth phrases, and `legacy_key`: the 1.0/1.1 derivation an implementation needs to open data made under a non-ASCII passphrase before 1.2. |
 | `room_tag.json` | The discovery tag: truncated base32 SHA-256 under the `passnote-room` domain. |
 | `xchacha.json` | XChaCha20-Poly1305 frames (`nonce ‖ ciphertext ‖ tag`) for fixed key, nonce, and plaintext. |
 | `spake2.json` | A full SPAKE2 (P-256, RFC 9382) exchange with fixed scalars: both messages, the transcript, the shared secret, both confirmation MACs. |

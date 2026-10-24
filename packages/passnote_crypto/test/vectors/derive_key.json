@@ -1,5 +1,5 @@
 {
-  "primitive": "BIP39 seed -> Argon2id(memory=19456 KiB, iterations=2, lanes=1, hashLength=32); argon salt = SHA-256(\"passnote-kdf-salt/<salt>\")[0..16]; recovery variant uses salt \"recovery-v1/<salt>\"",
+  "primitive": "BIP39 seed (PBKDF2-HMAC-SHA512, 2048 iterations, salt \"mnemonic\", over the UTF-8 bytes of the NFKD-normalised phrase) -> Argon2id(memory=19456 KiB, iterations=2, lanes=1, hashLength=32); argon salt = SHA-256(\"passnote-kdf-salt/<salt>\")[0..16]; recovery variant uses salt \"recovery-v1/<salt>\". legacy_key: the 1.0/1.1 derivation, whose seed input was the low byte of each UTF-16 code unit of the unnormalised phrase; equal to key for ASCII",
   "cases": [
     {
       "name": "12-word mnemonic",
@@ -21,6 +21,34 @@
       "salt": "other-app:v1",
       "key": "54e9cf7decc54078c74ed45da06c5ec2701d40b48e97587f64cb6e08ea8a22d9",
       "recovery_secret": "92e323c161590a4a51eb8591328fc325a6a534cd8e304e09657f198b104f5c03"
+    },
+    {
+      "name": "passphrase outside ASCII (NFC)",
+      "mnemonic": "Łódź café",
+      "salt": "vectors:v1",
+      "key": "fec6f9097c146ffecfbb8f8561af2770142302d127c4165d7bb29c2b11bef6f5",
+      "legacy_key": "60cb07bcb579a3b2bb4c988a4a5e89595c1d9d894d99c90366dc79cd70e6fc6e"
+    },
+    {
+      "name": "the same passphrase decomposed (NFD): same key, different legacy key",
+      "mnemonic": "Łódź café",
+      "salt": "vectors:v1",
+      "key": "fec6f9097c146ffecfbb8f8561af2770142302d127c4165d7bb29c2b11bef6f5",
+      "legacy_key": "0d3c4b30d1e9159c77bacf91dd2cf32a4e0706d77a76c154a1676d4d397612f7"
+    }
+  ],
+  "seeds": [
+    {
+      "phrase": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+      "seed": "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc19a5ac40b389cd370d086206dec8aa6c43daea6690f20ad3d8d48b2d2ce9e38e4"
+    },
+    {
+      "phrase": "Łódź café",
+      "seed": "f4f15bee3026f5223e4d26877732b324f7646f015b6f1621418a2b33a27d28562ee6a19a94e671dac0d3d511bd361df1c62bde327f2c16eb824047ffe3435618"
+    },
+    {
+      "phrase": "ｐａｓｓ",
+      "seed": "b196015ff6651dc874f4c51157ec5243592ab8d2babdb85e6e375c6fd24219c276b556a242483d8afb727a5dc833ad557b14261f05224775028695541f0b2c3e"
     }
   ]
 }
