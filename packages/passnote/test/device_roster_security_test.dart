@@ -5,6 +5,8 @@
 // records chain back to the founder through non-revoked signers.
 import 'dart:convert';
 
+import 'package:crdt/crdt.dart' show Hlc;
+
 import 'package:passnote/passnote.dart';
 // The roster orchestrator is deliberately not exported; test it directly.
 import 'package:passnote/src/collection.dart' as internal;
@@ -530,6 +532,42 @@ void main() {
         () => internal.DeviceRoster(roster, idA, pinBytes: [1, 2, 3]),
         throwsA(isA<RosterPinsCorruptException>()),
       );
+    });
+  });
+
+  group('rows this version cannot decode (F-12)', () {
+    Map<String, List<Map<String, Object?>>> futureRow() {
+      final hlc = Hlc.now('peer-node');
+      return {
+        internal.kDeviceCollection: [
+          {'key': 'x', 'value': true, 'is_deleted': false, 'hlc': hlc},
+          {
+            'key': 'x\x1F',
+            'value': {'id': 'x', 'kind': 'from-a-future-version'},
+            'is_deleted': false,
+            'hlc': hlc,
+          },
+        ],
+      };
+    }
+
+    test('are dropped before a founder is pinned', () async {
+      final fresh = internal.DeviceRoster(
+        internal.Collection.create<DeviceRosterEntry>(
+          internal.kDeviceCollection,
+          internal.deviceRosterCodec,
+        ),
+        _SigningIdentity(41),
+      );
+      final vetted = await fresh.vetInbound(futureRow());
+      expect(vetted[internal.kDeviceCollection], isEmpty);
+    });
+
+    test('that reach storage do not make the roster unreadable', () async {
+      // As if stored by an earlier version, or by a future version's sync.
+      await roster.mergeChangeset(futureRow());
+      expect(await rosterA.devices(), isNotEmpty);
+      expect(await rosterA.resolve(), DeviceState.ready);
     });
   });
 }
