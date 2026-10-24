@@ -1,6 +1,7 @@
 import 'package:crdt/crdt.dart';
 import 'package:crdt/map_crdt.dart';
 
+import 'crdt/clock.dart';
 import 'crdt/crdt_type.dart';
 import 'ports/crdt_table.dart';
 import 'ports/query.dart';
@@ -14,9 +15,9 @@ import 'query/scan_query.dart';
 /// disk-backed (`SqliteCrdtTable`).
 class MapCrdtTable implements CrdtTable {
   /// Creates an empty in-memory table named [table].
-  MapCrdtTable(String table) : _crdt = MapCrdt([table]);
+  MapCrdtTable(String table) : _crdt = _ClockedMapCrdt([table]);
 
-  final MapCrdt _crdt;
+  final _ClockedMapCrdt _crdt;
 
   @override
   String get nodeId => _crdt.nodeId;
@@ -45,8 +46,16 @@ class MapCrdtTable implements CrdtTable {
     Object? value, {
     bool isDeleted = false,
     CrdtType crdtType = const LwwRegister(),
-  }) =>
-      _crdt.put(table, key, value, isDeleted);
+  }) async {
+    try {
+      await _crdt.put(table, key, value, isDeleted);
+    } on OverflowException {
+      // Same rule as the disk engine: move to the next microsecond rather
+      // than fail the write (see [incrementClock]).
+      _crdt.skipPastOverflow();
+      await _crdt.put(table, key, value, isDeleted);
+    }
+  }
 
   @override
   Future<Object?> value(String table, String key) =>
@@ -171,4 +180,32 @@ class MapCrdtTable implements CrdtTable {
 
   @override
   Stream<CrdtRecovery> get recoveries => const Stream<CrdtRecovery>.empty();
+}
+
+/// [MapCrdt] with the disk engine's merge rule: a received record that is too
+/// far ahead of the wall clock, or that carries this node's id, does not move
+/// the clock but is still merged, instead of failing the whole changeset.
+/// The sync layer already refuses records beyond its own drift bound.
+class _ClockedMapCrdt extends MapCrdt {
+  _ClockedMapCrdt(super.tables);
+
+  /// Moves the clock past a counter that has no room left.
+  void skipPastOverflow() => canonicalTime = incrementClock(canonicalTime);
+
+  @override
+  Hlc validateChangeset(CrdtChangeset changeset) {
+    var hlc = canonicalTime;
+    for (final records in changeset.values) {
+      for (final record in records) {
+        try {
+          hlc = hlc.merge(record['hlc'] as Hlc);
+        } on ClockDriftException {
+          // Kept, but it does not move the clock.
+        } on DuplicateNodeException {
+          // Kept, but it does not move the clock.
+        }
+      }
+    }
+    return hlc;
+  }
 }
