@@ -548,6 +548,10 @@ class Passnote {
     final newKey = await _deriveKey(newPassphrase, _config.salt);
     if (_sameKey(newKey, oldKey)) return;
 
+    // Stores this rotation does not reach (collections not open now) stay
+    // under the old key; remembering it lets them be brought up to date
+    // whenever they are next opened.
+    await db.rememberPreviousPassphraseKey(oldKey);
     // Journal first. From here on the truth is "one of these two keys opens
     // each store", and finishing is always possible.
     await _keyStore.setKey(
@@ -583,6 +587,10 @@ class Passnote {
     final (newKey, collections) = _decodeRotation(journal);
     final entryKey = '${_config.appId}/$localId';
     final current = await _keyStore.getKey(entryKey) ?? newKey;
+    if (!_sameKey(current, newKey)) {
+      await Database.rememberPreviousPassphraseKeyIn(
+          _keyStore, entryKey, current);
+    }
     for (final collection in collections) {
       await _finishRekey(localId, collection, from: current, to: newKey);
     }
@@ -659,6 +667,7 @@ class Passnote {
     final entryKey = '${_config.appId}/$localId';
     await _keyStore.clear(entryKey);
     await _keyStore.clear(Database.rosterPinsKeyFor(entryKey));
+    await _keyStore.clear(Database.previousPassphraseKeysFor(entryKey));
     await _keyStore.clear(_rotationEntryKey(localId));
   }
 

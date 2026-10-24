@@ -724,6 +724,28 @@ class DeviceRoster {
     return DevicePublicKey.fromBytes(record.publicKey);
   }
 
+  /// The group keys of epochs before the current one that this device holds
+  /// a wrap for, newest first. A store that was not open during a rotation is
+  /// still under one of them.
+  Future<List<List<int>>> earlierGroupKeys() async {
+    final view = await _validate();
+    final myId = _identity.deviceId;
+    final mine = view.wraps
+        .where((w) => w.deviceId == myId && w.keyEpoch < _epoch)
+        .toList()
+      ..sort((a, b) => b.keyEpoch.compareTo(a.keyEpoch));
+    final keys = <List<int>>[];
+    for (final wrap in mine) {
+      try {
+        keys.add(
+            await _identity.unwrap(WrappedKey.fromBytes(wrap.wrappedBytes)));
+      } catch (_) {
+        // A wrap this device cannot open helps nothing here.
+      }
+    }
+    return keys;
+  }
+
   /// `true` while no device has founded the group key yet (no validated wrap
   /// exists).
   Future<bool> get isUnfounded async {
