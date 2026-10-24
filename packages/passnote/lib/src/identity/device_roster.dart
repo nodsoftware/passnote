@@ -503,7 +503,9 @@ class DeviceRoster {
   /// rows that count. Grows the pins (monotone) and persists them when they
   /// changed.
   Future<_RosterView> _validate() async {
-    final rows = await _collection.all();
+    // Row by row: a row this version cannot decode is skipped, not allowed to
+    // make the whole roster unreadable.
+    final rows = await _collection.allDecodable();
     final records = rows.whereType<DeviceRecord>().toList();
     final rotations = rows.whereType<KeyRotation>().toList()
       ..sort((a, b) {
@@ -778,7 +780,7 @@ class DeviceRoster {
   /// A dropped row whose signer this device merely has not learned yet is not
   /// lost: range reconciliation re-offers it until its chain has arrived.
   Future<CrdtChangeset> vetInbound(CrdtChangeset changeset) async {
-    if (_founderId == null) return changeset;
+    if (_founderId == null) return _decodableOnly(changeset);
 
     final out = <String, List<Map<String, Object?>>>{};
     for (final entry in changeset.entries) {
@@ -854,6 +856,41 @@ class DeviceRoster {
       out[entry.key] = [for (final group in admitted) ...group];
     }
     return out;
+  }
+
+  /// [changeset] without documents whose value record does not decode as a
+  /// roster row: before a founder is pinned nothing else is checked, and an
+  /// undecodable row has no business in storage either way.
+  static CrdtChangeset _decodableOnly(CrdtChangeset changeset) => {
+        for (final entry in changeset.entries)
+          entry.key: () {
+            final byDoc = <String, List<Map<String, Object?>>>{};
+            for (final record in entry.value) {
+              final key = record['key'] as String;
+              final sep = key.indexOf('\x1F');
+              (byDoc[sep < 0 ? key : key.substring(0, sep)] ??= []).add(record);
+            }
+            return [
+              for (final group in byDoc.values)
+                if (group
+                        .every((r) => !(r['key'] as String).contains('\x1F')) ||
+                    group.any((r) =>
+                        (r['key'] as String).contains('\x1F') &&
+                        r['is_deleted'] != true &&
+                        _decodes(r['value'])))
+                  ...group,
+            ];
+          }(),
+      };
+
+  static bool _decodes(Object? value) {
+    if (value is! Map) return false;
+    try {
+      deviceRosterCodec.fromMap(value.cast<String, dynamic>());
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Re-reads the roster and recomputes [state] / [groupKey]. Returns the new
