@@ -54,7 +54,7 @@ List<QueryRow> evaluateQueryByScan({
   final sign = spec.descending ? -1 : 1;
   int compareToCursor(QueryRow r, Object? orderValue, String docId) {
     final byOrder = compareQueryValues(r.orderValue, orderValue);
-    return sign * (byOrder != 0 ? byOrder : r.docId.compareTo(docId));
+    return sign * (byOrder != 0 ? byOrder : compareCodePoints(r.docId, docId));
   }
 
   rows.sort((a, b) => compareToCursor(a, b.orderValue, b.docId));
@@ -132,8 +132,30 @@ int compareQueryValues(Object? a, Object? b) {
   final byRank = _rank(a).compareTo(_rank(b));
   if (byRank != 0) return byRank;
   if (a is num && b is num) return a.compareTo(b);
-  if (a is String && b is String) return a.compareTo(b);
+  if (a is String && b is String) return compareCodePoints(a, b);
   return 0; // Both null.
 }
+
+/// Orders [a] and [b] by Unicode code point, as SQLite orders UTF-8 text.
+///
+/// [String.compareTo] orders by UTF-16 code unit instead, which puts a
+/// character above U+FFFF (stored as a surrogate pair, 0xD800-0xDFFF) before
+/// one in U+E000-U+FFFF; the two engines would then page differently.
+int compareCodePoints(String a, String b) {
+  final n = a.length < b.length ? a.length : b.length;
+  for (var i = 0; i < n; i++) {
+    final x = a.codeUnitAt(i);
+    final y = b.codeUnitAt(i);
+    if (x == y) continue;
+    // Surrogates (0xD800-0xDFFF) are above every BMP code point below them
+    // and below every one above them (0xE000-0xFFFF).
+    return _codePointRank(x).compareTo(_codePointRank(y));
+  }
+  return a.length.compareTo(b.length);
+}
+
+int _codePointRank(int unit) => unit >= 0xD800 && unit <= 0xDFFF
+    ? unit + 0x2000
+    : (unit >= 0xE000 ? unit - 0x800 : unit);
 
 int _rank(Object? v) => switch (v) { null => 0, num _ => 1, _ => 2 };
