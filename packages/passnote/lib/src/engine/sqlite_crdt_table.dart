@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:crdt/crdt.dart';
 import 'package:sqlite3/common.dart';
 
+import '../crdt/clock.dart';
 import '../crdt/crdt_type.dart';
 import '../exceptions.dart';
 import '../ports/crdt_table.dart';
@@ -139,7 +140,7 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
     db.execute('PRAGMA foreign_keys = ON');
     _migrate(db);
     _nodeId = _readOrCreateNodeId(db);
-    _canonical = _readMaxHlc(db) ?? Hlc.zero(_nodeId);
+    _canonical = _readClock(db, _nodeId);
     _db = db;
     _startSnapshots();
 
@@ -313,7 +314,7 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
     bool isDeleted = false,
     CrdtType crdtType = const LwwRegister(),
   }) async {
-    _canonical = _canonical.increment();
+    _canonical = incrementClock(_canonical);
     _open.execute(
       'INSERT INTO crdt_records (collection, key, value, is_deleted, hlc, '
       'hlc_key, crdt_type) VALUES (?, ?, ?, ?, ?, ?, ?) '
@@ -848,10 +849,27 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
     return id;
   }
 
-  static Hlc? _readMaxHlc(CommonDatabase db) {
+  /// The clock to resume from: the highest stored HLC at most one minute
+  /// ahead of the wall clock, under this file's own node id.
+  ///
+  /// The stored maximum is usually a record a peer wrote, carrying the peer's
+  /// node id: adopted as is, every local write would be stamped as the peer's
+  /// and could collide with the peer's own. A record further ahead than a
+  /// minute (accepted from a peer whose clock runs ahead) never moved the
+  /// clock while the store was open, and must not move it on reopen either,
+  /// or [Hlc.increment] refuses every write until the wall clock catches up.
+  static Hlc _readClock(CommonDatabase db, String nodeId) {
+    final bound = DateTime.now()
+            .toUtc()
+            .add(const Duration(minutes: 1))
+            .microsecondsSinceEpoch +
+        1;
     final rows = db.select(
-      'SELECT hlc FROM crdt_records ORDER BY hlc_key DESC LIMIT 1',
+      'SELECT hlc FROM crdt_records WHERE hlc_key < ? '
+      'ORDER BY hlc_key DESC LIMIT 1',
+      ['${bound.toString().padLeft(19, '0')}|'],
     );
-    return rows.isEmpty ? null : Hlc.parse(rows.first['hlc'] as String);
+    if (rows.isEmpty) return Hlc.zero(nodeId);
+    return Hlc.parse(rows.first['hlc'] as String).apply(nodeId: nodeId);
   }
 }
