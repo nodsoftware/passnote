@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.2.0
+
+- `Collection.adoptRecords(records)` merges records in `getChangeset`'s
+  format, vetted like an inbound delta (clock bound, roster rules), and
+  broadcasts them. Throws `ArgumentError` for another table, a record
+  without a string `key` or bool `is_deleted`, or an `hlc` that is not
+  well-formed UTC.
+- A connection runs one reconciliation round once it can carry user data;
+  the probe for a collection comes from the side the peer is not ahead of,
+  queued behind its deltas. `Database.reconcileNow()` and
+  `Passnote.reconcileNow()`; `PassnoteBuilder.antiEntropyInterval(duration)`.
+- `PassnoteBuilder.storage((databaseId, collection, key) => ...)`;
+  `PassnoteBuilder.engine` is deprecated.
+- Optional `legacyDeriveKey` on `PassnoteDefaults` and `passnoteLowLevel`:
+  `openDatabase` falls back to it for a non-ASCII passphrase whose BIP39 key
+  does not open existing data, `rotatePassphrase` accepts either old key, and
+  `recoverFrom` tries both. `PassnoteConfig.legacyPassphraseKeys` makes it
+  the key new data starts with.
+
 ## 1.1.2
 
 - `SqliteCrdtTable` resumes its clock after a reopen from the newest record

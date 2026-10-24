@@ -1,5 +1,5 @@
 name: passnote
-version: 1.1.2
+version: 1.2.0
 description: >-
   End-to-end encrypted, server-less, local-first CRDT sync engine for Dart:
   typed collections, queries, SQLite storage, device identity, sync protocol.

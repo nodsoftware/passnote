@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.0
+
+- `passnoteBuilder` installs `deriveKeyLegacy` as the legacy passphrase
+  derivation, so data made under a non-ASCII passphrase before 1.2 opens.
+
 ## 1.1.2
 
 - No changes of its own; released with the 1.1.2 patch of `passnote`, which

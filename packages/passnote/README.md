@@ -32,7 +32,7 @@ adapters.
 
 ```yaml
 dependencies:
-  passnote: ^1.1.2
+  passnote: ^1.2.0
 ```
 
 ## Usage

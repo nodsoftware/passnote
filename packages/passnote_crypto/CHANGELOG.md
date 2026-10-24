@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.0
+
+- `deriveKey`, `deriveKeyPbkdf2` and `deriveRecoverySecret` use
+  `bip39Seed`: PBKDF2-HMAC-SHA512 over the NFKD-normalised UTF-8 phrase, as
+  BIP39 specifies. Unchanged for ASCII. `deriveKeyLegacy` and
+  `deriveKeyPbkdf2Legacy` keep the 1.1 derivation for non-ASCII
+  passphrases. New dependency: `unorm_dart`.
+- Vectors: `derive_key.json` adds BIP39 seeds and non-ASCII cases with their
+  `legacy_key`.
+
 ## 1.1.2
 
 - `generateMnemonic` draws its entropy uniformly from `Random.secure`; bip39's

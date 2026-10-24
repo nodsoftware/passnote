@@ -4,6 +4,34 @@ All five packages release together with matching versions. Per-package detail
 lives in each package's own `CHANGELOG.md`; this file is the cross-package
 summary.
 
+## 1.2.0
+
+New sync and storage APIs, and passphrase derivation brought in line with
+BIP39. Wire-compatible with every 1.1 release.
+
+- **Passphrases outside ASCII derive the BIP39 key.** Before 1.2 a
+  passphrase with characters outside ASCII derived a key from the low byte of
+  each UTF-16 code unit, unnormalised: some distinct passphrases shared a key
+  and no other BIP39 implementation agreed. 1.2 applies NFKD and UTF-8 as
+  BIP39 specifies. Generated and other ASCII passphrases derive the same key
+  as before. Data already on a device opens under either key and stays under
+  the one its group uses; `recoverFrom` tries both. **A device joining a group
+  whose passphrase was set before 1.2 and has such characters** sets
+  `PassnoteConfig.legacyPassphraseKeys: true` (or the group rotates to a new
+  passphrase once every device runs 1.2).
+- **`Collection.adoptRecords`** merges records in the format `getChangeset`
+  exports (a backup, another device's or another implementation's export),
+  with the checks a peer's delta gets, and offers them to peers.
+- **Reconciliation on connect, and on demand.** Each connection runs one
+  reconciliation round once it can carry user data, so a record older than
+  both watermarks arrives on reconnect. `Database.reconcileNow` and
+  `Passnote.reconcileNow` run one any time; the builder gains
+  `.antiEntropyInterval(...)`.
+- **`PassnoteBuilder.storage(...)`** builds a store from the database id,
+  the collection and the key to encrypt it with. `.engine(...)`, which was
+  handed the collection name only (so two databases shared a store), is
+  deprecated and goes in 2.0.
+
 ## 1.1.2
 
 A bug-fix patch for clock, storage, roster and text-handling defects;
