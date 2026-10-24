@@ -8,6 +8,7 @@ import 'package:sqlite3/common.dart';
 import '../crdt/clock.dart';
 import '../crdt/crdt_type.dart';
 import '../exceptions.dart';
+import '../ports/atomic_crdt_table.dart';
 import '../ports/crdt_table.dart';
 import '../ports/query.dart';
 import 'sqlite_open_io.dart' if (dart.library.js_interop) 'sqlite_open_web.dart'
@@ -51,7 +52,8 @@ import 'sqlite_open_io.dart' if (dart.library.js_interop) 'sqlite_open_web.dart'
 /// (and [recoveries] emits so the sync layer can pull the data back from a
 /// peer). Set [snapshotInterval] (or [PassnoteConfig.snapshotInterval]) to keep
 /// those snapshots current.
-final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
+final class SqliteCrdtTable
+    implements CrdtTable, SnapshotCapable, AtomicCrdtTable {
   /// Creates a table for the database at [path], which is opened on the first
   /// [init]. Pass `":memory:"` for a transient database; pass an
   /// [encryptionKey] to use SQLCipher on a SQLCipher build of the native
@@ -496,6 +498,21 @@ final class SqliteCrdtTable implements CrdtTable, SnapshotCapable {
       [table],
     );
     return rows.isEmpty ? '' : rows.first['hlc'] as String;
+  }
+
+  /// Runs [writes] in one SQLite transaction: a process killed half-way
+  /// through a document's records commits none of them, rather than leaving
+  /// the document half-written on disk.
+  @override
+  Future<void> atomically(Future<void> Function() writes) async {
+    _open.execute('BEGIN');
+    try {
+      await writes();
+      _open.execute('COMMIT');
+    } catch (_) {
+      _open.execute('ROLLBACK');
+      rethrow;
+    }
   }
 
   @override

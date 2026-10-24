@@ -188,7 +188,8 @@ class CollectionQuery<T> {
   Future<QueryPage<T>> page() async {
     _requireFieldRows();
     await _collection._ready;
-    final (rows, fieldsByDoc) = await _fetch();
+    // Through the write chain, so a page never holds a half-written document.
+    final (rows, fieldsByDoc) = await _collection._serializedRead(_fetch);
     final items = _decode(rows, fieldsByDoc);
     final last = rows.isNotEmpty ? rows.last : null;
     final nextCursor = (_limit != null && rows.length == _limit && last != null)
