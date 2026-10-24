@@ -1230,8 +1230,9 @@ class Database {
   void _noteInstance(PeerId from, List<String> capabilities) {
     String? token;
     for (final c in capabilities) {
-      if (c.startsWith(_instancePrefix))
+      if (c.startsWith(_instancePrefix)) {
         token = c.substring(_instancePrefix.length);
+      }
     }
     if (token == null) return;
     final seen = _peerInstances[from];
