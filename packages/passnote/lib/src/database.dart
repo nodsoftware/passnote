@@ -1,9 +1,14 @@
 import 'dart:async';
+import 'dart:convert'
+    show base64Decode, base64Encode, jsonDecode, jsonEncode, utf8;
+import 'dart:math' show Random;
+
 import 'package:crdt/crdt.dart' show CrdtChangeset, Hlc;
 import 'package:meta/meta.dart';
 
 import 'codec.dart';
 import 'collection.dart';
+import 'exceptions.dart';
 import 'identity/device_roster.dart';
 import 'identity/ratchet.dart';
 import 'merge_strategies.dart';
@@ -18,6 +23,7 @@ import 'protocol/frame_window.dart';
 import 'protocol/handshake.dart';
 import 'protocol/messages.dart';
 import 'protocol/reconciliation.dart';
+import 'typed_crdt_table.dart';
 
 /// A shared, encrypted, peer-synced database.
 ///
@@ -158,6 +164,30 @@ class Database {
 
   /// The optional protocol features each peer advertised in its handshake.
   final Map<PeerId, Set<String>> _peerCapabilities = {};
+
+  /// This instance's handshake token, advertised as an [_instancePrefix]
+  /// capability. A peer that restarts gets a new one, which tells this side
+  /// to drop what it held for the old instance even when the transport never
+  /// reported the peer as lost (a quick restart under the same id).
+  final String _instanceToken = _newInstanceToken();
+
+  /// The instance tokens seen from each peer, newest last. Only a token not
+  /// seen before means a restart: a replayed handshake carrying an older one
+  /// must not tear down the live session.
+  final Map<PeerId, List<String>> _peerInstances = {};
+
+  static const String _instancePrefix = 'inst:';
+
+  /// How many instance tokens are remembered per peer.
+  static const int _rememberedInstances = 8;
+
+  static String _newInstanceToken() {
+    final rng = Random.secure();
+    return [
+      for (var i = 0; i < 8; i++)
+        rng.nextInt(256).toRadixString(16).padLeft(2, '0')
+    ].join();
+  }
 
   /// Peers that advertised no common wire version: deregistered, their frames
   /// swallowed, nothing further sent.
@@ -360,17 +390,111 @@ class Database {
   /// a [StateError].
   FutureOr<CrdtTable> _engineForCollection(String name) {
     if (name == kDeviceCollection || _identity == null) {
-      return _engineFor(name, _baseKey);
+      return _openUnderKey(name, _baseKey, _previousPassphraseKeys);
     }
-    final groupKey = _roster?.groupKey;
-    if (groupKey == null) {
+    final roster = _roster;
+    final groupKey = roster?.groupKey;
+    if (roster == null || groupKey == null) {
       throw StateError(
         'Database "$_id" needs pairing before collection "$name" can be '
         'opened (deviceState is ${_roster?.state ?? DeviceState.needsPairing}). '
         'Pair this device or call Database.foundGroup() on a new database.',
       );
     }
-    return _engineFor(name, groupKey);
+    return _openUnderKey(name, groupKey, roster.earlierGroupKeys);
+  }
+
+  /// Opens [name]'s engine under [key], bringing a store that is still under
+  /// an earlier key up to date first.
+  ///
+  /// A key rotation re-keys the stores that are open at the time. A store
+  /// that exists on disk but was not open (an app that opens collections
+  /// lazily, or one the rotation was interrupted before reaching) is still
+  /// under an earlier key, and would refuse the current one for good. So when
+  /// the current key is refused, each key in [earlier] is tried, newest
+  /// first; the one that opens the store re-keys it to [key].
+  Future<CrdtTable> _openUnderKey(
+    String name,
+    List<int> key,
+    Future<List<List<int>>> Function() earlier,
+  ) async {
+    final table = TypedCrdtTable(await _engineFor(name, key));
+    if (!table.isPersistent) return table;
+    try {
+      await table.init();
+      return table;
+    } on WrongPassphraseException {
+      await table.close();
+      for (final oldKey in await earlier()) {
+        final stale = TypedCrdtTable(await _engineFor(name, oldKey));
+        try {
+          await stale.init();
+        } on WrongPassphraseException {
+          await stale.close();
+          continue;
+        }
+        await stale.rekey(key);
+        return stale;
+      }
+      rethrow;
+    }
+  }
+
+  /// The [KeyStore] entry holding the passphrase keys this database used
+  /// before its latest rotations, newest first.
+  @internal
+  static String previousPassphraseKeysFor(String entryKey) =>
+      '$entryKey/previous-keys';
+
+  /// How many earlier passphrase keys are kept for stores a rotation did not
+  /// reach.
+  static const int _maxPreviousPassphraseKeys = 8;
+
+  Future<List<List<int>>> _previousPassphraseKeys() async {
+    final stored = await _keyStore.getKey(previousPassphraseKeysFor(_entryKey));
+    if (stored == null) return const [];
+    try {
+      return [
+        for (final k in jsonDecode(utf8.decode(stored)) as List)
+          base64Decode(k as String),
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Remembers [oldKey] as an earlier passphrase key of this database, so a
+  /// store the rotation away from it did not reach can still be opened (and
+  /// brought up to date) later. Called by [Passnote.rotatePassphrase].
+  @internal
+  Future<void> rememberPreviousPassphraseKey(List<int> oldKey) =>
+      rememberPreviousPassphraseKeyIn(_keyStore, _entryKey, oldKey);
+
+  /// [rememberPreviousPassphraseKey] for a database that is not open.
+  @internal
+  static Future<void> rememberPreviousPassphraseKeyIn(
+    KeyStore keyStore,
+    String entryKey,
+    List<int> oldKey,
+  ) async {
+    final entry = previousPassphraseKeysFor(entryKey);
+    final stored = await keyStore.getKey(entry);
+    var keys = <String>[];
+    if (stored != null) {
+      try {
+        keys = (jsonDecode(utf8.decode(stored)) as List).cast<String>();
+      } catch (_) {
+        keys = [];
+      }
+    }
+    final encoded = base64Encode(oldKey);
+    keys
+      ..remove(encoded)
+      ..insert(0, encoded);
+    if (keys.length > _maxPreviousPassphraseKeys) {
+      keys = keys.sublist(0, _maxPreviousPassphraseKeys);
+    }
+    await keyStore.setKey(entry, utf8.encode(jsonEncode(keys)));
   }
 
   /// Stops syncing and releases local resources, **keeping** the encryption key
@@ -398,6 +522,7 @@ class Database {
     }
     await _keyStore.clear(_entryKey);
     await _keyStore.clear(_rosterPinsKey);
+    await _keyStore.clear(previousPassphraseKeysFor(_entryKey));
   }
 
   /// The [KeyStore] entry holding the device roster's local trust pins.
@@ -789,7 +914,7 @@ class Database {
       HandshakeMessage(
         node: _nodeId,
         versions: _wireVersions,
-        capabilities: _wireCapabilities,
+        capabilities: [..._wireCapabilities, '$_instancePrefix$_instanceToken'],
         devicePublicKey:
             identity == null ? null : (await identity.publicKey).toBytes(),
       ),
@@ -1072,6 +1197,7 @@ class Database {
     List<int> versions,
     List<String> capabilities,
   ) async {
+    _noteInstance(from, capabilities);
     if (_incompatiblePeers.contains(from)) return;
     _peerCapabilities[from] = capabilities.toSet();
     final firstReceipt = _handshakeReceived.add(from);
@@ -1095,6 +1221,32 @@ class Database {
     // a not-yet-paired device syncs the roster in the clear first.
     if (_identity != null && _dataKey != null) await _kickRatchet(from);
     await _sendHello(from);
+  }
+
+  /// Resets what this side holds for [from] when its handshake carries an
+  /// instance token not seen from it before: the peer restarted, and its
+  /// session, negotiated version and pending hellos belong to the old
+  /// instance (F-15). A peer that advertises no token is left as it is.
+  void _noteInstance(PeerId from, List<String> capabilities) {
+    String? token;
+    for (final c in capabilities) {
+      if (c.startsWith(_instancePrefix)) {
+        token = c.substring(_instancePrefix.length);
+      }
+    }
+    if (token == null) return;
+    final seen = _peerInstances[from];
+    if (seen == null) {
+      _peerInstances[from] = [token];
+      return;
+    }
+    if (seen.contains(token)) return;
+    final connected = _peers.contains(from);
+    onPeerLost(from);
+    if (connected) _peers.add(from);
+    seen.add(token);
+    if (seen.length > _rememberedInstances) seen.removeAt(0);
+    _peerInstances[from] = seen;
   }
 
   // ---------------------------------------------------------------------------

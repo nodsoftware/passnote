@@ -9,8 +9,8 @@ environment:
   flutter: ^3.27.0
 
 dependencies:
-  passnote: ^1.1.1
-  passnote_flutter: ^1.1.1
+  passnote: ^1.1.2
+  passnote_flutter: ^1.1.2
   flutter:
     sdk: flutter
   provider: ^6.1.4
@@ -19,7 +19,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   build_runner: ^2.15.0
-  passnote_generator: ^1.1.1
+  passnote_generator: ^1.1.2
   lints: ^4.0.0
 
 # At-rest encryption: build package:sqlite3's native library from the

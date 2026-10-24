@@ -140,6 +140,17 @@ class Collection<T> {
     return done;
   }
 
+  /// Runs [read] in the write chain and returns its result.
+  ///
+  /// A put writes a document's records one at a time, with an await between
+  /// them; a read that ran in between would see the document half-written.
+  /// Reads therefore take their turn in the same chain as writes.
+  Future<R> _serializedRead<R>(Future<R> Function() read) async {
+    late R result;
+    await _serialize(() async => result = await read());
+    return result;
+  }
+
   /// Ends one mutating operation, releasing the watchers it held back once the
   /// last one finishes.
   void _endMutation() {
@@ -191,9 +202,11 @@ class Collection<T> {
   /// before returning.
   Future<T?> get(String documentId) async {
     await _ready;
-    final exists = await _engine.value(_name, documentId);
-    if (exists == null) return null;
-    final fields = await _fieldsForDoc(documentId);
+    final fields = await _serializedRead(() async {
+      final exists = await _engine.value(_name, documentId);
+      if (exists == null) return const <String, Object?>{};
+      return _fieldsForDoc(documentId);
+    });
     if (fields.isEmpty) return null;
     return _codec.fromMap(_merge.unflatten(_rows(fields)));
   }
@@ -209,7 +222,7 @@ class Collection<T> {
   /// Awaits the initial storage load before returning.
   Future<List<T>> all({int? limit, int? offset}) async {
     await _ready;
-    final (:aliveIds, :grouped) = await _scan();
+    final (:aliveIds, :grouped) = await _serializedRead(_scan);
 
     final start = offset ?? 0;
     if (start >= aliveIds.length) return [];
@@ -225,6 +238,29 @@ class Collection<T> {
     ];
   }
 
+  /// [all], leaving out documents the codec cannot decode instead of failing
+  /// the whole read.
+  ///
+  /// For the device roster: its rows arrive from peers, and one malformed row
+  /// (or one of a kind a later version adds) must not make every read of the
+  /// roster throw.
+  @internal
+  Future<List<T>> allDecodable() async {
+    await _ready;
+    final (:aliveIds, :grouped) = await _serializedRead(_scan);
+    final out = <T>[];
+    for (final id in aliveIds) {
+      final fields = grouped[id];
+      if (fields == null) continue;
+      try {
+        out.add(_codec.fromMap(_merge.unflatten(_rows(fields))));
+      } catch (_) {
+        // Not a row this version understands; skipped.
+      }
+    }
+    return out;
+  }
+
   /// All live documents that satisfy [test].
   ///
   /// [test] runs against decoded documents, so this always scans and decodes up
@@ -237,7 +273,7 @@ class Collection<T> {
   Future<Iterable<T>> where(bool Function(T) test,
       {int? limit, int? offset}) async {
     await _ready;
-    final (:aliveIds, :grouped) = await _scan();
+    final (:aliveIds, :grouped) = await _serializedRead(_scan);
     final result = <T>[];
     var matched = 0;
     var skipped = 0;
@@ -299,29 +335,33 @@ class Collection<T> {
       final current = await _fieldsForDoc(id);
       final livePaths = {for (final s in specs) s.path};
 
-      // Mark the document alive. Refreshing this on every write means an edit
-      // competes with a concurrent delete on a single register (latest wins).
-      await _engine.put(_name, id, true);
+      // One transaction per document where the engine has them: a crash
+      // half-way through must not leave a half-written document on disk.
+      await _engine.atomically(() async {
+        // Mark the document alive. Refreshing this on every write means an edit
+        // competes with a concurrent delete on a single register (latest wins).
+        await _engine.put(_name, id, true);
 
-      for (final spec in specs) {
-        // Only write fields whose value actually changed. Rewriting an unchanged
-        // field would stamp it with a fresher HLC and clobber a concurrent edit
-        // to that field made on another node.
-        if (current.containsKey(spec.path) &&
-            jsonEncode(current[spec.path]) == jsonEncode(spec.value)) {
-          continue;
+        for (final spec in specs) {
+          // Only write fields whose value actually changed. Rewriting an unchanged
+          // field would stamp it with a fresher HLC and clobber a concurrent edit
+          // to that field made on another node.
+          if (current.containsKey(spec.path) &&
+              jsonEncode(current[spec.path]) == jsonEncode(spec.value)) {
+            continue;
+          }
+          await _engine.put(_name, '$prefix${spec.path}', spec.value,
+              crdtType: spec.type);
         }
-        await _engine.put(_name, '$prefix${spec.path}', spec.value,
-            crdtType: spec.type);
-      }
-      // Tombstone fields that no longer exist on the document (e.g. a key removed
-      // from a map under shallow/deep merge). The schema of a fixed type rarely
-      // changes, but custom strategies may vary the field set.
-      for (final path in current.keys) {
-        if (!livePaths.contains(path)) {
-          await _engine.put(_name, '$prefix$path', null, isDeleted: true);
+        // Tombstone fields that no longer exist on the document (e.g. a key removed
+        // from a map under shallow/deep merge). The schema of a fixed type rarely
+        // changes, but custom strategies may vary the field set.
+        for (final path in current.keys) {
+          if (!livePaths.contains(path)) {
+            await _engine.put(_name, '$prefix$path', null, isDeleted: true);
+          }
         }
-      }
+      });
     });
     _onLocalChange?.call();
   }
@@ -365,8 +405,10 @@ class Collection<T> {
           '"$_name".',
         );
       }
-      await _engine.put(_name, documentId, true);
-      await _engine.increment(_name, '$documentId$_sep$fieldPath', by);
+      await _engine.atomically(() async {
+        await _engine.put(_name, documentId, true);
+        await _engine.increment(_name, '$documentId$_sep$fieldPath', by);
+      });
     });
     _onLocalChange?.call();
   }
@@ -479,7 +521,8 @@ class Collection<T> {
   /// the initial load so the engine exists first.
   Future<void> rekeyEngine(List<int> newKey) async {
     await _ready;
-    await _engine.rekey(newKey);
+    // In the write chain: a rekey must not land inside a put's transaction.
+    await _serialize(() => _engine.rekey(newKey));
   }
 
   /// Closes any open [watch] streams and releases resources. Called by

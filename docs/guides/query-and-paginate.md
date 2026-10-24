@@ -40,8 +40,9 @@ returning nothing.
 ## Stable pages
 
 `page()` returns a cursor, not an offset. The order is
-`(order-by value, document id)`: total, identical on every converged device,
-and stable across a restart. Pages are disjoint and gap-free even while the
+`(order-by value, document id)`: total, identical on every converged device
+and on either engine, and stable across a restart. Text compares by Unicode
+code point (as SQLite compares UTF-8), not by UTF-16 code unit. Pages are disjoint and gap-free even while the
 data changes, which offset-based paging cannot promise.
 
 ## Live results

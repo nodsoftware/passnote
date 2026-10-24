@@ -145,6 +145,13 @@ Each of these is a deliberate scope decision, stated with its reason.
 - **Snapshots follow the key.** Rotating a key rewrites the recovery
   snapshot under the new key straight away. A store quarantined as corrupt
   keeps the key it had; delete it once inspected.
+- **Earlier keys stay on the device.** A store that was not open during a
+  rotation still has the earlier key, so a device keeps what it needs to open
+  it: up to 8 earlier passphrase keys in its key store, and its own sealed
+  wraps of earlier group keys in the roster. Opening such a store re-keys it
+  at once. An attacker holding the unlocked key store gains nothing beyond
+  the compromised-device case above; `leave` and `forget` clear the earlier
+  passphrase keys.
 
 ## Cryptographic details
 

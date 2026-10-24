@@ -1,5 +1,5 @@
 name: passnote_lan
-version: 1.1.1
+version: 1.1.2
 description: >-
   Transports for Passnote: WebSocket (web-safe, with a reference relay) and
   mDNS LAN discovery (native).
@@ -15,7 +15,7 @@ environment:
 
 dependencies:
   mdns_dart: ^2.2.1
-  passnote: ^1.1.1
+  passnote: ^1.1.2
   web: ^1.1.0
 
 dev_dependencies:

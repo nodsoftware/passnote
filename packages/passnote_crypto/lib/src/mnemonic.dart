@@ -1,4 +1,5 @@
-import 'dart:math' show log;
+import 'dart:math' show Random, log;
+import 'dart:typed_data';
 
 import 'package:bip39/bip39.dart' as bip39;
 
@@ -27,7 +28,16 @@ List<String> generateMnemonic({int words = 24}) {
       'must be one of ${_wordsToStrength.keys.join(', ')}',
     );
   }
-  return bip39.generateMnemonic(strength: strength).split(' ');
+  return bip39
+      .generateMnemonic(strength: strength, randomBytes: _secureBytes)
+      .split(' ');
+}
+
+/// [size] uniformly random bytes. bip39's own default draws each byte with
+/// `nextInt(255)`, so a byte is never 0xFF and the entropy is biased.
+Uint8List _secureBytes(int size) {
+  final rng = Random.secure();
+  return Uint8List.fromList([for (var i = 0; i < size; i++) rng.nextInt(256)]);
 }
 
 /// Returns `true` if [phrase] is a valid BIP39 mnemonic, checksum included

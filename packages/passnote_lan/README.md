@@ -32,7 +32,7 @@ frames; a transport never sees plaintext.
 
 ```yaml
 dependencies:
-  passnote_lan: ^1.1.1
+  passnote_lan: ^1.1.2
 ```
 
 ## Usage

@@ -159,7 +159,39 @@ void _writeBound(_Writer w, String? bound) {
   }
 }
 
-String? _readBound(_Reader r) => r.byte() == 0 ? null : r.string();
+String? _readBound(_Reader r) =>
+    r.byte() == 0 ? null : _checkedHlcText(r.string());
+
+/// [text] parsed as an HLC, refusing what `Hlc.parse` would accept but
+/// misread: a date without a time zone (read in the receiver's local zone, so
+/// two devices would see different instants) and a counter above 0xFFFF (the
+/// `Hlc` constructor checks that only in debug builds, and a clock that
+/// adopts one can no longer advance).
+Hlc _wireHlc(String text) {
+  final counterDash = text.indexOf('-', text.lastIndexOf(':'));
+  final nodeIdDash = counterDash < 0 ? -1 : text.indexOf('-', counterDash + 1);
+  if (counterDash < 0 || nodeIdDash < 0) {
+    throw const FormatException('malformed HLC');
+  }
+  if (!text.substring(0, counterDash).endsWith('Z')) {
+    throw const FormatException('HLC without a time zone');
+  }
+  final counterText = text.substring(counterDash + 1, nodeIdDash);
+  final counter = int.tryParse(counterText, radix: 16);
+  if (counterText.isEmpty ||
+      counterText.length > 4 ||
+      counter == null ||
+      counter < 0) {
+    throw const FormatException('HLC counter out of range');
+  }
+  return Hlc.parse(text);
+}
+
+/// [text] unchanged when it is empty (no records) or a well-formed HLC.
+String _checkedHlcText(String text) {
+  if (text.isNotEmpty) _wireHlc(text);
+  return text;
+}
 
 /// Decodes a binary frame back into a [ProtocolMessage].
 ///
@@ -178,7 +210,8 @@ ProtocolMessage? decodeMessage(List<int> bytes) {
     final ProtocolMessage? message = switch (tag) {
       _tagHello => HelloMessage(node: r.string()),
       _tagState => StateMessage(cols: {
-          for (var i = r.varint(); i > 0; i--) r.string(): r.string(),
+          for (var i = r.varint(); i > 0; i--)
+            r.string(): _checkedHlcText(r.string()),
         }),
       _tagDelta => DeltaMessage(
           col: r.string(),
@@ -255,7 +288,7 @@ void _writeRecord(_Writer w, Map<String, dynamic> record) {
 Map<String, dynamic> _readRecord(_Reader r) {
   final flags = r.byte();
   final key = r.string();
-  final hlc = Hlc.parse(r.string());
+  final hlc = _wireHlc(r.string());
   final crdtType = (flags & _flagHasCrdtType) != 0 ? r.string() : null;
   return {
     'key': key,

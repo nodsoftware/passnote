@@ -82,21 +82,23 @@ void main() {
     });
 
     test('reconcile with probes and send-ranges, including open bounds', () {
+      const a = '2026-01-01T00:00:00.000Z-0000-node-a';
+      const b = '2026-01-02T00:00:00.000Z-002A-node-b';
       final m = rt(ReconcileMessage(
         col: 'docs',
         probes: [
-          (null, 'hlc-b', 0, 41, List<int>.filled(16, 7)),
-          ('hlc-a', null, 3, 0, List<int>.filled(16, 0)),
+          (null, b, 0, 41, List<int>.filled(16, 7)),
+          (a, null, 3, 0, List<int>.filled(16, 0)),
         ],
-        sendRanges: const [(null, null), ('hlc-a', 'hlc-b')],
+        sendRanges: const [(null, null), (a, b)],
       )) as ReconcileMessage;
       expect(m.col, 'docs');
       expect(m.probes, hasLength(2));
       expect(m.probes[0].$1, isNull);
-      expect(m.probes[0].$2, 'hlc-b');
+      expect(m.probes[0].$2, b);
       expect(m.probes[0].$4, 41);
       expect(m.probes[1].$3, 3);
-      expect(m.sendRanges, [(null, null), ('hlc-a', 'hlc-b')]);
+      expect(m.sendRanges, [(null, null), (a, b)]);
     });
 
     test('delta with every value shape', () {
@@ -198,6 +200,32 @@ void main() {
       expect(decodeMessage([frame[0], 2, ...frame.skip(2)]), isNull);
     });
 
+    test('on an HLC that would be misread', () {
+      // A zone-less date is read in the receiver's local zone, and a counter
+      // above 0xFFFF leaves a clock that adopts it unable to advance.
+      for (final hlc in [
+        '2026-01-01T00:00:00.000-0000-node',
+        '2026-01-01T00:00:00.000Z-10000-node',
+        '2026-01-01T00:00:00.000Z-node',
+        'garbage',
+      ]) {
+        final record = {..._record(1), 'hlc': hlc};
+        final frame = encodeMessage(DeltaMessage(col: 'c', records: [record]));
+        expect(decodeMessage(frame), isNull, reason: hlc);
+        expect(
+          decodeMessage(encodeMessage(StateMessage(cols: {'c': hlc}))),
+          isNull,
+          reason: hlc,
+        );
+      }
+      // The counter limit itself is fine.
+      final edge = {..._record(1), 'hlc': '2026-01-01T00:00:00.000Z-FFFF-n'};
+      expect(
+        decodeMessage(encodeMessage(DeltaMessage(col: 'c', records: [edge]))),
+        isNotNull,
+      );
+    });
+
     test('on trailing garbage after a valid frame', () {
       final frame = encodeMessage(const HelloMessage(node: 'n'));
       expect(decodeMessage([...frame, 0x00]), isNull);
@@ -206,7 +234,8 @@ void main() {
     test('on every truncation of valid frames', () {
       final frames = [
         encodeMessage(const HelloMessage(node: 'node-1')),
-        encodeMessage(const StateMessage(cols: {'items': 'x'})),
+        encodeMessage(const StateMessage(
+            cols: {'items': '2026-09-10T12:00:00.000Z-0000-n'})),
         encodeMessage(DeltaMessage(col: 'c', records: [_record(1)])),
         encodeMessage(RatchetHelloMessage(
           node: 'n',
@@ -223,8 +252,21 @@ void main() {
         )),
         encodeMessage(ReconcileMessage(
           col: 'c',
-          probes: [('a', null, 1, 5, List<int>.filled(16, 1))],
-          sendRanges: const [('a', 'b')],
+          probes: [
+            (
+              '2026-01-01T00:00:00.000Z-0000-a',
+              null,
+              1,
+              5,
+              List<int>.filled(16, 1),
+            ),
+          ],
+          sendRanges: const [
+            (
+              '2026-01-01T00:00:00.000Z-0000-a',
+              '2026-01-02T00:00:00.000Z-0000-b',
+            ),
+          ],
         )),
       ];
       for (final frame in frames) {
